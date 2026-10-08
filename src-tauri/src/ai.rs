@@ -421,8 +421,8 @@ pub fn bridge() {
         }
         let mut raw = Vec::new();
         let _ = conn.read_to_end(&mut raw);
-        let text = String::from_utf8_lossy(&raw);
-        let body = text.split("\r\n\r\n").nth(1).unwrap_or("").trim();
+        let body = http_body(&raw);
+        let body = body.trim();
         if id.is_some() && !body.is_empty() {
             let _ = writeln!(out, "{}", body.replace('\n', " "));
             let _ = out.flush();
@@ -455,5 +455,50 @@ pub fn agy_connect() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&added.stderr).to_string())
+    }
+}
+
+/// The body of a raw HTTP response. Big answers arrive in chunks, each led by its size in hex.
+fn http_body(raw: &[u8]) -> String {
+    let Some(split) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+        return String::new();
+    };
+    let head = String::from_utf8_lossy(&raw[..split]).to_lowercase();
+    let body = &raw[split + 4..];
+    if !head.contains("transfer-encoding: chunked") {
+        return String::from_utf8_lossy(body).to_string();
+    }
+    let mut out = Vec::new();
+    let mut rest = body;
+    loop {
+        let Some(eol) = rest.windows(2).position(|w| w == b"\r\n") else { break };
+        let size_text = String::from_utf8_lossy(&rest[..eol]);
+        let Ok(size) = usize::from_str_radix(size_text.split(';').next().unwrap_or("").trim(), 16) else { break };
+        rest = &rest[eol + 2..];
+        if size == 0 || rest.len() < size {
+            if size > 0 {
+                out.extend_from_slice(rest);
+            }
+            break;
+        }
+        out.extend_from_slice(&rest[..size]);
+        rest = rest.get(size + 2..).unwrap_or(&[]);
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+#[cfg(test)]
+mod bridge_tests {
+    use super::http_body;
+
+    #[test]
+    fn plain_body() {
+        assert_eq!(http_body(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"), "{}");
+    }
+
+    #[test]
+    fn chunked_body() {
+        let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n";
+        assert_eq!(http_body(raw), "hello world");
     }
 }
