@@ -4,3 +4,9 @@ ref/
 node_modules/
 target/
 dist/
+logs
+*.log
+dist-ssr
+*.local
+src-tauri/target/
+src-tauri/gen/
