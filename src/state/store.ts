@@ -10,6 +10,10 @@ export interface HistoryEntry {
   doc: Doc;
   label: string;
   actor: Actor;
+  /** Milliseconds since 1970, when this step happened. */
+  time: number;
+  /** Set when this moment has been given a name, like "Client round 1". */
+  version?: string;
 }
 
 export interface Viewport {
@@ -51,7 +55,7 @@ const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marqu
 
 const initial = (): State => ({
   project: { path: null, name: "Untitled", status: "unsaved", error: null },
-  timeline: [{ doc: emptyDoc(), label: "New file", actor: "you" }],
+  timeline: [{ doc: emptyDoc(), label: "New file", actor: "you", time: Date.now() }],
   cursor: 0,
   transientDoc: null,
   selection: [],
@@ -100,7 +104,7 @@ function commit(doc: Doc, label: string, actor: Actor) {
     set({ transientDoc: null });
     return;
   }
-  const timeline = state.timeline.slice(0, state.cursor + 1).concat({ doc, label, actor });
+  const timeline = state.timeline.slice(0, state.cursor + 1).concat({ doc, label, actor, time: Date.now() });
   set({
     timeline,
     cursor: timeline.length - 1,
@@ -148,13 +152,35 @@ export const setProject = (patch: Partial<Project>) => set({ project: { ...state
 /** Replace everything with a freshly opened document. History starts over. */
 export function loadDoc(doc: Doc, label = "Opened") {
   set({
-    timeline: [{ doc, label, actor: "you" }],
+    timeline: [{ doc, label, actor: "you", time: Date.now() }],
     cursor: 0,
     transientDoc: null,
     selection: [],
     editingId: null,
     overlay: noOverlay(),
   });
+}
+
+/** Replace everything with a history that was saved earlier. Lands on the newest step. */
+export function loadTimeline(entries: HistoryEntry[]) {
+  set({
+    timeline: entries,
+    cursor: entries.length - 1,
+    transientDoc: null,
+    selection: [],
+    editingId: null,
+    overlay: noOverlay(),
+  });
+}
+
+/** Mark a step as a named version. */
+export function setEntryVersion(index: number, name: string) {
+  set({ timeline: state.timeline.map((e, i) => (i === index ? { ...e, version: name } : e)) });
+}
+
+/** Bring an old design back as a new step. Nothing is lost. */
+export function restoreDoc(doc: Doc, label: string, actor: Actor = "you") {
+  commit(doc, label, actor);
 }
 
 // ---- history ----

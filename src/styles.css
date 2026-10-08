@@ -36,7 +36,7 @@ button {
   display: grid;
   height: 100vh;
   grid-template-columns: 232px 1fr 248px;
-  grid-template-rows: 44px 1fr 52px;
+  grid-template-rows: 44px 1fr 76px;
   grid-template-areas: "top top top" "left canvas right" "hist hist hist";
 }
 
@@ -294,54 +294,65 @@ button {
 /* history */
 .hist {
   grid-area: hist;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding: 0 16px;
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
-.note {
+.lane-names {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 62px;
+  padding: 7px 0;
   color: var(--muted);
-  white-space: nowrap;
+  font-size: 11px;
+  width: 30px;
 }
-.mini {
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--panel-2);
-  cursor: pointer;
+.lane-names .ai {
+  color: #cbbdff;
 }
-.mini:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.track {
+.scroller {
   flex: 1;
-  position: relative;
-  height: 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 76px;
   display: flex;
   align-items: center;
-  gap: 28px;
-  overflow-x: auto;
-  overflow-y: visible;
-  padding: 0 6px;
 }
-.track::before {
-  content: "";
+.lanes {
+  position: relative;
+  height: 62px;
+  flex: none;
+}
+.links {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--line);
+  inset: 0;
   pointer-events: none;
 }
+.links .guide {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+.links .link {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+.links .link.ai {
+  stroke: var(--accent);
+  opacity: 0.9;
+}
 .pt {
-  position: relative;
+  position: absolute;
   width: 12px;
   height: 12px;
+  margin: -6px 0 0 -6px;
   padding: 0;
-  flex: none;
   border-radius: 50%;
   background: var(--panel-2);
   border: 2px solid var(--muted);
@@ -357,12 +368,22 @@ button {
 .pt.future {
   opacity: 0.45;
 }
+.pt.ver {
+  border-radius: 2px;
+  transform: rotate(45deg);
+  width: 13px;
+  height: 13px;
+  border-color: #fbbf24;
+}
+.pt.ver.now {
+  background: #fbbf24;
+}
 .pt:hover::after {
   content: attr(data-tip);
   position: absolute;
   bottom: 20px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) rotate(0deg);
   white-space: nowrap;
   padding: 4px 8px;
   border-radius: 6px;
@@ -370,6 +391,102 @@ button {
   color: #fff;
   font-size: 11px;
   z-index: 5;
+}
+.pt.ver:hover::after {
+  transform: translateX(-50%) rotate(-45deg);
+}
+.hist-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mini {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.mini:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.mini.on {
+  border-color: var(--accent);
+}
+.mini.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.mini:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.popover {
+  position: absolute;
+  right: 16px;
+  bottom: calc(100% + 8px);
+  width: 320px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+.pop-title {
+  margin: 4px 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.pop-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.pop-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.pop-row input:focus {
+  border-color: var(--accent);
+}
+.pop-note,
+.pop-empty {
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.pop-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.pop-version:hover {
+  background: var(--panel-2);
+}
+.v-name {
+  font-weight: 600;
+}
+.v-time {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 /* project status */
