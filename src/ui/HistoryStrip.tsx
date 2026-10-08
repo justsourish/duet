@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDismiss } from "./useDismiss";
 import { saveVersion } from "../project/project";
 import { goTo, redo, restoreDoc, undo, useStore } from "../state/store";
 
@@ -13,6 +14,7 @@ export default function HistoryStrip() {
   const cursor = useStore((s) => s.cursor);
   const scroller = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  useDismiss(open, () => setOpen(false), ".popover, [data-toggle=\"versions\"]");
   const [name, setName] = useState("");
   const [note, setNote] = useState<string | null>(null);
   // The tooltip is drawn outside the scrolling strip, so it is never clipped.
@@ -89,7 +91,7 @@ export default function HistoryStrip() {
         <button className="mini" disabled={cursor >= timeline.length - 1} onClick={redo} title="Redo (Shift Ctrl or Cmd Z)">
           Redo
         </button>
-        <button className={`mini ${open ? "on" : ""}`} onClick={() => setOpen(!open)}>
+        <button data-toggle="versions" className={`mini ${open ? "on" : ""}`} onClick={() => setOpen(!open)}>
           Versions{versions.length ? ` (${versions.length})` : ""}
         </button>
       </div>
@@ -102,7 +104,12 @@ export default function HistoryStrip() {
 
       {open && (
         <div className="popover">
-          <div className="pop-title">Save a version</div>
+          <div className="pop-title">
+            Save a version
+            <span className="pop-close" title="Close" onClick={() => setOpen(false)}>
+              ×
+            </span>
+          </div>
           <div className="pop-row">
             <input
               autoFocus

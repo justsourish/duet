@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useDismiss } from "./useDismiss";
 import { exportDesign, exportTargets } from "../project/exporter";
 import type { Format } from "../project/exporter";
 import { currentDoc, useStore } from "../state/store";
 
 export default function ExportMenu() {
   const [open, setOpen] = useState(false);
+  useDismiss(open, () => setOpen(false), ".zoomwrap.exportwrap");
   const [format, setFormat] = useState<Format>("png");
   const [scale, setScale] = useState(2);
   const [note, setNote] = useState("");
@@ -22,7 +24,7 @@ export default function ExportMenu() {
           : `All ${ids.length} screens`;
 
   return (
-    <div className="zoomwrap">
+    <div className="zoomwrap exportwrap">
       <button className="pill primary" onClick={() => setOpen(!open)}>
         Export
       </button>

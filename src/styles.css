@@ -120,6 +120,26 @@ button {
   background: var(--accent-soft);
   outline: 1px solid var(--accent);
 }
+.pop-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pop-close {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pop-close:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
 .lockbtn {
   margin-left: auto;
   display: grid;

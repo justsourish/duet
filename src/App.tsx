@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDismiss } from "./ui/useDismiss";
 import { detectAgent, startAgentListeners } from "./ai/agent";
 import { startMcp } from "./ai/mcp";
 import { loadSkills } from "./ai/skills";
@@ -25,6 +26,7 @@ export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);
   const project = useStore((s) => s.project);
   const [zoomMenu, setZoomMenu] = useState(false);
+  useDismiss(zoomMenu, () => setZoomMenu(false), ".zoomwrap.zoomonly");
   const [presenting, setPresenting] = useState(false);
   const hasFrames = useStore((s) => Object.values(s.timeline[s.cursor].doc.elements).some((e) => e.type === "frame"));
 
@@ -94,7 +96,7 @@ export default function App() {
           Present
         </button>
         <ExportMenu />
-        <div className="zoomwrap">
+        <div className="zoomwrap zoomonly">
           <button className="pill" onClick={() => setZoomMenu(!zoomMenu)} title="Zoom">
             {Math.round(zoom * 100)}%
           </button>
