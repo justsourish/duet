@@ -17,7 +17,7 @@ async function answer(rpc: Rpc): Promise<unknown> {
       return {
         protocolVersion: (rpc.params?.protocolVersion as string) ?? "2025-03-26",
         capabilities: { tools: {} },
-        serverInfo: { name: "duet", version: "0.1.0" },
+        serverInfo: { name: "duet", version: "0.3.0" },
       };
     case "ping":
       return {};
