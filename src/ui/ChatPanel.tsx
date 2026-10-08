@@ -147,7 +147,7 @@ export default function ChatPanel() {
             <textarea
               value={text}
               rows={1}
-              placeholder={found === false ? "Pick an AI tool that is installed" : "Describe a change"}
+              placeholder={found === false ? "Pick an AI tool that is installed" : "What do you want to change?"}
               disabled={found === false}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
