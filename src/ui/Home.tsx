@@ -100,7 +100,13 @@ export default function Home({ onClose }: { onClose: () => void }) {
         <div className="home-h">Your projects</div>
         {recents.length === 0 && (
           <div className="home-empty">
-            Nothing here yet. Start a new project, and it will show up in this list. A project is a folder you choose, with your design and its history inside.
+            <b>Welcome. Here is how it goes.</b>
+            <ol>
+              <li>Press <b>New project</b> and choose where it lives. A project is just a folder.</li>
+              <li>Press <b>F</b>, then drag to draw a frame. That is a screen. Draw shapes, text and lines inside it.</li>
+              <li>Ask Duet in the chat for what you want. It works on the same canvas, in its own colour.</li>
+            </ol>
+            Nothing here yet. Your projects will show up in this list.
           </div>
         )}
         <div className="home-list">

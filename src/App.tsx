@@ -7,6 +7,7 @@ import CanvasView from "./canvas/CanvasView";
 import { inTauri, newProject, openProject, restoreLast, saveNow, startAutosave } from "./project/project";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import ContextMenu from "./ui/ContextMenu";
+import { installMenu } from "./ui/menu";
 import Home from "./ui/Home";
 import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
@@ -43,11 +44,19 @@ export default function App() {
     const stops: (() => void)[] = [];
     let alive = true;
     if (inTauri()) {
+      void installMenu();
       loadSkills();
       detectAgent();
       startMcp().then((f) => (alive ? stops.push(f) : f()));
       startAgentListeners().then((f) => (alive ? stops.push(f) : f()));
     }
+    // the menu bar and other parts of the app ask for these
+    const openHome = () => setHome(true);
+    const openPresent = () => setPresenting(true);
+    const rebuildMenu = () => void installMenu();
+    window.addEventListener("duet:home", openHome);
+    window.addEventListener("duet:present", openPresent);
+    window.addEventListener("duet:recents", rebuildMenu);
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
@@ -74,6 +83,9 @@ export default function App() {
       stops.forEach((f) => f());
       stop();
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("duet:home", openHome);
+      window.removeEventListener("duet:present", openPresent);
+      window.removeEventListener("duet:recents", rebuildMenu);
     };
   }, []);
 

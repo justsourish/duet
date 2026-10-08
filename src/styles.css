@@ -1237,3 +1237,10 @@ button {
   font: inherit;
   font-size: 11px;
 }
+.home-empty ol {
+  margin: 8px 0 10px;
+  padding-left: 18px;
+}
+.home-empty li {
+  margin: 4px 0;
+}

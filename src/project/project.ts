@@ -132,7 +132,23 @@ export function saveNow(): Promise<void> {
 }
 
 /** Pick a folder for the current, unsaved work. */
+let dialogOpen = false;
+/** Run a dialog job once at a time, so a shortcut and its menu item cannot open it twice. */
+async function once<T>(job: () => Promise<T>): Promise<T | undefined> {
+  if (dialogOpen) return undefined;
+  dialogOpen = true;
+  try {
+    return await job();
+  } finally {
+    dialogOpen = false;
+  }
+}
+
 export async function saveAs() {
+  await once(saveAsDialog);
+}
+
+async function saveAsDialog() {
   if (!inTauri()) return;
   const choice = await save({ title: "Save your project", defaultPath: "My design.duet" });
   if (!choice) return;
@@ -156,6 +172,10 @@ export async function saveAs() {
 
 /** Start a new, empty project in a folder you choose. */
 export async function newProject() {
+  await once(newProjectDialog);
+}
+
+async function newProjectDialog() {
   if (!inTauri()) return;
   const s = getState();
   if (!s.project.path && s.timeline.length > 1) {
@@ -270,6 +290,10 @@ export async function openProjectAt(path: string): Promise<boolean> {
 
 /** Choose a project folder and open it. */
 export async function openProject() {
+  await once(openProjectDialog);
+}
+
+async function openProjectDialog() {
   if (!inTauri()) return;
   const picked = await open({ directory: true, multiple: false, title: "Open a Duet project (a folder ending in .duet)" });
   if (typeof picked === "string") await loadFrom(picked);
