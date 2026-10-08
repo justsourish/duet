@@ -1,3 +1,5 @@
+import { isDerived, syncInstances } from "./components";
+import { relayout } from "./layout";
 import type { Doc, El } from "./types";
 
 /** Property order inside each element, so Git diffs stay small and stable. */
@@ -21,6 +23,9 @@ const EL_KEYS: (keyof El)[] = [
   "gradient",
   "link",
   "src",
+  "component",
+  "componentId",
+  "overrides",
   "locked",
   "layout",
   "grow",
@@ -47,6 +52,9 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   gradient: null,
   link: null,
   src: "",
+  component: false,
+  componentId: "",
+  overrides: {},
   locked: false,
   layout: null,
   grow: 0,
@@ -59,9 +67,11 @@ const FALLBACK: Omit<El, "id" | "type"> = {
 export function serializeDoc(doc: Doc): string {
   const elements: Record<string, unknown> = {};
   for (const id of Object.keys(doc.elements).sort()) {
+    if (isDerived(id)) continue; // the inside of a copy is rebuilt from its component
     const el = doc.elements[id];
     const ordered: Record<string, unknown> = {};
-    for (const k of EL_KEYS) if ((k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
+    for (const k of EL_KEYS) if (k === "childIds" && el.type === "instance") ordered[k] = [];
+    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
   return JSON.stringify({ version: doc.version, rootIds: doc.rootIds, elements }, null, 2) + "\n";
@@ -69,7 +79,7 @@ export function serializeDoc(doc: Doc): string {
 
 export class DesignFileError extends Error {}
 
-const TYPES = new Set(["frame", "rect", "ellipse", "text", "image", "path", "group"]);
+const TYPES = new Set(["frame", "rect", "ellipse", "text", "image", "path", "group", "instance"]);
 
 /** Parse and check a design file. Fills in missing properties so older files still open. */
 export function parseDoc(text: string): Doc {
@@ -94,5 +104,5 @@ export function parseDoc(text: string): Doc {
   for (const el of Object.values(elements)) {
     for (const c of el.childIds) if (!elements[c]) throw new DesignFileError(`${el.name} lists a missing child ${c}.`);
   }
-  return { version: 1, rootIds: r.rootIds as string[], elements };
+  return relayout(syncInstances({ version: 1, rootIds: r.rootIds as string[], elements }));
 }

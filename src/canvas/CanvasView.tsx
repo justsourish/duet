@@ -65,6 +65,7 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   image: { w: 240, h: 160 },
   path: { w: 100, h: 100 },
   group: { w: 100, h: 100 },
+  instance: { w: 100, h: 100 },
 };
 
 /** Copy of what was last copied inside this window, in case the system clipboard is unavailable. */
@@ -255,7 +256,7 @@ export default function CanvasView() {
     const doc = currentDoc(s);
     for (let i = doc.rootIds.length - 1; i >= 0; i--) {
       const id = doc.rootIds[i];
-      if (doc.elements[id]?.type !== "frame") continue;
+      if (doc.elements[id]?.type !== "frame" && doc.elements[id]?.type !== "instance") continue;
       const r = labelRect(s, doc, id);
       if (sx >= r.x && sx <= r.x + r.width && sy >= r.y && sy <= r.y + r.height) return id;
     }
@@ -517,8 +518,8 @@ export default function CanvasView() {
       enterNodeEdit(hit);
       return;
     }
-    // double-click a group to pick what is under the pointer inside it
-    if (hit && doc.elements[hit].type === "group") {
+    // double-click a group or a copy of a component to pick what is under the pointer inside it
+    if (hit && (doc.elements[hit].type === "group" || doc.elements[hit].type === "instance")) {
       const inner = hitTest(doc, p.x, p.y, new Set(), true);
       if (inner && inner !== hit) select([inner]);
       return;
@@ -703,6 +704,19 @@ export default function CanvasView() {
         else if (s.selection.length && parents.size === 1 && [...parents][0]) pool = doc.elements[[...parents][0]!].childIds;
         else pool = doc.rootIds;
         select(pool.filter((i) => doc.elements[i] && !doc.elements[i].locked));
+        return;
+      }
+      if (mod && e.altKey && e.code === "KeyK") {
+        e.preventDefault();
+        const doc = currentDoc(s);
+        const ids = s.selection.filter((i) => ["frame", "group"].includes(doc.elements[i]?.type ?? "") && !doc.elements[i].component);
+        for (const id of ids) dispatch("create_component", { id });
+        return;
+      }
+      if (mod && e.altKey && e.code === "KeyB") {
+        e.preventDefault();
+        const doc = currentDoc(s);
+        for (const id of s.selection.filter((i) => doc.elements[i]?.type === "instance")) dispatch("detach_instance", { id });
         return;
       }
       if (mod && key === "g") {

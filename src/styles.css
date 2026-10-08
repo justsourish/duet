@@ -1063,3 +1063,21 @@ button {
   gap: 12px;
   color: var(--muted);
 }
+
+.skill.asset {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.skill.asset:hover {
+  background: var(--panel-2);
+}
+.skill.asset .grow {
+  flex: 1;
+  min-width: 0;
+}
+.add-copy {
+  color: var(--accent);
+  font-size: 11px;
+}

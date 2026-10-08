@@ -13,7 +13,7 @@ export type Format = "png" | "svg";
 export function exportTargets(doc: Doc, selection: string[]): string[] {
   const picked = topLevelOnly(doc, selection.filter((i) => doc.elements[i]));
   if (picked.length) return picked;
-  return doc.rootIds.filter((i) => doc.elements[i]?.type === "frame");
+  return doc.rootIds.filter((i) => doc.elements[i]?.type === "frame" || doc.elements[i]?.type === "instance");
 }
 
 /** Draw one element to a PNG at the given scale. Returns base64 text. */

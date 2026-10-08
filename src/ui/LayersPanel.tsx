@@ -1,3 +1,4 @@
+import AssetsPanel from "./AssetsPanel";
 import Icon from "./Icons";
 import { useRef, useState } from "react";
 import { descendants, topLevelOnly } from "../document/geometry";
@@ -11,8 +12,9 @@ interface Drop {
   zone: Zone;
 }
 
-function LayerIcon({ type }: { type: El["type"] }) {
-  const name = type === "text" ? "text" : type === "group" ? "group" : type === "image" ? "image" : type === "path" ? "pen" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
+function LayerIcon({ el }: { el: El }) {
+  const type = el.type;
+  const name = el.component ? "component" : type === "instance" ? "instance" : type === "text" ? "text" : type === "group" ? "group" : type === "image" ? "image" : type === "path" ? "pen" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
   return <Icon name={name} size={14} className="ico" />;
 }
 
@@ -81,7 +83,7 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
         }}
         onDoubleClick={() => setRenaming(true)}
       >
-        <LayerIcon type={el.type} />
+        <LayerIcon el={el} />
         {renaming ? (
           <input
             className="rename"
@@ -121,7 +123,7 @@ export default function LayersPanel() {
   useStore((s) => s.transientDoc);
   const doc = currentDoc();
   const [drop, setDrop] = useState<Drop | null>(null);
-  const [tab, setTab] = useState<"layers" | "skills">("layers");
+  const [tab, setTab] = useState<"layers" | "assets" | "skills">("layers");
   const dragging = useRef<string[]>([]);
 
   const end = () => {
@@ -192,11 +194,15 @@ export default function LayersPanel() {
         <div className={`tab ${tab === "layers" ? "on" : ""}`} onClick={() => setTab("layers")}>
           Layers
         </div>
+        <div className={`tab ${tab === "assets" ? "on" : ""}`} onClick={() => setTab("assets")}>
+          Assets
+        </div>
         <div className={`tab ${tab === "skills" ? "on" : ""}`} onClick={() => setTab("skills")}>
           Skills
         </div>
       </div>
       {tab === "skills" && <SkillsPanel />}
+      {tab === "assets" && <AssetsPanel />}
       {tab === "layers" && <div className="tip-line">Click a layer to find it. Cmd or Ctrl click to zoom to it.</div>}
       <div
         className="layers"

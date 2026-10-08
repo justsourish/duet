@@ -27,10 +27,13 @@ export function screenRect(s: State, r: Rect): Rect {
   return { x: p.x, y: p.y, width: r.width * s.viewport.zoom, height: r.height * s.viewport.zoom };
 }
 
+/** What is written above a screen on the canvas. A diamond marks components and their copies. */
+export const labelText = (el: El) => (el.component ? `◆ ${el.name}` : el.type === "instance" ? `◇ ${el.name}` : el.name);
+
 export function labelRect(s: State, doc: Doc, id: string): Rect {
   const el = doc.elements[id];
   const sr = screenRect(s, worldRect(doc, id));
-  const w = measureText(el.name, 12).width + 6;
+  const w = measureText(labelText(el), 12).width + 6;
   return { x: sr.x, y: sr.y - 20, width: w, height: 18 };
 }
 
@@ -265,10 +268,10 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   ctx.textBaseline = "alphabetic";
   for (const id of doc.rootIds) {
     const el = doc.elements[id];
-    if (!el || el.type !== "frame") continue;
+    if (!el || (el.type !== "frame" && el.type !== "instance")) continue;
     const sr = screenRect(s, worldRect(doc, id));
-    ctx.fillStyle = s.selection.includes(id) ? COLORS.accent : COLORS.muted;
-    ctx.fillText(el.name, sr.x, sr.y - 7);
+    ctx.fillStyle = s.selection.includes(id) || el.component ? COLORS.accent : COLORS.muted;
+    ctx.fillText(labelText(el), sr.x, sr.y - 7);
   }
 
   // hover outline

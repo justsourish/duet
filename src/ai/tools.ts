@@ -1,3 +1,4 @@
+import { componentsIn } from "../document/components";
 import { lookAtDesign, lookAtImage } from "./vision";
 import { commandLabel, newId } from "../commands";
 import type { CommandName } from "../commands";
@@ -61,6 +62,16 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { ids, maxSize: num } },
   },
   {
+    name: "create_instance",
+    description:
+      "Place a live copy of a component (listed as components in get_context). The copy follows the original. To change one copy, use set_props on things inside it; to change every copy, change the original.",
+    inputSchema: {
+      type: "object",
+      properties: { componentId: str, x: num, y: num, parentId: { type: "string", description: "A frame to put it in. Leave out for the page." } },
+      required: ["componentId", "x", "y"],
+    },
+  },
+  {
     name: "select_elements",
     description: "Select elements so the designer can see which things you are talking about. Pass an empty list to clear.",
     inputSchema: { type: "object", properties: { ids }, required: ["ids"] },
@@ -119,7 +130,7 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-const EDITS = new Set(["create_element", "set_props", "move_elements", "resize_element", "reparent_elements"]);
+const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements"]);
 const RISKY = new Set(["delete_elements"]);
 
 type Args = Record<string, unknown>;
@@ -146,6 +157,8 @@ export function summarise(tool: string, a: Args): string {
       const p = (a.props ?? {}) as Partial<El>;
       return `Add a ${a.type === "rect" ? "rectangle" : String(a.type)}${p.text ? ` that says "${p.text}"` : ""}`;
     }
+    case "create_instance":
+      return `Place a copy of ${nameOf(a.componentId)}`;
     case "set_props": {
       const p = (a.props ?? {}) as Record<string, unknown>;
       return `Change ${namesOf(a.ids)}: ${Object.entries(p).map(([k, v]) => `${k} ${String(v)}`).join(", ")}`;
@@ -188,6 +201,15 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       }
       a.props = p;
       a.id = newId(String(a.type));
+      return { args: a };
+    }
+    case "create_instance": {
+      const main = typeof a.componentId === "string" ? doc.elements[a.componentId] : undefined;
+      if (!main || !main.component) return { error: `${String(a.componentId)} is not a component. get_context lists the components.` };
+      if (typeof a.x !== "number" || typeof a.y !== "number") return { error: "x and y must be numbers." };
+      if (a.parentId != null && doc.elements[String(a.parentId)]?.type !== "frame") return { error: `parentId ${String(a.parentId)} is not a frame.` };
+      a.parentId = a.parentId ?? null;
+      a.id = newId("instance");
       return { args: a };
     }
     case "set_props": {
@@ -248,6 +270,7 @@ async function apply(tool: string, args: Args): Promise<ToolResult> {
   const step = getState().cursor;
   addMsg({ role: "note", text: summarise(tool, args), undoStep: step });
   void saveNow();
+  if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
   if (tool === "create_element") {
     const el = currentDoc().elements[String(args.id)];
     return { text: `Created ${String(args.id)} named "${el?.name}" (${label}).` };
@@ -293,6 +316,7 @@ function context(): string {
       permission: getChat().mode,
       selection: s.selection.filter((i) => doc.elements[i]).map((i) => ({ id: i, name: doc.elements[i].name, type: doc.elements[i].type })),
       frames,
+      components: componentsIn(doc).map((c) => ({ id: c.id, name: c.name, width: c.width, height: c.height })),
       elementCount: Object.keys(doc.elements).length,
       units: "pixels. x and y are relative to the parent frame, or to the page for top-level things.",
       skillsLoaded: getSkills().filter((k) => k.enabled).map((k) => k.name),

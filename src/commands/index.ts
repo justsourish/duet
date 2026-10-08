@@ -1,5 +1,6 @@
 import type { ClipPayload } from "../document/clipboard";
 import { descendants, worldPos } from "../document/geometry";
+import { captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
 import type { Doc, El, ElementType, Layout } from "../document/types";
 
@@ -30,6 +31,7 @@ const defaults: Record<ElementType, Partial<El>> = {
   image: { fill: "#d9d9de", radius: 0 },
   path: { fill: "#d9d9de", stroke: "#1b1b1f", strokeWidth: 2, radius: 0 },
   group: { fill: "#00000000", radius: 0 },
+  instance: { fill: "#ffffff", radius: 0 },
 };
 
 const typeName: Record<ElementType, string> = {
@@ -40,6 +42,7 @@ const typeName: Record<ElementType, string> = {
   image: "Image",
   path: "Path",
   group: "Group",
+  instance: "Component",
 };
 
 function nextName(doc: Doc, type: ElementType): string {
@@ -62,8 +65,8 @@ export interface CreateArgs {
 const createElement: CommandDef<CreateArgs> = {
   label: (a) => `Add ${typeName[a.type].toLowerCase()}`,
   run: (doc, a) => {
-    // only frames can hold things
-    if (a.parentId && doc.elements[a.parentId]?.type !== "frame") return doc;
+    // only frames can hold things, and the inside of a copy is made from its component
+    if (a.parentId && (doc.elements[a.parentId]?.type !== "frame" || isDerived(a.parentId))) return doc;
     const next = clone(doc);
     const id = a.id ?? newId(a.type);
     const parentId = a.parentId ?? null;
@@ -87,6 +90,9 @@ const createElement: CommandDef<CreateArgs> = {
       gradient: null,
       link: null,
       src: "",
+      component: false,
+      componentId: "",
+      overrides: {},
       locked: false,
       layout: null,
       grow: 0,
@@ -197,7 +203,7 @@ const deleteElements: CommandDef<DeleteArgs> = {
     const next = clone(doc);
     for (const id of a.ids) {
       const el = next.elements[id];
-      if (!el) continue;
+      if (!el || isDerived(id)) continue; // the inside of a copy comes from its component
       for (const d of descendants(next, id)) delete next.elements[d];
       if (el.parentId && next.elements[el.parentId]) {
         const p = next.elements[el.parentId];
@@ -227,7 +233,7 @@ const reparentElements: CommandDef<ReparentArgs> = {
   run: (doc, a) => {
     if (a.parentId) {
       const target = doc.elements[a.parentId];
-      if (!target || target.type !== "frame") return doc;
+      if (!target || target.type !== "frame" || isDerived(target.id)) return doc;
       for (const id of a.ids) {
         if (id === a.parentId || descendants(doc, id).includes(a.parentId)) return doc; // would create a loop
       }
@@ -275,16 +281,17 @@ export interface PasteArgs {
 const pasteElements: CommandDef<PasteArgs> = {
   label: (a) => a.label ?? (a.payload.rootIds.length > 1 ? `Paste ${a.payload.rootIds.length} elements` : "Paste"),
   run: (doc, a) => {
-    if (a.parentId && doc.elements[a.parentId]?.type !== "frame") return doc;
+    if (a.parentId && (doc.elements[a.parentId]?.type !== "frame" || isDerived(a.parentId))) return doc;
     const next = clone(doc);
     const idMap: Record<string, string> = { ...(a.idMap ?? {}) };
-    for (const [oldId, el] of Object.entries(a.payload.elements)) idMap[oldId] ??= newId(el.type);
+    for (const [oldId, el] of Object.entries(a.payload.elements)) if (!isDerived(oldId)) idMap[oldId] ??= newId(el.type);
     const parentWorld = a.parentId ? worldPos(next, a.parentId) : { x: 0, y: 0 };
     const list = a.parentId ? next.elements[a.parentId].childIds : next.rootIds;
     for (const [oldId, el] of Object.entries(a.payload.elements)) {
+      if (isDerived(oldId)) continue; // a copy of an instance gets its inside from the component
       const copy: El = structuredClone(el);
       copy.id = idMap[oldId];
-      copy.childIds = el.childIds.map((c) => idMap[c]);
+      copy.childIds = el.type === "instance" ? [] : el.childIds.filter((c) => idMap[c]).map((c) => idMap[c]);
       copy.link = el.link && idMap[el.link] ? idMap[el.link] : el.link && next.elements[el.link] ? el.link : null;
       if (a.payload.rootIds.includes(oldId)) {
         const o = a.payload.origins[oldId];
@@ -297,6 +304,89 @@ const pasteElements: CommandDef<PasteArgs> = {
       }
       next.elements[copy.id] = copy;
     }
+    return next;
+  },
+};
+
+// ---- components ----
+export interface CreateComponentArgs {
+  id: string;
+}
+
+const createComponent: CommandDef<CreateComponentArgs> = {
+  label: () => "Make a component",
+  run: (doc, a) => {
+    const el = doc.elements[a.id];
+    if (!el || isDerived(a.id) || (el.type !== "frame" && el.type !== "group") || el.component) return doc;
+    const next = clone(doc);
+    next.elements[a.id].component = true;
+    return next;
+  },
+};
+
+export interface CreateInstanceArgs {
+  componentId: string;
+  id: string;
+  x: number;
+  y: number;
+  parentId?: string | null;
+}
+
+const createInstance: CommandDef<CreateInstanceArgs> = {
+  label: (a) => `Add ${a.componentId ? "a copy of a component" : "an instance"}`,
+  run: (doc, a) => {
+    const main = doc.elements[a.componentId];
+    if (!main || !main.component) return doc;
+    if (a.parentId && (doc.elements[a.parentId]?.type !== "frame" || isDerived(a.parentId))) return doc;
+    // never put a component inside itself
+    let p: string | null | undefined = a.parentId ?? null;
+    while (p) {
+      if (p === main.id) return doc;
+      p = doc.elements[p]?.parentId;
+    }
+    const next = clone(doc);
+    const el: El = {
+      ...structuredClone(main),
+      id: a.id,
+      type: "instance",
+      name: main.name,
+      parentId: a.parentId ?? null,
+      x: a.x,
+      y: a.y,
+      component: false,
+      componentId: main.id,
+      overrides: {},
+      childIds: [],
+      link: null,
+      locked: false,
+      grow: 0,
+    };
+    next.elements[a.id] = el;
+    if (a.parentId) next.elements[a.parentId].childIds.push(a.id);
+    else next.rootIds.push(a.id);
+    return next;
+  },
+};
+
+export interface DetachArgs {
+  id: string;
+}
+
+const detachCommand: CommandDef<DetachArgs> = {
+  label: () => "Detach from component",
+  run: (doc, a) => detachInstance(doc, a.id),
+};
+
+export interface ResetArgs {
+  id: string;
+}
+
+const resetOverrides: CommandDef<ResetArgs> = {
+  label: () => "Reset to the component",
+  run: (doc, a) => {
+    if (doc.elements[a.id]?.type !== "instance") return doc;
+    const next = clone(doc);
+    next.elements[a.id].overrides = {};
     return next;
   },
 };
@@ -358,6 +448,9 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       gradient: null,
       link: null,
       src: "",
+      component: false,
+      componentId: "",
+      overrides: {},
       locked: false,
       layout: { dir: w >= h ? "row" : "column", gap: 12, padX: 0, padY: 0, align: "start", justify: "start", hug: true },
       grow: 0,
@@ -421,6 +514,9 @@ const groupElements: CommandDef<GroupArgs> = {
       gradient: null,
       link: null,
       src: "",
+      component: false,
+      componentId: "",
+      overrides: {},
       locked: false,
       layout: null,
       grow: 0,
@@ -488,6 +584,10 @@ export const commands = {
   wrap_in_layout: wrapInLayout,
   group_elements: groupElements,
   ungroup,
+  create_component: createComponent,
+  create_instance: createInstance,
+  detach_instance: detachCommand,
+  reset_overrides: resetOverrides,
 } as const;
 
 export type CommandName = keyof typeof commands;
@@ -495,7 +595,10 @@ export type CommandName = keyof typeof commands;
 type ArgsOf<N extends CommandName> = (typeof commands)[N] extends CommandDef<infer A> ? A : never;
 
 export function runCommand<N extends CommandName>(doc: Doc, name: N, args: ArgsOf<N>): Doc {
-  return relayout((commands[name] as CommandDef<ArgsOf<N>>).run(doc, args));
+  const out = (commands[name] as CommandDef<ArgsOf<N>>).run(doc, args);
+  if (out === doc) return doc;
+  // keep what was changed on a copy, rebuild the copies from their components, then line things up
+  return relayout(syncInstances(captureOverrides(doc, out)));
 }
 
 export function commandLabel<N extends CommandName>(name: N, args: ArgsOf<N>): string {

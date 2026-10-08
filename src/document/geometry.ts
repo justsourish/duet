@@ -88,7 +88,7 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
       if (el.childIds.length) {
         const child = visit(el.childIds, r.x, r.y);
         // a click anywhere inside a group picks the whole group, unless you dig in on purpose
-        if (child) return el.type === "group" && !deep && !el.locked ? el.id : child;
+        if (child) return (el.type === "group" || el.type === "instance") && !deep && !el.locked ? el.id : child;
       }
       // a group has no body of its own, and a locked thing cannot be picked: clicks go through
       if (el.type === "group" || el.locked) continue;

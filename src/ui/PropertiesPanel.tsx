@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { currentDoc, dispatch, useStore } from "../state/store";
+import { currentDoc, dispatch, select, useStore } from "../state/store";
 import type { El, Layout } from "../document/types";
 import { defaultLayout } from "../document/layout";
 import { measureText } from "../canvas/text";
@@ -111,6 +111,44 @@ function LayoutSection({ frame }: { frame: El }) {
   );
 }
 
+function ComponentSection({ el, copies }: { el: El; copies: number }) {
+  const doc = currentDoc();
+  if (el.component) {
+    return (
+      <div className="sec">
+        <h4>Component</h4>
+        <div className="hint2">
+          This is the original. Change it and {copies === 0 ? "every copy you place" : copies === 1 ? "its one copy" : `all ${copies} copies`} will follow.
+        </div>
+      </div>
+    );
+  }
+  const main = doc.elements[el.componentId];
+  const changed = Object.keys(el.overrides).length > 0;
+  return (
+    <div className="sec">
+      <h4>Copy of {main ? main.name : "a component"}</h4>
+      <div className="hint2">
+        It follows the original, except for what you change here.
+      </div>
+      <div className="gap" />
+      {main && (
+        <div className="linkbtn" onClick={() => select([main.id])}>
+          Go to the original
+        </div>
+      )}
+      {changed && (
+        <div className="linkbtn" style={{ marginTop: 6 }} onClick={() => dispatch("reset_overrides", { id: el.id })}>
+          Undo my changes to this copy
+        </div>
+      )}
+      <div className="linkbtn" style={{ marginTop: 6 }} onClick={() => dispatch("detach_instance", { id: el.id })}>
+        Detach from the original
+      </div>
+    </div>
+  );
+}
+
 export default function PropertiesPanel() {
   const selection = useStore((s) => s.selection);
   useStore((s) => s.timeline[s.cursor]);
@@ -199,6 +237,10 @@ export default function PropertiesPanel() {
             <ColorField value={first.fill} onCommit={(c) => c && set({ fill: c }, "Change fill")} />
           )}
         </div>
+      )}
+
+      {one && (one.component || one.type === "instance") && (
+        <ComponentSection el={one} copies={Object.values(doc.elements).filter((e) => e.type === "instance" && e.componentId === one.id && !e.id.includes("::")).length} />
       )}
 
       {one?.type === "frame" && <LayoutSection frame={one} />}

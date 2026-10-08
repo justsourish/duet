@@ -827,3 +827,109 @@ describe("groups and locking", () => {
     expect(toSvg(d, "box")).toContain("<g>");
   });
 });
+
+describe("components", () => {
+  const withButton = () => {
+    let d = frame("btn"); // 300 by 400 at 100,50
+    d = runCommand(d, "create_element", { id: "bg", type: "rect", parentId: "btn", x: 0, y: 0, width: 120, height: 40, props: { fill: "#7c5cff" } });
+    d = runCommand(d, "create_element", { id: "label", type: "text", parentId: "btn", x: 10, y: 10, width: 60, height: 20, props: { text: "Buy", fill: "#ffffff" } });
+    return runCommand(d, "create_component", { id: "btn" });
+  };
+  const withCopy = () => runCommand(withButton(), "create_instance", { componentId: "btn", id: "i1", x: 600, y: 80 });
+
+  it("makes a copy that looks like the component", () => {
+    const d = withCopy();
+    expect(d.elements.i1.type).toBe("instance");
+    expect(d.elements.i1.childIds).toEqual(["i1::bg", "i1::label"]);
+    expect(d.elements["i1::label"].text).toBe("Buy");
+    expect([d.elements.i1.width, d.elements.i1.height]).toEqual([300, 400]);
+    expect(d.elements.i1.name).toBe("Frame 1");
+  });
+
+  it("follows the component when it changes", () => {
+    let d = withCopy();
+    d = runCommand(d, "set_props", { ids: ["bg"], props: { fill: "#ff0000" } });
+    d = runCommand(d, "set_props", { ids: ["label"], props: { text: "Add to cart" } });
+    expect(d.elements["i1::bg"].fill).toBe("#ff0000");
+    expect(d.elements["i1::label"].text).toBe("Add to cart");
+  });
+
+  it("keeps a change made on one copy, and still follows the rest", () => {
+    let d = withCopy();
+    d = runCommand(d, "set_props", { ids: ["i1::label"], props: { text: "Pay now" } });
+    expect(d.elements["i1::label"].text).toBe("Pay now");
+    expect(d.elements.label.text).toBe("Buy"); // the component is untouched
+    d = runCommand(d, "set_props", { ids: ["label"], props: { text: "Add to cart", fill: "#00ff00" } });
+    expect(d.elements["i1::label"].text).toBe("Pay now"); // the copy keeps its own words
+    expect(d.elements["i1::label"].fill).toBe("#00ff00"); // but follows the new colour
+  });
+
+  it("keeps a copy's own size when the component is resized", () => {
+    let d = withCopy();
+    d = runCommand(d, "resize_element", { id: "i1", x: 600, y: 80, width: 500, height: 200 });
+    expect([d.elements.i1.width, d.elements.i1.height]).toEqual([500, 200]);
+    d = runCommand(d, "resize_element", { id: "btn", x: 100, y: 50, width: 320, height: 420 });
+    expect([d.elements.i1.width, d.elements.i1.height]).toEqual([500, 200]);
+  });
+
+  it("saves only the component and the changes, and rebuilds the copy when opened", () => {
+    let d = withCopy();
+    d = runCommand(d, "set_props", { ids: ["i1::label"], props: { text: "Pay now" } });
+    const text = serializeDoc(d);
+    expect(text).not.toContain("i1::bg");
+    const back = parseDoc(text);
+    expect(back.elements["i1::label"].text).toBe("Pay now");
+    expect(back.elements["i1::bg"].fill).toBe("#7c5cff");
+  });
+
+  it("detaches into a plain frame with its own things", () => {
+    let d = withCopy();
+    d = runCommand(d, "set_props", { ids: ["i1::label"], props: { text: "Pay now" } });
+    d = runCommand(d, "detach_instance", { id: "i1" });
+    expect(d.elements.i1.type).toBe("frame");
+    expect(d.elements.i1.childIds).toHaveLength(2);
+    const label = d.elements[d.elements.i1.childIds[1]];
+    expect(label.text).toBe("Pay now");
+    expect(label.id.includes("::")).toBe(false);
+    d = runCommand(d, "set_props", { ids: ["bg"], props: { fill: "#ff0000" } });
+    expect(d.elements[d.elements.i1.childIds[0]].fill).toBe("#7c5cff"); // no longer follows
+  });
+
+  it("turns copies into plain frames if the component is deleted", () => {
+    let d = withCopy();
+    d = runCommand(d, "delete_elements", { ids: ["btn"] });
+    expect(d.elements.i1.type).toBe("frame");
+    expect(d.elements.i1.childIds).toHaveLength(2);
+  });
+
+  it("cannot put new things inside a copy, or delete what is inside one", () => {
+    let d = withCopy();
+    const blocked = runCommand(d, "create_element", { id: "x", type: "rect", parentId: "i1", x: 0, y: 0, width: 10, height: 10 });
+    expect(blocked.elements.x).toBeUndefined();
+    d = runCommand(d, "delete_elements", { ids: ["i1::bg"] });
+    expect(d.elements["i1::bg"]).toBeDefined();
+  });
+
+  it("will not put a component inside itself", () => {
+    const d = runCommand(withButton(), "create_instance", { componentId: "btn", id: "loop", x: 0, y: 0, parentId: "btn" });
+    expect(d.elements.loop).toBeUndefined();
+  });
+
+  it("clears a copy's own changes", () => {
+    let d = withCopy();
+    d = runCommand(d, "set_props", { ids: ["i1::label"], props: { text: "Pay now" } });
+    d = runCommand(d, "reset_overrides", { id: "i1" });
+    expect(d.elements["i1::label"].text).toBe("Buy");
+  });
+
+  it("makes a copy of a copy by pasting, without dragging its inside along", () => {
+    const d = withCopy();
+    const payload = { rootIds: ["i1"], origins: { i1: { x: 600, y: 80 } }, elements: Object.fromEntries(Object.entries(d.elements).filter(([id]) => id === "i1" || id.startsWith("i1::"))) };
+    const next = runCommand(d, "paste_elements", { payload: payload as never, parentId: null, dx: 20, dy: 20 });
+    const copies = Object.values(next.elements).filter((e) => e.type === "instance");
+    expect(copies).toHaveLength(2);
+    const fresh = copies.find((e) => e.id !== "i1")!;
+    expect(fresh.childIds).toHaveLength(2);
+    expect(fresh.childIds[0].startsWith(`${fresh.id}::`)).toBe(true);
+  });
+});
