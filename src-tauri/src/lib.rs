@@ -82,6 +82,58 @@ fn duet_home() -> Result<String, String> {
     Ok(duet_home_dir()?.to_string_lossy().to_string())
 }
 
+/// The one folder where new projects go by default: Documents/Duet. Made if it is missing.
+#[tauri::command]
+fn default_projects_dir() -> Result<String, String> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "Could not find your home folder.".to_string())?;
+    let dir = Path::new(&home).join("Documents").join("Duet");
+    fs::create_dir_all(&dir).map_err(err)?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[derive(Serialize)]
+struct FoundProject {
+    path: String,
+    /// When the design was last saved, in milliseconds.
+    modified: u64,
+}
+
+/// Look inside a folder, a few levels down, for Duet projects (folders that hold a design.json).
+#[tauri::command]
+fn find_projects(root: String) -> Vec<FoundProject> {
+    fn walk(dir: &Path, depth: u32, out: &mut Vec<FoundProject>) {
+        if depth > 3 {
+            return;
+        }
+        let design = dir.join(DESIGN_FILE);
+        if design.is_file() {
+            let modified = fs::metadata(&design)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            out.push(FoundProject { path: dir.to_string_lossy().to_string(), modified });
+            return;
+        }
+        let Ok(read) = fs::read_dir(dir) else { return };
+        for entry in read.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "Library" {
+                continue;
+            }
+            if entry.path().is_dir() {
+                walk(&entry.path(), depth + 1, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(Path::new(&root), 0, &mut out);
+    out
+}
+
 #[derive(Serialize)]
 struct DirEntryInfo {
     name: String,
@@ -313,6 +365,8 @@ pub fn run() {
             ai::agy_connect,
             read_text_file,
             read_binary_file,
+            default_projects_dir,
+            find_projects,
             write_text_file,
             write_binary_file,
             path_exists,

@@ -1,4 +1,5 @@
-import { flushPictures } from "./assets";
+import { flushPictures, preloadPictures } from "./assets";
+import { renderPng } from "./exporter";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
 import { emptyDoc } from "../document/types";
@@ -21,6 +22,32 @@ const withExt = (p: string) => (/\.duet$/i.test(p) ? p : `${p}.duet`);
 let lastSaved: Doc | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let queue: Promise<unknown> = Promise.resolve();
+
+/** Where the save window starts: the Duet folder in Documents, so projects end up in one place. */
+async function startFolder(name: string): Promise<string> {
+  try {
+    return join(await invoke<string>("default_projects_dir"), name);
+  } catch {
+    return name;
+  }
+}
+
+/** Look through a folder for Duet projects and add them to the list. Returns how many were found. */
+export async function findProjects(root: string): Promise<number> {
+  const found = await invoke<{ path: string; modified: number }[]>("find_projects", { root });
+  const known = new Set(getRecents().map((r) => r.path));
+  const add = found.filter((f) => !known.has(f.path));
+  if (add.length) {
+    const all = [...getRecents(), ...add.map((f) => ({ path: f.path, name: baseName(f.path), opened: f.modified }))];
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(all.sort((a, b) => b.opened - a.opened).slice(0, 200)));
+    } catch {
+      /* nothing to do */
+    }
+    window.dispatchEvent(new Event("duet:recents"));
+  }
+  return add.length;
+}
 
 /** Run saves one after another, so two saves never overlap. */
 function enqueue<T>(job: () => Promise<T>): Promise<T> {
@@ -79,9 +106,24 @@ async function oops(text: string) {
   else console.error(text);
 }
 
+/** A small picture of the first screen, kept in the project folder so the projects list can show it. */
+async function writePreview(path: string, doc: Doc) {
+  try {
+    const id = doc.rootIds.find((i) => doc.elements[i]?.type === "frame" || doc.elements[i]?.type === "instance") ?? doc.rootIds[0];
+    if (!id) return;
+    const el = doc.elements[id];
+    await preloadPictures(doc);
+    const scale = Math.min(1, 520 / Math.max(el.width, el.height, 1));
+    await invoke("write_binary_file", { path: join(path, "preview.png"), dataBase64: renderPng(doc, id, scale) });
+  } catch (e) {
+    console.warn("Could not make a preview:", e);
+  }
+}
+
 async function writeDesign(path: string, doc: Doc) {
   await flushPictures(path, doc);
   await invoke("write_text_file", { path: join(path, FILE), contents: serializeDoc(doc) });
+  void writePreview(path, doc);
 }
 
 /** The text stored with each saved step. The first line is what the history strip shows. */
@@ -150,7 +192,7 @@ export async function saveAs() {
 
 async function saveAsDialog() {
   if (!inTauri()) return;
-  const choice = await save({ title: "Save your project", defaultPath: "My design.duet" });
+  const choice = await save({ title: "Save your project", defaultPath: await startFolder("My design.duet") });
   if (!choice) return;
   const picked = withExt(choice);
   const doc = committed();
@@ -187,7 +229,7 @@ async function newProjectDialog() {
     });
     if (!go) return;
   }
-  const choice = await save({ title: "Name your new project", defaultPath: "My design.duet" });
+  const choice = await save({ title: "Name your new project", defaultPath: await startFolder("My design.duet") });
   if (!choice) return;
   const picked = withExt(choice);
   try {
@@ -265,6 +307,7 @@ async function loadFrom(path: string, quiet = false): Promise<boolean> {
     lastSaved = committed();
     setProject({ path, name: baseName(path), status: "saved", error: null });
     remember(path);
+    void writePreview(path, committed()); // older projects get their picture the first time they are opened
     return true;
   } catch (e) {
     if (!quiet) await oops(e instanceof DesignFileError ? e.message : String(e));
