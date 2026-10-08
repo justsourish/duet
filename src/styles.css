@@ -716,6 +716,9 @@ button {
   user-select: text;
   -webkit-user-select: text;
 }
+.cbody > * {
+  flex-shrink: 0;
+}
 .m {
   padding: 8px 10px;
   border-radius: 10px;
