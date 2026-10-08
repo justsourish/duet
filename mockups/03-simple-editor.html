@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duet mockup 03: simple editor</title>
+<style>
+  :root {
+    --bg: #1b1b1f; --panel: #232328; --panel-2: #2b2b32; --line: #34343b;
+    --text: #e8e8ec; --muted: #8d8d98; --accent: #7c5cff; --accent-soft: rgba(124,92,255,.16);
+    --canvas: #141417; --dot: #2a2a31; --ok: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  .app { display: grid; height: 100vh; grid-template-columns: 236px 1fr 248px; grid-template-rows: 44px 1fr 52px;
+    grid-template-areas: "top top top" "left canvas right" "hist hist hist"; }
+
+  .top { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .logo { font-weight: 700; } .logo b { color: var(--accent); }
+  .crumb { color: var(--muted); } .spacer { flex: 1; }
+  .pill { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); cursor: pointer; }
+  .pill.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .left, .right { background: var(--panel); overflow: auto; }
+  .left { grid-area: left; border-right: 1px solid var(--line); }
+  .right { grid-area: right; border-left: 1px solid var(--line); }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tab { flex: 1; text-align: center; padding: 11px 0; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .pane { display: none; padding: 10px; } .pane.on { display: block; }
+
+  .row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+  .row:hover { background: var(--panel-2); }
+  .row.sel { background: var(--accent-soft); outline: 1px solid var(--accent); }
+  .row.l1 { margin-left: 14px; }
+  .ico { width: 12px; height: 12px; border: 1.5px solid var(--muted); border-radius: 3px; flex: none; }
+  .ico.f { border-style: dashed; border-radius: 2px; }
+
+  .h { margin: 12px 8px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .skill { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; }
+  .skill:hover { background: var(--panel-2); }
+  .skill .n { flex: 1; } .skill small { display: block; color: var(--muted); }
+  .sw { width: 28px; height: 16px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; flex: none; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .12s; }
+  .sw.on { background: var(--accent); } .sw.on::after { left: 14px; }
+  .add { margin: 8px; padding: 8px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); cursor: pointer; }
+  .add:hover { color: var(--text); border-color: var(--accent); }
+
+  .canvas { grid-area: canvas; position: relative; overflow: hidden; background: var(--canvas);
+    background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 22px 22px; }
+  svg.stage { width: 100%; height: 100%; display: block; }
+  .frame-label { fill: var(--muted); font-size: 12px; }
+
+  .toolbar { position: absolute; left: 38%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 4px; padding: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .tool { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); cursor: pointer; }
+  .tool:hover { background: var(--panel-2); color: var(--text); }
+  .tool.on { background: var(--accent); color: #fff; }
+  .tool svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* floating AI chat */
+  .chat { position: absolute; right: 18px; bottom: 16px; width: 300px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.5); overflow: hidden; }
+  .chat.min .body, .chat.min .foot { display: none; }
+  .chead { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .chat.min .chead { border-bottom: 0; }
+  .av { width: 22px; height: 22px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 11px; }
+  .chead .t { flex: 1; font-weight: 600; }
+  .mode { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .mode span { padding: 3px 8px; color: var(--muted); font-size: 11px; cursor: pointer; }
+  .mode span.on { background: var(--accent); color: #fff; }
+  .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow: auto; }
+  .m { padding: 8px 10px; border-radius: 10px; background: var(--panel-2); }
+  .m.you { background: var(--accent-soft); align-self: flex-end; max-width: 85%; }
+  .m .act { display: flex; gap: 10px; margin-top: 6px; }
+  .m .act span { color: #cbbdff; cursor: pointer; text-decoration: underline; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 8px; }
+  .chip { padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); cursor: pointer; }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .foot { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .inp { flex: 1; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+
+  /* properties */
+  .sec { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .sec h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .field { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .f { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); }
+  .f span { color: var(--muted); margin-right: 6px; }
+  .cdot { display: inline-block; width: 18px; height: 18px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+
+  .hist { grid-area: hist; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: var(--panel); border-top: 1px solid var(--line); }
+  .track { flex: 1; position: relative; height: 24px; display: flex; align-items: center; }
+  .track::before { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--line); }
+  .pt { position: relative; width: 12px; height: 12px; border-radius: 50%; background: var(--panel-2); border: 2px solid var(--muted); margin-right: 54px; cursor: pointer; flex: none; }
+  .pt.ai { border-color: var(--accent); }
+  .pt.now { background: var(--accent); border-color: var(--accent); }
+  .pt:hover::after { content: attr(data-tip); position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+    padding: 4px 8px; border-radius: 6px; background: #000; color: #fff; font-size: 11px; z-index: 5; }
+  .note { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <span class="logo">Du<b>et</b></span>
+    <span class="crumb">/ Habit app / Home</span>
+    <span class="spacer"></span>
+    <span class="pill primary">Export</span>
+  </header>
+
+  <aside class="left">
+    <div class="tabs">
+      <div class="tab on" data-p="layers">Layers</div>
+      <div class="tab" data-p="skills">Skills</div>
+    </div>
+
+    <div class="pane on" id="layers">
+      <div class="row"><span class="ico f"></span>Home</div>
+      <div class="row l1"><span class="ico"></span>Header</div>
+      <div class="row l1"><span class="ico"></span>Streak card</div>
+      <div class="row l1 sel"><span class="ico"></span>Start button</div>
+    </div>
+
+    <div class="pane" id="skills">
+      <div class="h">Shipped with Duet</div>
+      <div class="skill"><div class="n">Mobile screens<small>Sizes, safe areas, thumb reach</small></div><div class="sw on"></div></div>
+      <div class="skill"><div class="n">Spacing<small>A steady rhythm of gaps</small></div><div class="sw on"></div></div>
+      <div class="skill"><div class="n">Type scale<small>Sizes that belong together</small></div><div class="sw on"></div></div>
+      <div class="skill"><div class="n">Colour contrast<small>Readable for everyone</small></div><div class="sw"></div></div>
+      <div class="h">Mine</div>
+      <div class="skill"><div class="n">My brand rules<small>Saved for all projects</small></div><div class="sw on"></div></div>
+      <div class="add">+ New skill</div>
+      <div class="add">+ Install from a file or link</div>
+    </div>
+  </aside>
+
+  <main class="canvas">
+    <svg class="stage" viewBox="0 0 640 600" preserveAspectRatio="xMidYMid slice">
+      <text class="frame-label" x="140" y="52">Home</text>
+      <rect x="140" y="62" width="250" height="450" rx="14" fill="#f6f4ef"/>
+      <rect x="140" y="62" width="250" height="52" rx="14" fill="#ece8df"/>
+      <rect x="140" y="100" width="250" height="14" fill="#ece8df"/>
+      <text x="158" y="94" font-size="15" font-weight="700" fill="#2a2620">Good morning</text>
+      <rect x="158" y="132" width="214" height="120" rx="14" fill="#2f6f5e"/>
+      <text x="176" y="166" font-size="12" fill="#bfe3d6">Current streak</text>
+      <text x="176" y="214" font-size="40" font-weight="700" fill="#fff">12 days</text>
+      <rect x="158" y="274" width="214" height="46" rx="10" fill="#fff"/>
+      <rect x="158" y="328" width="214" height="46" rx="10" fill="#fff"/>
+      <rect id="btn" x="158" y="432" width="214" height="48" rx="8" fill="#e8743b"/>
+      <text id="btnT" x="265" y="462" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">Start today</text>
+      <rect id="selBox" x="158" y="432" width="214" height="48" fill="none" stroke="#7c5cff" stroke-width="1.5"/>
+    </svg>
+
+    <div class="toolbar">
+      <div class="tool on"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><path d="M7 3v18M17 3v18M3 7h18M3 17h18"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><path d="M4 20l4-1L19 8l-3-3L5 16z"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg></div>
+    </div>
+
+    <div class="chat" id="chat">
+      <div class="chead" id="chead">
+        <div class="av">D</div><div class="t">Duet</div>
+        <div class="mode" id="mode"><span data-m="suggest">Suggest</span><span data-m="ask" class="on">Ask first</span><span data-m="auto">Auto</span></div>
+      </div>
+      <div class="body" id="msgs">
+        <div class="m">Hi. I can see the Start button is selected. What would you like to do?</div>
+      </div>
+      <div class="chips" id="chips">
+        <span class="chip" data-k="warm">Make it warmer</span>
+        <span class="chip" data-k="pill">Round it off</span>
+        <span class="chip" data-k="room">More thumb room</span>
+      </div>
+      <div class="foot"><div class="inp">Describe a change</div><span class="pill primary">Send</span></div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="sec">
+      <h4>Position and size</h4>
+      <div class="field">
+        <div class="f"><span>X</span>158</div><div class="f"><span>Y</span><b id="py">432</b></div>
+        <div class="f"><span>W</span>214</div><div class="f"><span>H</span><b id="ph">48</b></div>
+      </div>
+    </div>
+    <div class="sec">
+      <h4>Corners</h4>
+      <div class="f"><span>Radius</span><b id="pr">8</b></div>
+    </div>
+    <div class="sec">
+      <h4>Fill</h4>
+      <div class="f"><span class="cdot" id="pc" style="background:#e8743b"></span><b id="px">E8743B</b></div>
+    </div>
+    <div class="sec">
+      <h4>Text</h4>
+      <div class="f">Start today</div>
+    </div>
+  </aside>
+
+  <footer class="hist">
+    <span class="note">History</span>
+    <div class="track" id="track">
+      <div class="pt" data-tip="You: new page"></div>
+      <div class="pt ai" data-tip="Duet: streak card"></div>
+      <div class="pt" data-tip="You: moved list"></div>
+      <div class="pt now" data-tip="Now"></div>
+    </div>
+    <span class="note">Purple is Duet. Click a point to go back.</span>
+  </footer>
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const base = { y:432, h:48, r:8, fill:'#e8743b' };
+  let cur = { ...base }, mode = 'ask';
+  const looks = {
+    warm: { label:'warmer', set:{ fill:'#f08a4b' } },
+    pill: { label:'rounder', set:{ r:24 } },
+    room: { label:'taller, more thumb room', set:{ y:424, h:56 } }
+  };
+
+  function paint(l) {
+    $('#btn').setAttribute('y', l.y); $('#btn').setAttribute('height', l.h);
+    $('#btn').setAttribute('rx', l.r); $('#btn').setAttribute('fill', l.fill);
+    $('#btnT').setAttribute('y', l.y + l.h / 2 + 5);
+    $('#selBox').setAttribute('y', l.y); $('#selBox').setAttribute('height', l.h);
+    $('#py').textContent = l.y; $('#ph').textContent = l.h; $('#pr').textContent = l.r;
+    $('#pc').style.background = l.fill; $('#px').textContent = l.fill.slice(1).toUpperCase();
+  }
+  function say(text, cls, actions) {
+    const m = document.createElement('div'); m.className = 'm ' + (cls || ''); m.innerHTML = text;
+    if (actions) { const a = document.createElement('div'); a.className = 'act'; actions.forEach(x => { const s = document.createElement('span'); s.textContent = x[0]; s.onclick = x[1]; a.appendChild(s); }); m.appendChild(a); }
+    $('#msgs').appendChild(m); $('#msgs').scrollTop = 9999; return m;
+  }
+  function checkpoint(tip) {
+    const p = document.createElement('div'); p.className = 'pt ai'; p.dataset.tip = tip; $('#track .now').before(p);
+  }
+  function applyLook(k) {
+    const before = { ...cur }; cur = { ...cur, ...looks[k].set }; paint(cur); checkpoint('Duet: ' + looks[k].label);
+    say('Done. I made the button ' + looks[k].label + '.', '', [['Undo', function () { cur = before; paint(cur); this.parentElement.parentElement.style.opacity = .5; this.remove(); }]]);
+  }
+
+  document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+    const k = c.dataset.k; say('Make the button ' + looks[k].label, 'you');
+    if (mode === 'suggest') say('Here is what I would do: make the button ' + looks[k].label + '.', '', [['Apply', function () { applyLook(k); this.remove(); }]]);
+    else applyLook(k);
+  }));
+
+  document.querySelectorAll('#mode span').forEach(s => s.addEventListener('click', e => {
+    e.stopPropagation(); document.querySelectorAll('#mode span').forEach(x => x.classList.remove('on')); s.classList.add('on'); mode = s.dataset.m;
+  }));
+  $('#chead').addEventListener('click', () => { $('#chat').classList.toggle('min'); $('#chips').style.display = $('#chat').classList.contains('min') ? 'none' : 'flex'; });
+
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab, .pane').forEach(x => x.classList.remove('on'));
+    t.classList.add('on'); $('#' + t.dataset.p).classList.add('on');
+  }));
+  document.querySelectorAll('.sw').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));
+</script>
+</body>
+</html>
