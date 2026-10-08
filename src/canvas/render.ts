@@ -3,6 +3,7 @@ import { toAbs, trace } from "../document/path";
 import type { Doc, El, Rect } from "../document/types";
 import { currentDoc } from "../state/store";
 import type { State } from "../state/store";
+import { logError } from "../errorLog";
 import { getPicture } from "../project/assets";
 import { HANDLES } from "./handles";
 import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
@@ -108,15 +109,20 @@ function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) 
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
-  if (pic) {
+  if (pic && pic.naturalWidth > 0 && pic.naturalHeight > 0) {
     ctx.save();
-    roundedPath(ctx, x, y, el.width, el.height, el.radius);
-    ctx.clip();
-    const scale = Math.max(el.width / pic.naturalWidth, el.height / pic.naturalHeight);
-    const w = pic.naturalWidth * scale;
-    const h = pic.naturalHeight * scale;
-    ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
-    ctx.restore();
+    try {
+      roundedPath(ctx, x, y, el.width, el.height, el.radius);
+      ctx.clip();
+      const scale = Math.max(el.width / pic.naturalWidth, el.height / pic.naturalHeight);
+      const w = pic.naturalWidth * scale;
+      const h = pic.naturalHeight * scale;
+      ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+    } catch (e) {
+      logError("draw picture", e);
+    } finally {
+      ctx.restore();
+    }
   }
   if (el.stroke && el.strokeWidth > 0) {
     roundedPath(ctx, x, y, el.width, el.height, el.radius);

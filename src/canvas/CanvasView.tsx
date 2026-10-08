@@ -41,6 +41,7 @@ import { pickImages, placeFiles } from "../project/imageImport";
 import { deleteSelectedNode, doubleClickNode, dragNode, editing, enterNodeEdit, exitNodeEdit, hitNode, nodesOf, selectNode } from "./nodes";
 import type { NodeHit } from "./nodes";
 import type { AbsNode } from "../document/path";
+import { logError } from "../errorLog";
 import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
 import { draw, labelRect, screenRect } from "./render";
@@ -179,7 +180,14 @@ export default function CanvasView() {
       const ctx = c?.getContext("2d");
       if (!c || !ctx) return;
       const { w, h, dpr } = sizeRef.current;
-      draw(ctx, getState(), w, h, dpr);
+      try {
+        draw(ctx, getState(), w, h, dpr);
+      } catch (e) {
+        // A drawing error must never leave the canvas stuck. Starting the canvas afresh clears any
+        // half-finished clipping, and the error is kept so it can be found.
+        c.width = c.width;
+        logError("canvas draw", e);
+      }
     });
   };
 
