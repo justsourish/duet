@@ -228,6 +228,24 @@ fn find_in_folders(program: &str) -> bool {
     dirs.iter().any(|d| names.iter().any(|n| d.join(n).is_file()))
 }
 
+/// The models a tool offers, as (id, name) pairs. Only Antigravity can list them.
+#[tauri::command]
+pub fn agent_models(program: String) -> Vec<Value> {
+    if program != "agy" {
+        return Vec::new();
+    }
+    let Ok(out) = shell_command("agy", &["models".into()]).stdin(Stdio::null()).output() else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let (id, name) = l.split_once('\t')?;
+            Some(json!({"id": id.trim(), "name": name.trim()}))
+        })
+        .collect()
+}
+
 /// Is this agent tool installed on this computer?
 #[tauri::command]
 pub fn agent_available(program: String) -> bool {

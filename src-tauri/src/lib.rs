@@ -363,6 +363,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             ai::agy_connect,
+            ai::agent_models,
             read_text_file,
             read_binary_file,
             default_projects_dir,

@@ -5,6 +5,7 @@ import { emptyDoc } from "../document/types";
 import { defaultLayout, relayout } from "../document/layout";
 import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
 import { resizeRect } from "../canvas/handles";
+import { outline } from "../ai/outline";
 import { wrapLines } from "../canvas/text";
 import {
   currentDoc,
@@ -1024,5 +1025,44 @@ describe("text", () => {
     const svg = toSvg(withText("Hi", { fontFamily: "Georgia", fontWeight: 700 }), "f");
     expect(svg).toContain("Georgia");
     expect(svg).toContain('font-weight="700"');
+  });
+});
+
+describe("the outline the AI reads", () => {
+  const scene = () => {
+    let d = frame("f");
+    d = runCommand(d, "create_element", { id: "t", type: "text", parentId: "f", x: 10, y: 10, width: 80, height: 21, props: { text: "Hello", fontSize: 24, fontWeight: 700, fill: "#222222" } });
+    d = runCommand(d, "create_element", { id: "r", type: "rect", parentId: "f", x: 10, y: 50, width: 100, height: 40, props: { fill: "#7c5cff", radius: 8 } });
+    return d;
+  };
+
+  it("lists each thing with its id, place, size and look, indented by what is inside what", () => {
+    const text = outline(scene());
+    expect(text).toContain('frame "Frame 1" f');
+    expect(text).toContain('  text "Text 1" t · 10,10');
+    expect(text).toContain('"Hello"');
+    expect(text).toContain("24px w700");
+    expect(text).toContain("radius 8");
+    expect(text).toContain("fill #7c5cff");
+  });
+
+  it("is much shorter than the full data", () => {
+    const d = scene();
+    expect(outline(d).length).toBeLessThan(JSON.stringify(d.elements).length / 4);
+  });
+
+  it("shows copies of a component without listing their inside again", () => {
+    let d = runCommand(scene(), "create_component", { id: "f" });
+    d = runCommand(d, "create_instance", { componentId: "f", id: "i", x: 500, y: 0 });
+    const text = outline(d);
+    expect(text).toContain("COMPONENT");
+    expect(text).toContain("copy of Frame 1");
+    expect(text).not.toContain("i::");
+  });
+
+  it("can start from chosen things", () => {
+    const text = outline(scene(), ["r"]);
+    expect(text).toContain('rect "Rectangle 1" r');
+    expect(text).not.toContain("Hello");
   });
 });

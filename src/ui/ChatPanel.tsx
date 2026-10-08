@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { sendToAgent, stopAgent } from "../ai/agent";
-import { AGENTS, answerApproval, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import { invoke } from "@tauri-apps/api/core";
+import { inTauri } from "../project/project";
+import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import type { ModelChoice } from "../ai/chat";
 import type { AgentId } from "../ai/chat";
 import type { Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
@@ -22,6 +25,16 @@ export default function ChatPanel() {
   const found = useChat((s) => s.agentFound);
   const agent = useChat((s) => s.agent);
   const installed = useChat((s) => s.installed);
+  const models = useChat((s) => s.models);
+  const effort = useChat((s) => s.effort);
+  const [agyModels, setAgyModels] = useState<ModelChoice[]>([]);
+  useEffect(() => {
+    if (agent !== "agy" || agyModels.length || !inTauri()) return;
+    invoke<ModelChoice[]>("agent_models", { program: "agy" })
+      .then((list) => setAgyModels([{ id: "", name: "Default" }, ...list]))
+      .catch(() => setAgyModels([{ id: "", name: "Default" }]));
+  }, [agent, agyModels.length]);
+  const modelList = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
   const cursor = useStore((s) => s.cursor);
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -64,6 +77,23 @@ export default function ChatPanel() {
                   </option>
                 );
               })}
+            </select>
+          </div>
+          <div className="tool-row">
+            <span>Model</span>
+            <select value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
+              {modelList.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)} style={{ flex: "none", width: 92 }}>
+              {EFFORTS.map((x) => (
+                <option key={x} value={x}>
+                  {x === "" ? "Effort" : x}
+                </option>
+              ))}
             </select>
           </div>
           <div className="mode-hint">{MODES.find((m) => m.mode === mode)?.hint}</div>

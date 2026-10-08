@@ -57,7 +57,9 @@ function systemPrompt(): string {
 
 How you work:
 - You can see and change the design only through the Duet tools. Use no other tool, and never read or write files or run commands.
-- Start with get_context, and get_document when you need detail. Look before you change anything.
+- Start with get_context, then get_outline to read the design cheaply. Use get_document only when you need a property the outline does not show. Look before you change anything.
+- How Duet is built: a page holds frames (screens). Frames hold rectangles, ellipses, text, pictures, drawn lines, groups, and copies of components. x and y are relative to the parent frame. A frame with auto layout places its children by itself, so change its layout instead of moving things by hand. A component is the original, and copies follow it: change the original to change them all, or change a thing inside one copy to change only that copy.
+- Work in batches: plan the whole change, then make it with few calls. Do not call a tool just to check what you already know.
 - You cannot see pictures or the design unless you ask. When the designer mentions a photo or an image, or one is selected, call look_at_image before you draw or describe anything from it, and never guess what is in it. After you change a design, call look_at_design once to check your work. Each look costs tokens, so look once, then work from what you saw.
 - Make small, clear changes. Prefer one good result over many options, unless asked for options.
 - Everything you change is saved as a step in the designer's history, marked as yours, and they can undo it.
@@ -256,6 +258,8 @@ export async function sendToAgent(text: string) {
       await invoke("agy_connect");
       const brief = `${systemPrompt()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\nThe designer says:\n${prompt}`;
       args = ["--print", brief, "--output-format", "stream-json"];
+      if (getChat().models.agy) args.push("--model", getChat().models.agy as string);
+      if (getChat().effort) args.push("--effort", getChat().effort);
       if (session) args.push("--conversation", session);
     } else {
       const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {
@@ -277,6 +281,8 @@ export async function sendToAgent(text: string) {
         "--append-system-prompt-file",
         files.system,
       ];
+      if (getChat().models.claude) args.push("--model", getChat().models.claude as string);
+      if (getChat().effort) args.push("--effort", getChat().effort);
       if (session) args.push("--resume", session);
     }
     await invoke("agent_run", { program: agent, args, input: prompt, cwd: `${home}/agent-workspace` });

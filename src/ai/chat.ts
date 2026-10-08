@@ -45,7 +45,32 @@ export interface ChatState {
   /** null while we are still looking */
   agentFound: boolean | null;
   sessionId: string | null;
+  /** The model chosen for each tool. Empty means the tool's own default. */
+  models: Partial<Record<AgentId, string>>;
+  effort: string;
 }
+
+export interface ModelChoice {
+  id: string;
+  name: string;
+}
+
+/** Models Duet knows without asking. Antigravity lists its own. */
+export const CLAUDE_MODELS: ModelChoice[] = [
+  { id: "", name: "Default" },
+  { id: "sonnet", name: "Sonnet (quick)" },
+  { id: "opus", name: "Opus (careful)" },
+  { id: "haiku", name: "Haiku (fastest)" },
+];
+export const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"];
+
+const pick = (key: string): string => {
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+};
 
 const MODE_KEY = "duet:ai-mode";
 const AGENT_KEY = "duet:ai-tool";
@@ -79,6 +104,8 @@ let state: ChatState = {
   minimized: false,
   agentFound: null,
   sessionId: null,
+  models: { claude: pick("duet:model:claude"), agy: pick("duet:model:agy") },
+  effort: pick("duet:effort"),
 };
 let nextId = 1;
 const listeners = new Set<() => void>();
@@ -141,6 +168,24 @@ export function setAgent(agent: AgentId) {
   }
   set({ agent, agentFound: state.installed[agent] ?? false, messages: [], sessionId: null });
 }
+export function setModel(agent: AgentId, model: string) {
+  try {
+    localStorage.setItem(`duet:model:${agent}`, model);
+  } catch {
+    /* ignore */
+  }
+  set({ models: { ...state.models, [agent]: model }, sessionId: null });
+}
+
+export function setEffort(effort: string) {
+  try {
+    localStorage.setItem("duet:effort", effort);
+  } catch {
+    /* ignore */
+  }
+  set({ effort });
+}
+
 export const setSessionId = (sessionId: string | null) => set({ sessionId });
 
 export function newConversation() {

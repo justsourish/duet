@@ -1,3 +1,4 @@
+import { outline } from "./outline";
 import { componentsIn } from "../document/components";
 import { lookAtDesign, lookAtImage } from "./vision";
 import { commandLabel, newId } from "../commands";
@@ -44,9 +45,15 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "get_outline",
+    description:
+      "A short outline of the design: every thing with its id, position, size, and the few properties that matter, indented to show what is inside what. Much cheaper to read than get_document, so use this first. Pass ids to outline only those things and what is inside them.",
+    inputSchema: { type: "object", properties: { ids } },
+  },
+  {
     name: "get_document",
     description:
-      "Returns every element on the page. x and y are relative to the parent frame, or to the page for top-level things. Order in childIds and rootIds goes back to front.",
+      "The full, exact data for every element on the page. It is large, so prefer get_outline and use this only when you need a property the outline does not show. x and y are relative to the parent frame, or to the page for top-level things. Order in childIds and rootIds goes back to front.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -332,6 +339,7 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
   const mode = getChat().mode;
 
   if (name === "get_context") return { text: context() };
+  if (name === "get_outline") return { text: outline(currentDoc(), Array.isArray(a.ids) ? (a.ids as unknown[]).map(String) : undefined) };
   if (name === "get_document") {
     const d = currentDoc();
     return { text: JSON.stringify({ rootIds: d.rootIds, elements: d.elements }) };
