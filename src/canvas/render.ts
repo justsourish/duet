@@ -1,4 +1,5 @@
 import { worldRect } from "../document/geometry";
+import { toAbs, trace } from "../document/path";
 import type { Doc, El, Rect } from "../document/types";
 import { currentDoc } from "../state/store";
 import type { State } from "../state/store";
@@ -53,6 +54,43 @@ export function makeGradient(ctx: CanvasRenderingContext2D, g: NonNullable<El["g
   return grad;
 }
 
+/** A drawn line: filled if it is closed, stroked, with an optional shadow. */
+function drawLine(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
+  const nodes = toAbs(el, x, y);
+  if (nodes.length < 2) return;
+  ctx.beginPath();
+  trace(ctx, nodes, el.closed);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const shadow = () => {
+    if (!el.shadow) return;
+    const k = ctx.getTransform().a;
+    ctx.shadowColor = el.shadow.color;
+    ctx.shadowBlur = el.shadow.blur * k;
+    ctx.shadowOffsetX = el.shadow.x * k;
+    ctx.shadowOffsetY = el.shadow.y * k;
+  };
+  const noShadow = () => {
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+  };
+  if (el.closed) {
+    ctx.fillStyle = el.gradient ? makeGradient(ctx, el.gradient, x, y, el.width, el.height) : el.fill;
+    shadow();
+    ctx.fill();
+    noShadow();
+  }
+  if (el.stroke && el.strokeWidth > 0) {
+    ctx.strokeStyle = el.stroke;
+    ctx.lineWidth = el.strokeWidth;
+    if (!el.closed) shadow();
+    ctx.stroke();
+    noShadow();
+  }
+}
+
 /** A picture, filled into its box without stretching (the extra is cropped), with rounded corners and a shadow. */
 function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
   const pic = getPicture(el.src);
@@ -100,6 +138,12 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
     ctx.font = `400 ${el.fontSize}px ${FONT_STACK}`;
     ctx.textBaseline = "top";
     el.text.split("\n").forEach((line, i) => ctx.fillText(line, x, y + i * el.fontSize * LINE_HEIGHT));
+    ctx.restore();
+    return;
+  }
+
+  if (el.type === "path") {
+    drawLine(ctx, el, x, y);
     ctx.restore();
     return;
   }
@@ -252,6 +296,55 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     const ww = Math.max(...wr.map((r) => r.x + r.width)) - Math.min(...wr.map((r) => r.x));
     const wh = Math.max(...wr.map((r) => r.y + r.height)) - Math.min(...wr.map((r) => r.y));
     pill(ctx, `${Math.round(ww)} × ${Math.round(wh)}`, (x1 + x2) / 2, y2 + 10);
+  }
+
+  // the line being drawn with the pen
+  const pen = s.overlay.pen;
+  if (pen && pen.nodes.length) {
+    const nodes = pen.nodes.map((n) => {
+      const a = toScreen(s, n.x, n.y);
+      return { x: a.x, y: a.y, ix: n.ix * s.viewport.zoom, iy: n.iy * s.viewport.zoom, ox: n.ox * s.viewport.zoom, oy: n.oy * s.viewport.zoom };
+    });
+    ctx.strokeStyle = COLORS.accent;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    trace(ctx, nodes, false);
+    ctx.stroke();
+    if (pen.cursor) {
+      // the next piece, from the last point to the pointer
+      const last = nodes[nodes.length - 1];
+      const c = toScreen(s, pen.cursor.x, pen.cursor.y);
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      if (last.ox || last.oy) ctx.bezierCurveTo(last.x + last.ox, last.y + last.oy, c.x, c.y, c.x, c.y);
+      else ctx.lineTo(c.x, c.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    nodes.forEach((n, i) => {
+      if (n.ox || n.oy) {
+        ctx.strokeStyle = COLORS.accent;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(n.x + n.ix, n.y + n.iy);
+        ctx.lineTo(n.x + n.ox, n.y + n.oy);
+        ctx.stroke();
+        for (const [hx, hy] of [[n.x + n.ix, n.y + n.iy], [n.x + n.ox, n.y + n.oy]]) {
+          ctx.fillStyle = COLORS.accent;
+          ctx.beginPath();
+          ctx.arc(hx, hy, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = i === 0 && nodes.length >= 2 ? COLORS.accent : COLORS.white;
+      ctx.strokeStyle = COLORS.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(n.x - 4, n.y - 4, 8, 8);
+      ctx.fill();
+      ctx.stroke();
+    });
   }
 
   // draft shape

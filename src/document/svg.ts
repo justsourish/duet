@@ -1,4 +1,5 @@
 import { assetUrl } from "../project/assets";
+import { pathData, toAbs } from "./path";
 import type { Doc, El } from "./types";
 
 const LINE_HEIGHT = 1.3;
@@ -41,6 +42,35 @@ export function toSvg(doc: Doc, id: string): string {
       defs.push(`<clipPath id="${cid}"><rect x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}"${r0 ? ` rx="${num(r0)}"` : ""}/></clipPath>`);
       if (!url) return "";
       return `<g${op}><image href="${esc(url)}" x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${cid})"/></g>`;
+    }
+
+    if (el.type === "path") {
+      const nodes = toAbs(el, x, y);
+      if (nodes.length < 2) return "";
+      const stroke = el.stroke && el.strokeWidth > 0 ? ` stroke="${esc(el.stroke)}" stroke-width="${num(el.strokeWidth)}" stroke-linecap="round" stroke-linejoin="round"` : "";
+      let pfill = el.closed ? esc(el.fill) : "none";
+      if (el.closed && el.gradient) {
+        const g = el.gradient;
+        const a = (g.angle * Math.PI) / 180;
+        const cx = x + el.width / 2;
+        const cy = y + el.height / 2;
+        const half = (Math.abs(el.width * Math.cos(a)) + Math.abs(el.height * Math.sin(a))) / 2;
+        const gid = `g${n++}`;
+        defs.push(
+          `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${num(cx - Math.cos(a) * half)}" y1="${num(cy - Math.sin(a) * half)}" x2="${num(cx + Math.cos(a) * half)}" y2="${num(cy + Math.sin(a) * half)}"><stop offset="0" stop-color="${esc(g.from)}"/><stop offset="1" stop-color="${esc(g.to)}"/></linearGradient>`,
+        );
+        pfill = `url(#${gid})`;
+      }
+      let pfilter = "";
+      if (el.shadow) {
+        const c = colour(el.shadow.color);
+        const fid = `s${n++}`;
+        defs.push(
+          `<filter id="${fid}" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="${num(el.shadow.x)}" dy="${num(el.shadow.y)}" stdDeviation="${num(el.shadow.blur / 2)}" flood-color="${esc(c.color)}" flood-opacity="${num(c.opacity)}"/></filter>`,
+        );
+        pfilter = ` filter="url(#${fid})"`;
+      }
+      return `<path d="${pathData(nodes, el.closed)}" fill="${pfill}"${stroke}${pfilter}${op}/>`;
     }
 
     let fill = esc(el.fill);

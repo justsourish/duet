@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runCommand } from "../commands";
 import { descendants, frameAt, hitTest, snapRect, topLevelOnly, worldPos, worldRect } from "../document/geometry";
 import { emptyDoc } from "../document/types";
+import { fromAbs, pathData } from "../document/path";
 import { resizeRect } from "../canvas/handles";
 import {
   currentDoc,
@@ -518,5 +519,64 @@ describe("images", () => {
   it("writes a picture into the SVG export, clipped to its box", () => {
     const svg = toSvg(withImage(), "f1");
     expect(svg).toContain("<clipPath");
+  });
+});
+
+describe("drawn lines", () => {
+  const corner = (x: number, y: number) => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0 });
+
+  it("fits a box around the points and keeps them as fractions of it", () => {
+    const shape = fromAbs([corner(100, 50), corner(300, 50), corner(300, 250)]);
+    expect([shape.x, shape.y, shape.width, shape.height]).toEqual([100, 50, 200, 200]);
+    expect(shape.nodes[1]).toMatchObject({ x: 1, y: 0 });
+    expect(shape.nodes[2]).toMatchObject({ x: 1, y: 1 });
+  });
+
+  it("includes curve handles in the box", () => {
+    const shape = fromAbs([{ x: 0, y: 0, ix: 0, iy: 0, ox: 0, oy: 100 }, corner(100, 0)]);
+    expect(shape.height).toBe(100);
+  });
+
+  it("writes straight pieces as L and curved pieces as C", () => {
+    expect(pathData([corner(0, 0), corner(10, 0)], false)).toBe("M0 0L10 0");
+    const curved = pathData([{ x: 0, y: 0, ix: 0, iy: 0, ox: 5, oy: 5 }, corner(10, 0)], false);
+    expect(curved).toContain("C5 5");
+  });
+
+  it("closes a shape with Z", () => {
+    expect(pathData([corner(0, 0), corner(10, 0), corner(10, 10)], true).endsWith("Z")).toBe(true);
+  });
+
+  it("finds a thin line under the pointer and ignores empty space next to it", () => {
+    const shape = fromAbs([corner(0, 0), corner(200, 0)]);
+    let d = runCommand(frame("f"), "create_element", {
+      id: "ln",
+      type: "path",
+      parentId: "f",
+      x: shape.x,
+      y: 100,
+      width: shape.width,
+      height: shape.height,
+      props: { nodes: shape.nodes, closed: false },
+    });
+    // frame f sits at 100,50 so the line is at 100,150 on the page
+    expect(hitTest(d, 200, 152)).toBe("ln");
+    expect(hitTest(d, 200, 200)).toBe("f");
+    d = runCommand(d, "set_props", { ids: ["ln"], props: { closed: true } });
+    expect(hitTest(d, 200, 150.5)).toBe("ln");
+  });
+
+  it("saves and reopens a drawn line", () => {
+    const shape = fromAbs([corner(0, 0), corner(50, 80)]);
+    const d = runCommand(emptyDoc(), "create_element", {
+      id: "ln",
+      type: "path",
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      props: { nodes: shape.nodes, closed: false },
+    });
+    expect(parseDoc(serializeDoc(d)).elements.ln.nodes).toEqual(shape.nodes);
   });
 });

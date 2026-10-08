@@ -27,6 +27,7 @@ const defaults: Record<ElementType, Partial<El>> = {
   ellipse: { fill: "#d9d9de", radius: 0 },
   text: { fill: "#1b1b1f", radius: 0 },
   image: { fill: "#d9d9de", radius: 0 },
+  path: { fill: "#d9d9de", stroke: "#1b1b1f", strokeWidth: 2, radius: 0 },
 };
 
 const typeName: Record<ElementType, string> = {
@@ -35,6 +36,7 @@ const typeName: Record<ElementType, string> = {
   ellipse: "Ellipse",
   text: "Text",
   image: "Image",
+  path: "Path",
 };
 
 function nextName(doc: Doc, type: ElementType): string {
@@ -82,6 +84,8 @@ const createElement: CommandDef<CreateArgs> = {
       gradient: null,
       link: null,
       src: "",
+      nodes: [],
+      closed: false,
       childIds: [],
       ...defaults[a.type],
       ...a.props,

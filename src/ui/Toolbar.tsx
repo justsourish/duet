@@ -9,6 +9,7 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: IconName }[] = [
   { tool: "frame", label: "Frame", key: "F", icon: "frame" },
   { tool: "rect", label: "Rectangle", key: "R", icon: "rect" },
   { tool: "ellipse", label: "Ellipse", key: "O", icon: "ellipse" },
+  { tool: "pen", label: "Pen", key: "P", icon: "pen" },
   { tool: "text", label: "Text", key: "T", icon: "text" },
   { tool: "hand", label: "Hand", key: "H", icon: "hand" },
 ];

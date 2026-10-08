@@ -1,3 +1,4 @@
+import { distanceToLine, flatten, toAbs } from "./path";
 import type { Doc, El, Rect } from "./types";
 
 export function worldPos(doc: Doc, id: string): { x: number; y: number } {
@@ -70,6 +71,12 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
       const el = doc.elements[ids[i]];
       if (!el || ignore.has(el.id)) continue;
       const r = { x: ox + el.x, y: oy + el.y, width: el.width, height: el.height };
+      if (el.type === "path" && !el.closed) {
+        // a thin line: hit it when the pointer is close to the line itself
+        const reach = Math.max(6, el.strokeWidth / 2 + 4);
+        if (distanceToLine(wx, wy, flatten(toAbs(el, r.x, r.y), false)) > reach) continue;
+        return el.id;
+      }
       if (!pointInRect(wx, wy, r)) continue;
       if (el.type === "ellipse") {
         const rx = r.width / 2;

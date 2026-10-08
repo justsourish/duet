@@ -1,4 +1,16 @@
-export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image";
+export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path";
+
+/** One point on a drawn line. All numbers are fractions of the element's box, so resizing just works. */
+export interface PathNode {
+  x: number;
+  y: number;
+  /** How far the handle on the way in reaches, from this point. 0 and 0 means none. */
+  ix: number;
+  iy: number;
+  /** How far the handle on the way out reaches, from this point. */
+  ox: number;
+  oy: number;
+}
 
 export interface Shadow {
   x: number;
@@ -37,6 +49,9 @@ export interface El {
   gradient: Gradient | null;
   /** For images: where the picture file lives inside the project, like assets/3fa9c1.png. */
   src: string;
+  /** For drawn lines: the points, and whether the line joins back to its start. */
+  nodes: PathNode[];
+  closed: boolean;
   /** In Present mode, clicking this takes you to the frame with this id. */
   link: string | null;
   childIds: string[];

@@ -38,10 +38,12 @@ import type { Tool } from "../state/store";
 import { HANDLES, resizeRect } from "./handles";
 import type { HandleKey } from "./handles";
 import { pickImages, placeFiles } from "../project/imageImport";
+import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
 import { draw, labelRect, screenRect } from "./render";
 import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
 
 type Drag =
+  | { kind: "pen"; index: number | null }
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number }
@@ -55,6 +57,7 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   ellipse: { w: 120, h: 120 },
   text: { w: 40, h: 21 },
   image: { w: 240, h: 160 },
+  path: { w: 100, h: 100 },
 };
 
 /** Copy of what was last copied inside this window, in case the system clipboard is unavailable. */
@@ -148,6 +151,12 @@ export default function CanvasView() {
   const rafRef = useRef(0);
   const editingId = useStore((s) => s.editingId);
   const viewport = useStore((s) => s.viewport);
+
+  // Switching to another tool ends the line you were drawing.
+  const toolNow = useStore((st) => st.tool);
+  useEffect(() => {
+    if (toolNow !== "pen" && penActive()) penFinish(false, false);
+  }, [toolNow]);
 
   // ---------- drawing ----------
   const schedule = () => {
@@ -249,6 +258,11 @@ export default function CanvasView() {
       return;
     }
 
+    if (s.tool === "pen") {
+      dragRef.current = { kind: "pen", index: penDown(p, s.viewport.zoom) };
+      return;
+    }
+
     if (CREATE_TOOLS.includes(s.tool)) {
       const type = s.tool as ElementType;
       const parentId = frameAt(currentDoc(s), p.x, p.y);
@@ -291,6 +305,10 @@ export default function CanvasView() {
     if (!d) {
       if (s.editingId) return;
       if (spaceRef.current || s.tool === "hand") return setCursor("grab");
+      if (s.tool === "pen") {
+        penHover(p);
+        return setCursor("crosshair");
+      }
       if (CREATE_TOOLS.includes(s.tool)) return setCursor(s.tool === "text" ? "text" : "crosshair");
       const h = handleAt(p.sx, p.sy);
       if (h) return setCursor(HANDLES.find((x) => x.key === h)!.cursor);
@@ -298,6 +316,11 @@ export default function CanvasView() {
       const doc = currentDoc(s);
       const hover = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y);
       if (hover !== s.overlay.hoverId) setOverlay({ hoverId: hover });
+      return;
+    }
+
+    if (d.kind === "pen") {
+      if (d.index !== null) penDrag(d.index, p, s.viewport.zoom);
       return;
     }
 
@@ -367,6 +390,8 @@ export default function CanvasView() {
     if (!d) return;
     const p = point(e);
 
+    if (d.kind === "pen") return;
+
     if (d.kind === "pan") {
       setCursor(spaceRef.current ? "grab" : "default");
       return;
@@ -426,6 +451,10 @@ export default function CanvasView() {
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
+    if (getState().tool === "pen") {
+      if (penActive()) penFinish(false);
+      return;
+    }
     const p = point(e);
     const doc = currentDoc();
     const hit = hitTest(doc, p.x, p.y);
@@ -544,6 +573,25 @@ export default function CanvasView() {
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
 
+      if (s.tool === "pen" && penActive()) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          penFinish(false);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          penCancel();
+          setTool("move");
+          return;
+        }
+        if (e.key === "Backspace" || e.key === "Delete") {
+          e.preventDefault();
+          penBack();
+          return;
+        }
+      }
+
       if (e.code === "Space") {
         e.preventDefault();
         if (!spaceRef.current) {
@@ -589,7 +637,7 @@ export default function CanvasView() {
         zoomToElements(getState().selection, sizeRef.current.w, sizeRef.current.h);
         return;
       }
-      const tools: Record<string, Tool> = { v: "move", f: "frame", r: "rect", o: "ellipse", t: "text", h: "hand" };
+      const tools: Record<string, Tool> = { v: "move", f: "frame", r: "rect", o: "ellipse", t: "text", h: "hand", p: "pen" };
       if (tools[key]) {
         e.preventDefault();
         setTool(tools[key]);

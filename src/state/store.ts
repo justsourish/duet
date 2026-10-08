@@ -1,10 +1,11 @@
+import type { AbsNode } from "../document/path";
 import { useSyncExternalStore } from "react";
 import { commandLabel, runCommand } from "../commands";
 import type { Actor, CommandName } from "../commands";
 import { emptyDoc } from "../document/types";
 import type { Doc, ElementType, Rect } from "../document/types";
 
-export type Tool = "move" | "frame" | "rect" | "ellipse" | "text" | "hand";
+export type Tool = "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "pen";
 
 export interface HistoryEntry {
   doc: Doc;
@@ -28,6 +29,8 @@ export interface Overlay {
   guidesY: number[];
   marquee: Rect | null;
   hoverId: string | null;
+  /** The line being drawn with the pen, in page pixels, and where the pointer is. */
+  pen: { nodes: AbsNode[]; cursor: { x: number; y: number } | null } | null;
 }
 
 export interface Project {
@@ -51,7 +54,7 @@ export interface State {
   editingId: string | null;
 }
 
-const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null });
+const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null, pen: null });
 
 const initial = (): State => ({
   project: { path: null, name: "Untitled", status: "unsaved", error: null },

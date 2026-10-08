@@ -83,6 +83,7 @@ export default function PropertiesPanel() {
   const first = els[0];
   const allText = els.every((e) => e.type === "text");
   const allImages = els.every((e) => e.type === "image");
+  const noFill = allImages || els.every((e) => e.type === "path" && !e.closed);
   const hasRadius = els.every((e) => e.type === "frame" || e.type === "rect" || e.type === "image");
 
   return (
@@ -118,7 +119,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {!allImages && (
+      {!noFill && (
         <div className="sec">
           <h4>{allText ? "Text colour" : "Fill"}</h4>
           {!allText && (
