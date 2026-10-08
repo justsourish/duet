@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { currentDoc, dispatch, select, useStore } from "../state/store";
 import type { El, Layout } from "../document/types";
 import { defaultLayout } from "../document/layout";
-import { measureText } from "../canvas/text";
+import { COMMON_FONTS } from "../canvas/text";
+import { newId } from "../commands";
 
 function NumField({ label, value, onCommit, min }: { label: string; value: number | ""; onCommit: (n: number) => void; min?: number }) {
   const [text, setText] = useState(String(value));
@@ -107,6 +108,142 @@ function LayoutSection({ frame }: { frame: El }) {
       <div className="linkbtn" style={{ marginTop: 10 }} onClick={() => dispatch("set_layout", { id: frame.id, layout: null })}>
         Remove auto layout
       </div>
+    </div>
+  );
+}
+
+const WEIGHTS: [number, string][] = [
+  [300, "Light"],
+  [400, "Regular"],
+  [500, "Medium"],
+  [600, "Semibold"],
+  [700, "Bold"],
+  [900, "Black"],
+];
+
+/** A font name, saved when you leave the box or press Enter, so typing does not fill the history. */
+function FontInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <input
+      list="duet-fonts"
+      value={text}
+      placeholder="System font"
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => text !== value && onCommit(text.trim())}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          setText(value);
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function TextSection({ els }: { els: El[] }) {
+  const doc = currentDoc();
+  const ids = els.map((e) => e.id);
+  const first = els[0];
+  const styles = Object.entries(doc.styles ?? {});
+  const linked = els.every((e) => e.textStyleId && e.textStyleId === first.textStyleId) ? first.textStyleId : "";
+  const [naming, setNaming] = useState(false);
+  const [styleName, setStyleName] = useState("");
+  const set = (props: Partial<El>, label: string) => dispatch("set_props", { ids, props, label });
+  // Part of a saved style? Then the look belongs to the style, and changing it changes every text that uses it.
+  const look = (props: Partial<El> & Record<string, unknown>, label: string) => {
+    if (linked) dispatch("update_text_style", { styleId: linked, props: props as never, label } as never);
+    else set(props, label);
+  };
+  const saveStyle = () => {
+    const name = styleName.trim();
+    if (!name) return;
+    dispatch("create_text_style", { styleId: newId("style"), fromId: first.id, name });
+    setNaming(false);
+    setStyleName("");
+  };
+  return (
+    <div className="sec">
+      <h4>Text</h4>
+      <label className="f">
+        <span>Style</span>
+        <select
+          value={linked}
+          onChange={(e) => dispatch("apply_text_style", { ids, styleId: e.target.value || null })}
+        >
+          <option value="">None</option>
+          {styles.map(([id, st]) => (
+            <option key={id} value={id}>
+              {st.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {linked && <div className="hint2">Changes here change every text that uses {doc.styles?.[linked]?.name}.</div>}
+      <div className="gap" />
+      <label className="f">
+        <span>Font</span>
+        <FontInput value={first.fontFamily} onCommit={(v) => look({ fontFamily: v }, "Change font")} />
+        <datalist id="duet-fonts">
+          {COMMON_FONTS.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
+      </label>
+      <div className="gap" />
+      <div className="field">
+        <label className="f">
+          <span>Weight</span>
+          <select value={first.fontWeight} onChange={(e) => look({ fontWeight: Number(e.target.value) }, "Change weight")}>
+            {WEIGHTS.map(([w, name]) => (
+              <option key={w} value={w}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <NumField label="Size" value={first.fontSize} min={1} onCommit={(n) => look({ fontSize: n }, "Change font size")} />
+        <NumField label="Line" value={first.lineHeight ? Math.round(first.lineHeight * 100) / 100 : 1.3} min={0.5} onCommit={(n) => look({ lineHeight: n }, "Change line height")} />
+        <NumField label="Space" value={first.letterSpacing} onCommit={(n) => look({ letterSpacing: n }, "Change letter spacing")} />
+      </div>
+      <div className="gap" />
+      <Seg value={first.textAlign} options={[["left", "Left"], ["center", "Centre"], ["right", "Right"]]} onPick={(textAlign) => set({ textAlign }, "Change alignment")} />
+      <div className="gap" />
+      <Seg value={first.textFixed ? "fixed" : "auto"} options={[["auto", "Auto width"], ["fixed", "Fixed width"]]} onPick={(v) => set({ textFixed: v === "fixed" }, "Change text box")} />
+      <div className="gap" />
+      {linked ? (
+        <div className="linkbtn" onClick={() => dispatch("apply_text_style", { ids, styleId: null })}>
+          Detach from the style
+        </div>
+      ) : naming ? (
+        <div className="field">
+          <input
+            className="f"
+            autoFocus
+            value={styleName}
+            placeholder="Name, like Heading"
+            onChange={(e) => setStyleName(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") saveStyle();
+              if (e.key === "Escape") setNaming(false);
+            }}
+            style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--text)" }}
+          />
+          <div className="linkbtn" onClick={saveStyle}>
+            Save
+          </div>
+        </div>
+      ) : (
+        els.length === 1 && (
+          <div className="linkbtn" onClick={() => setNaming(true)}>
+            + Save as a text style
+          </div>
+        )
+      )}
     </div>
   );
 }
@@ -261,22 +398,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {allText && (
-        <div className="sec">
-          <h4>Text</h4>
-          <NumField
-            label="Size"
-            value={first.fontSize}
-            min={1}
-            onCommit={(n) => {
-              if (one) {
-                const m = measureText(one.text, n);
-                set({ fontSize: n, width: m.width + 2, height: m.height }, "Change font size");
-              } else set({ fontSize: n }, "Change font size");
-            }}
-          />
-        </div>
-      )}
+      {allText && <TextSection els={els} />}
 
       {!allText && !allGroups && (
         <div className="sec">

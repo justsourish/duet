@@ -1,8 +1,9 @@
+import { fitText } from "../canvas/text";
 import type { ClipPayload } from "../document/clipboard";
 import { descendants, worldPos } from "../document/geometry";
 import { captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
-import type { Doc, El, ElementType, Layout } from "../document/types";
+import type { Doc, El, ElementType, Layout, TextStyle } from "../document/types";
 
 /**
  * Every change to a design goes through one of these named commands.
@@ -86,6 +87,13 @@ const createElement: CommandDef<CreateArgs> = {
       opacity: 1,
       text: a.type === "text" ? "Text" : "",
       fontSize: 16,
+      fontFamily: "",
+      fontWeight: 400,
+      textAlign: "left",
+      lineHeight: 0,
+      letterSpacing: 0,
+      textFixed: false,
+      textStyleId: "",
       shadow: null,
       gradient: null,
       link: null,
@@ -102,6 +110,11 @@ const createElement: CommandDef<CreateArgs> = {
       ...defaults[a.type],
       ...a.props,
     };
+    if (el.type === "text" && a.props && TEXT_LOOK.some((k) => k in a.props!)) {
+      const m = fitText(el);
+      el.width = m.width;
+      el.height = m.height;
+    }
     next.elements[id] = el;
     if (parentId) next.elements[parentId].childIds.push(id);
     else next.rootIds.push(id);
@@ -167,6 +180,11 @@ const resizeElement: CommandDef<ResizeArgs> = {
     el.y = a.y;
     el.width = Math.max(1, a.width);
     el.height = Math.max(1, a.height);
+    if (el.type === "text") {
+      // pulling a text box wider or narrower sets its width, and the words wrap inside it
+      if (Math.abs(el.width - doc.elements[a.id].width) > 0.5) el.textFixed = true;
+      el.height = fitText(el).height;
+    }
     // sizing a frame by hand means it no longer hugs its content
     if (el.layout?.hug && (el.width !== doc.elements[a.id].width || el.height !== doc.elements[a.id].height)) el.layout = { ...el.layout, hug: false };
     return next;
@@ -180,13 +198,22 @@ export interface SetPropsArgs {
   label?: string;
 }
 
+const TEXT_LOOK = ["text", "fontSize", "fontFamily", "fontWeight", "lineHeight", "letterSpacing", "textFixed"];
+
 const setProps: CommandDef<SetPropsArgs> = {
   label: (a) => a.label ?? "Change properties",
   run: (doc, a) => {
     const next = clone(doc);
     for (const id of a.ids) {
       const el = next.elements[id];
-      if (el) Object.assign(el, a.props);
+      if (!el) continue;
+      Object.assign(el, a.props);
+      // text that changes how it looks or what it says gets the size it needs, unless the size was given
+      if (el.type === "text" && TEXT_LOOK.some((k) => k in a.props) && !("width" in a.props) && !("height" in a.props)) {
+        const m = fitText(el);
+        el.width = m.width;
+        el.height = m.height;
+      }
     }
     return next;
   },
@@ -304,6 +331,92 @@ const pasteElements: CommandDef<PasteArgs> = {
       }
       next.elements[copy.id] = copy;
     }
+    return next;
+  },
+};
+
+// ---- text styles ----
+const TEXT_FACE = ["fontFamily", "fontWeight", "fontSize", "lineHeight", "letterSpacing"] as const;
+
+function restyle(doc: Doc, styleId: string) {
+  const st = doc.styles?.[styleId];
+  if (!st) return;
+  for (const el of Object.values(doc.elements)) {
+    if (el.type !== "text" || el.textStyleId !== styleId) continue;
+    for (const k of TEXT_FACE) (el as unknown as Record<string, unknown>)[k] = st[k];
+    const m = fitText(el);
+    el.width = m.width;
+    el.height = m.height;
+  }
+}
+
+export interface CreateTextStyleArgs {
+  styleId: string;
+  fromId: string;
+  name: string;
+}
+
+const createTextStyle: CommandDef<CreateTextStyleArgs> = {
+  label: (a) => `Save text style ${a.name}`,
+  run: (doc, a) => {
+    const el = doc.elements[a.fromId];
+    if (!el || el.type !== "text") return doc;
+    const next = clone(doc);
+    const style: TextStyle = { name: a.name.trim() || "Text style", fontFamily: el.fontFamily, fontWeight: el.fontWeight, fontSize: el.fontSize, lineHeight: el.lineHeight, letterSpacing: el.letterSpacing };
+    next.styles = { ...(next.styles ?? {}), [a.styleId]: style };
+    next.elements[a.fromId].textStyleId = a.styleId;
+    return next;
+  },
+};
+
+export interface ApplyTextStyleArgs {
+  ids: string[];
+  styleId: string | null;
+}
+
+const applyTextStyle: CommandDef<ApplyTextStyleArgs> = {
+  label: (a) => (a.styleId ? "Use a text style" : "Detach from the text style"),
+  run: (doc, a) => {
+    if (a.styleId && !doc.styles?.[a.styleId]) return doc;
+    const next = clone(doc);
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      if (el?.type === "text") el.textStyleId = a.styleId ?? "";
+    }
+    if (a.styleId) restyle(next, a.styleId);
+    return next;
+  },
+};
+
+export interface UpdateTextStyleArgs {
+  styleId: string;
+  props: Partial<Omit<TextStyle, never>>;
+}
+
+const updateTextStyle: CommandDef<UpdateTextStyleArgs> = {
+  label: (a) => `Change text style ${a.props.name ?? ""}`.trim(),
+  run: (doc, a) => {
+    if (!doc.styles?.[a.styleId]) return doc;
+    const next = clone(doc);
+    next.styles = { ...next.styles, [a.styleId]: { ...next.styles![a.styleId], ...a.props } };
+    restyle(next, a.styleId);
+    return next;
+  },
+};
+
+export interface DeleteTextStyleArgs {
+  styleId: string;
+}
+
+const deleteTextStyle: CommandDef<DeleteTextStyleArgs> = {
+  label: () => "Delete text style",
+  run: (doc, a) => {
+    if (!doc.styles?.[a.styleId]) return doc;
+    const next = clone(doc);
+    const { [a.styleId]: _gone, ...rest } = next.styles!;
+    void _gone;
+    next.styles = rest;
+    for (const el of Object.values(next.elements)) if (el.textStyleId === a.styleId) el.textStyleId = "";
     return next;
   },
 };
@@ -444,6 +557,13 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       opacity: 1,
       text: "",
       fontSize: 16,
+      fontFamily: "",
+      fontWeight: 400,
+      textAlign: "left",
+      lineHeight: 0,
+      letterSpacing: 0,
+      textFixed: false,
+      textStyleId: "",
       shadow: null,
       gradient: null,
       link: null,
@@ -510,6 +630,13 @@ const groupElements: CommandDef<GroupArgs> = {
       opacity: 1,
       text: "",
       fontSize: 16,
+      fontFamily: "",
+      fontWeight: 400,
+      textAlign: "left",
+      lineHeight: 0,
+      letterSpacing: 0,
+      textFixed: false,
+      textStyleId: "",
       shadow: null,
       gradient: null,
       link: null,
@@ -584,6 +711,10 @@ export const commands = {
   wrap_in_layout: wrapInLayout,
   group_elements: groupElements,
   ungroup,
+  create_text_style: createTextStyle,
+  apply_text_style: applyTextStyle,
+  update_text_style: updateTextStyle,
+  delete_text_style: deleteTextStyle,
   create_component: createComponent,
   create_instance: createInstance,
   detach_instance: detachCommand,

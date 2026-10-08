@@ -15,6 +15,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Pictures: drag them in, paste them, or use the Image button. They are kept once inside your project folder.
 - Auto layout: Shift A lines up what is inside a frame in a row or a column, with gap, padding, alignment, hug and fill.
 - Components: Cmd Option K turns a frame or group into a component. Place copies from the Assets tab. Change the original and every copy follows. Change text, colour or pictures on one copy without touching the rest.
+- Real text: any installed font, weight, size, line height, letter spacing, alignment, and boxes that wrap. Save a text style and change it once for every text that uses it.
 - Groups (Cmd G), locking (Shift Cmd L), select all in context (Cmd A), and a selection box that picks a frame's contents.
 - Layers panel with drag and drop in and out of frames. Properties for position, size, corners, fill, gradient, stroke, shadow, opacity and text.
 - Copy, paste and duplicate (Cmd or Ctrl + D), including between projects.
@@ -30,7 +31,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 
 Be honest with yourself before you try it for real work.
 
-- No variants, text styles or boolean operations yet. Gradients are linear only, and there is one shadow per shape.
+- No variants, colour styles or boolean operations yet. Gradients are linear only, and there is one shadow per shape.
 - Prototyping is links between screens only. No transitions or animation yet.
 - The AI chat works with **Claude Code** and the **Antigravity CLI** today (the command line tools, not the desktop apps). Codex and OpenCode are detected but not connected yet.
 - Windows builds are new and less tested than Mac. The AI chat on Windows is untested.

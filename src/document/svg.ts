@@ -1,8 +1,8 @@
 import { assetUrl } from "../project/assets";
+import { layoutText, lineStep, lineWidth } from "../canvas/text";
 import { pathData, toAbs } from "./path";
 import type { Doc, El } from "./types";
 
-const LINE_HEIGHT = 1.3;
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif";
 
 const esc = (t: string) =>
@@ -28,11 +28,18 @@ export function toSvg(doc: Doc, id: string): string {
     const op = el.opacity < 1 ? ` opacity="${num(el.opacity)}"` : "";
 
     if (el.type === "text") {
-      const lines = el.text.split("\n");
+      const { lines } = layoutText(el);
+      const step = lineStep(el);
       const spans = lines
-        .map((l, i) => `<tspan x="${num(x)}" y="${num(y + i * el.fontSize * LINE_HEIGHT)}">${esc(l)}</tspan>`)
+        .map((l, i) => {
+          const w = lineWidth(l, el);
+          const dx = el.textAlign === "center" ? (el.width - w) / 2 : el.textAlign === "right" ? el.width - w : 0;
+          return `<tspan x="${num(x + dx)}" y="${num(y + i * step)}">${esc(l)}</tspan>`;
+        })
         .join("");
-      return `<text font-family="${esc(FONT)}" font-size="${num(el.fontSize)}" fill="${esc(el.fill)}" dominant-baseline="text-before-edge"${op}>${spans}</text>`;
+      const family = el.fontFamily.trim() ? `"${el.fontFamily.replace(/"/g, "")}", ${FONT}` : FONT;
+      const spacing = el.letterSpacing ? ` letter-spacing="${num(el.letterSpacing)}"` : "";
+      return `<text font-family="${esc(family)}" font-weight="${el.fontWeight || 400}" font-size="${num(el.fontSize)}" fill="${esc(el.fill)}"${spacing} dominant-baseline="text-before-edge"${op}>${spans}</text>`;
     }
 
     if (el.type === "image") {

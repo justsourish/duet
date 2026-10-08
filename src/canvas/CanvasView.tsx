@@ -45,7 +45,7 @@ import { logError } from "../errorLog";
 import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
 import { draw, labelRect, screenRect } from "./render";
-import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
+import { fontCss, lineStep } from "./text";
 
 type Drag =
   | { kind: "pen"; index: number | null }
@@ -938,8 +938,7 @@ function TextEditor({ id, zoom, vx, vy }: { id: string; zoom: number; vx: number
       select([]);
       return;
     }
-    const m = measureText(value, el.fontSize);
-    dispatch("set_props", { ids: [id], props: { text: value, width: Math.max(8, m.width + 2), height: m.height }, label: "Edit text" });
+    dispatch("set_props", { ids: [id], props: { text: value }, label: "Edit text" });
   };
 
   return (
@@ -951,11 +950,13 @@ function TextEditor({ id, zoom, vx, vy }: { id: string; zoom: number; vx: number
       style={{
         left: pos.x * zoom + vx - 2,
         top: pos.y * zoom + vy - 2,
-        fontSize: el.fontSize * zoom,
-        lineHeight: LINE_HEIGHT,
-        fontFamily: FONT_STACK,
+        font: fontCss(el, el.fontSize * zoom),
+        lineHeight: `${lineStep(el) * zoom}px`,
+        letterSpacing: el.letterSpacing * zoom,
+        textAlign: el.textAlign,
         color: el.fill,
-        minWidth: 40,
+        minWidth: el.textFixed ? el.width * zoom : 40,
+        width: el.textFixed ? el.width * zoom : undefined,
       }}
       onBlur={finish}
       onKeyDown={(e) => {

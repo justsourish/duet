@@ -5,6 +5,7 @@ import { emptyDoc } from "../document/types";
 import { defaultLayout, relayout } from "../document/layout";
 import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
 import { resizeRect } from "../canvas/handles";
+import { wrapLines } from "../canvas/text";
 import {
   currentDoc,
   dispatch,
@@ -931,5 +932,97 @@ describe("components", () => {
     const fresh = copies.find((e) => e.id !== "i1")!;
     expect(fresh.childIds).toHaveLength(2);
     expect(fresh.childIds[0].startsWith(`${fresh.id}::`)).toBe(true);
+  });
+});
+
+describe("text", () => {
+  const withText = (text = "Hello there", extra: Record<string, unknown> = {}) =>
+    runCommand(frame("f"), "create_element", { id: "t", type: "text", parentId: "f", x: 10, y: 10, width: 80, height: 21, props: { text, fontSize: 20, ...extra } });
+
+  it("resizes text to fit when its look changes", () => {
+    let d = withText();
+    const w0 = d.elements.t.width;
+    d = runCommand(d, "set_props", { ids: ["t"], props: { fontSize: 40 } });
+    expect(d.elements.t.width).toBeGreaterThan(w0 * 1.8);
+    expect(d.elements.t.height).toBeGreaterThan(40);
+  });
+
+  it("makes lines taller with a bigger line height, and wider with letter spacing", () => {
+    let d = withText("one\ntwo");
+    const h0 = d.elements.t.height;
+    const w0 = d.elements.t.width;
+    d = runCommand(d, "set_props", { ids: ["t"], props: { lineHeight: 2 } });
+    expect(d.elements.t.height).toBeGreaterThan(h0);
+    d = runCommand(d, "set_props", { ids: ["t"], props: { letterSpacing: 4 } });
+    expect(d.elements.t.width).toBeGreaterThan(w0);
+  });
+
+  it("wraps words once the box is given a width, and grows taller", () => {
+    let d = withText("one two three four five six seven eight nine ten");
+    const h0 = d.elements.t.height;
+    d = runCommand(d, "resize_element", { id: "t", x: 10, y: 10, width: 90, height: h0 });
+    expect(d.elements.t.textFixed).toBe(true);
+    expect(d.elements.t.width).toBe(90);
+    expect(d.elements.t.height).toBeGreaterThan(h0 * 2);
+  });
+
+  it("goes back to one line when switched to auto width", () => {
+    let d = withText("one two three four five six seven eight nine ten");
+    const h0 = d.elements.t.height;
+    d = runCommand(d, "resize_element", { id: "t", x: 10, y: 10, width: 90, height: h0 });
+    d = runCommand(d, "set_props", { ids: ["t"], props: { textFixed: false } });
+    expect(d.elements.t.height).toBe(h0);
+  });
+
+  it("breaks text into lines the way the box asks", () => {
+    const face = { fontFamily: "", fontWeight: 400, fontSize: 10, lineHeight: 0, letterSpacing: 0 };
+    expect(wrapLines("aa bb cc", face, undefined)).toEqual(["aa bb cc"]);
+    expect(wrapLines("a\nb", face, 500)).toEqual(["a", "b"]);
+    expect(wrapLines("aaaa bbbb cccc dddd", face, 25).length).toBeGreaterThan(1);
+  });
+
+  it("saves a text style, and every text using it follows when the style changes", () => {
+    let d = runCommand(withText("Title", { fontWeight: 700 }), "create_element", { id: "t2", type: "text", parentId: "f", x: 10, y: 60, width: 50, height: 20, props: { text: "Another", fontSize: 12 } });
+    d = runCommand(d, "create_text_style", { styleId: "s1", fromId: "t", name: "Heading" });
+    expect(d.styles?.s1).toMatchObject({ name: "Heading", fontWeight: 700, fontSize: 20 });
+    d = runCommand(d, "apply_text_style", { ids: ["t2"], styleId: "s1" });
+    expect(d.elements.t2).toMatchObject({ fontSize: 20, fontWeight: 700, textStyleId: "s1" });
+    d = runCommand(d, "update_text_style", { styleId: "s1", props: { fontSize: 32, fontFamily: "Georgia" } });
+    expect(d.elements.t.fontSize).toBe(32);
+    expect(d.elements.t2.fontFamily).toBe("Georgia");
+    expect(d.elements.t2.height).toBeGreaterThan(30);
+  });
+
+  it("stops following a style once detached, and clears it when the style is deleted", () => {
+    let d = runCommand(withText("Title"), "create_text_style", { styleId: "s1", fromId: "t", name: "Heading" });
+    d = runCommand(d, "apply_text_style", { ids: ["t"], styleId: null });
+    d = runCommand(d, "update_text_style", { styleId: "s1", props: { fontSize: 50 } });
+    expect(d.elements.t.fontSize).toBe(20);
+    d = runCommand(d, "apply_text_style", { ids: ["t"], styleId: "s1" });
+    d = runCommand(d, "delete_text_style", { styleId: "s1" });
+    expect(d.styles?.s1).toBeUndefined();
+    expect(d.elements.t.textStyleId).toBe("");
+  });
+
+  it("saves the look of text, and styles, and reopens them", () => {
+    let d = withText("Title", { fontFamily: "Georgia", fontWeight: 700, textAlign: "center", letterSpacing: 2, lineHeight: 1.5 });
+    d = runCommand(d, "create_text_style", { styleId: "s1", fromId: "t", name: "Heading" });
+    const back = parseDoc(serializeDoc(d));
+    expect(back.elements.t).toMatchObject({ fontFamily: "Georgia", fontWeight: 700, textAlign: "center", letterSpacing: 2, lineHeight: 1.5, textStyleId: "s1" });
+    expect(back.styles?.s1.name).toBe("Heading");
+  });
+
+  it("does not add text fields to files that do not need them", () => {
+    const plain = serializeDoc(withText("Hi"));
+    expect(plain).not.toContain("fontFamily");
+    expect(plain).not.toContain("textAlign");
+    expect(plain).not.toContain('"styles"');
+    expect(serializeDoc(frame())).not.toContain("fontWeight");
+  });
+
+  it("puts the font and alignment into the SVG export", () => {
+    const svg = toSvg(withText("Hi", { fontFamily: "Georgia", fontWeight: 700 }), "f");
+    expect(svg).toContain("Georgia");
+    expect(svg).toContain('font-weight="700"');
   });
 });

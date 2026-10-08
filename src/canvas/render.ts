@@ -6,7 +6,7 @@ import type { State } from "../state/store";
 import { logError } from "../errorLog";
 import { getPicture } from "../project/assets";
 import { HANDLES } from "./handles";
-import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
+import { FONT_STACK, fontCss, layoutText, lineStep, lineWidth, measureText } from "./text";
 
 export const COLORS = {
   bg: "#141417",
@@ -144,9 +144,24 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
 
   if (el.type === "text") {
     ctx.fillStyle = el.fill;
-    ctx.font = `400 ${el.fontSize}px ${FONT_STACK}`;
+    ctx.font = fontCss(el);
     ctx.textBaseline = "top";
-    el.text.split("\n").forEach((line, i) => ctx.fillText(line, x, y + i * el.fontSize * LINE_HEIGHT));
+    const { lines } = layoutText(el);
+    const step = lineStep(el);
+    lines.forEach((line, i) => {
+      const w = lineWidth(line, el);
+      const dx = el.textAlign === "center" ? (el.width - w) / 2 : el.textAlign === "right" ? el.width - w : 0;
+      if (!el.letterSpacing) {
+        ctx.fillText(line, x + dx, y + i * step);
+        return;
+      }
+      // letter by letter, so the spacing shows on every computer
+      let cx = x + dx;
+      for (const ch of line) {
+        ctx.fillText(ch, cx, y + i * step);
+        cx += ctx.measureText(ch).width + el.letterSpacing;
+      }
+    });
     ctx.restore();
     return;
   }

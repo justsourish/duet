@@ -57,6 +57,19 @@ export interface El {
   opacity: number;
   text: string;
   fontSize: number;
+  /** Text only. Empty means the system font. Any font installed on the computer works. */
+  fontFamily: string;
+  /** Text only. 400 is regular, 700 is bold. */
+  fontWeight: number;
+  textAlign: "left" | "center" | "right";
+  /** Text only. A multiple of the font size. 0 means the default. */
+  lineHeight: number;
+  /** Text only. Extra space between letters, in pixels. */
+  letterSpacing: number;
+  /** Text only. True when the box has a set width and words wrap inside it. */
+  textFixed: boolean;
+  /** Text only. A saved text style this text follows, or an empty string. */
+  textStyleId: string;
   /** A drop shadow behind the shape, or null for none. */
   shadow: Shadow | null;
   /** A linear gradient used instead of the solid fill, or null. */
@@ -84,8 +97,20 @@ export interface El {
 }
 
 /** Flat store: one record per element, keyed by id. Keeps Git diffs small. */
+/** A saved look for text, shared by every text that uses it. */
+export interface TextStyle {
+  name: string;
+  fontFamily: string;
+  fontWeight: number;
+  fontSize: number;
+  lineHeight: number;
+  letterSpacing: number;
+}
+
 export interface Doc {
   version: 1;
+  /** Saved text styles, by id. */
+  styles?: Record<string, TextStyle>;
   rootIds: string[];
   elements: Record<string, El>;
 }

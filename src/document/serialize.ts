@@ -19,6 +19,13 @@ const EL_KEYS: (keyof El)[] = [
   "opacity",
   "text",
   "fontSize",
+  "fontFamily",
+  "fontWeight",
+  "textAlign",
+  "lineHeight",
+  "letterSpacing",
+  "textFixed",
+  "textStyleId",
   "shadow",
   "gradient",
   "link",
@@ -34,6 +41,8 @@ const EL_KEYS: (keyof El)[] = [
   "childIds",
 ];
 
+const TEXT_ONLY = new Set<keyof El>(["fontFamily", "fontWeight", "textAlign", "lineHeight", "letterSpacing", "textFixed", "textStyleId"]);
+
 const FALLBACK: Omit<El, "id" | "type"> = {
   name: "Untitled",
   parentId: null,
@@ -48,6 +57,13 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   opacity: 1,
   text: "",
   fontSize: 16,
+  fontFamily: "",
+  fontWeight: 400,
+  textAlign: "left",
+  lineHeight: 0,
+  letterSpacing: 0,
+  textFixed: false,
+  textStyleId: "",
   shadow: null,
   gradient: null,
   link: null,
@@ -70,11 +86,14 @@ export function serializeDoc(doc: Doc): string {
     if (isDerived(id)) continue; // the inside of a copy is rebuilt from its component
     const el = doc.elements[id];
     const ordered: Record<string, unknown> = {};
-    for (const k of EL_KEYS) if (k === "childIds" && el.type === "instance") ordered[k] = [];
+    for (const k of EL_KEYS) if (TEXT_ONLY.has(k) && (el.type !== "text" || el[k] === (FALLBACK as Record<string, unknown>)[k])) continue;
+    else if (k === "childIds" && el.type === "instance") ordered[k] = [];
     else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
-  return JSON.stringify({ version: doc.version, rootIds: doc.rootIds, elements }, null, 2) + "\n";
+  const out: Record<string, unknown> = { version: doc.version, rootIds: doc.rootIds, elements };
+  if (doc.styles && Object.keys(doc.styles).length) out.styles = doc.styles;
+  return JSON.stringify(out, null, 2) + "\n";
 }
 
 export class DesignFileError extends Error {}
@@ -104,5 +123,6 @@ export function parseDoc(text: string): Doc {
   for (const el of Object.values(elements)) {
     for (const c of el.childIds) if (!elements[c]) throw new DesignFileError(`${el.name} lists a missing child ${c}.`);
   }
-  return relayout(syncInstances({ version: 1, rootIds: r.rootIds as string[], elements }));
+  const styles = r.styles && typeof r.styles === "object" ? (r.styles as Doc["styles"]) : undefined;
+  return relayout(syncInstances({ version: 1, rootIds: r.rootIds as string[], elements, ...(styles ? { styles } : {}) }));
 }
