@@ -93,6 +93,6 @@ Real-time cloud multiplayer. Local first. Cloud storage comes later as its own d
 
 ## Built so far (8 October 2026)
 
-Canvas, frames, rectangle, ellipse, text. Layers with drag and drop. Fill, linear gradient, stroke, corner radius, one shadow, opacity, text size. Copy, paste, duplicate. PNG and SVG export. Prototype links and Present mode. Projects as `.duet` folders with autosave. Saved history in two lanes with named versions. AI chat for Claude Code and Gemini CLI, three permission levels, skills (shipped, written, imported).
+Canvas, frames, rectangle, ellipse, text. Layers with drag and drop. Fill, linear gradient, stroke, corner radius, one shadow, opacity, text size. Copy, paste, duplicate. PNG and SVG export. Prototype links and Present mode. Projects as `.duet` folders with autosave. Saved history in two lanes with named versions. AI chat for Claude Code and Antigravity, three permission levels, skills (shipped, written, imported).
 
 Still to do from the v1 list: auto layout, image import, snapping to spacing, and Antigravity, Codex and OpenCode support.

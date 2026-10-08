@@ -12,7 +12,7 @@ This document provides the complete feature inventory, roadmap tiering, permissi
 Duet is an open source, desktop-first UI/UX design tool built on Tauri (Rust + Web). Its core differentiator is **command parity between human and AI**: every action triggered by a mouse click, keyboard shortcut, or menu item executes the exact same named command that an AI agent calls through a local Model Context Protocol (MCP) server.
 
 To keep Duet fast, lightweight, and genuinely open:
-- **No paid cloud APIs are mandated**: Users bring terminal agents they already run locally (Claude Code, Gemini CLI, Antigravity).
+- **No paid cloud APIs are mandated**: Users bring terminal agents they already run locally (Claude Code, Antigravity).
 - **No proprietary cloud lock-in**: Files are saved locally as plain JSON. Local Git handles history and rollbacks automatically before any destructive AI operation.
 - **Permissive open source only**: Every library suggested below uses MIT, Apache 2.0, BSD, or MPL licenses.
 
@@ -321,7 +321,7 @@ The core principle of Duet is that the human and the AI share the exact same com
 
 ### 4.5 Running Terminal Agents Non-Interactively with Clean Streams
 
-Users bring their own local agent tools (Claude Code, Gemini CLI, Antigravity). Duet spawns these agents in the background and streams their thoughts and tool actions into Duet's embedded chat panel.
+Users bring their own local agent tools (Claude Code, Antigravity). Duet spawns these agents in the background and streams their thoughts and tool actions into Duet's embedded chat panel.
 
 #### Comparison of Terminal CLI Execution Modes
 

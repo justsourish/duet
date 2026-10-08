@@ -25,13 +25,12 @@ export interface Msg {
   undone?: boolean;
 }
 
-export type AgentId = "claude" | "gemini" | "agy" | "codex" | "opencode";
+export type AgentId = "claude" | "agy" | "codex" | "opencode";
 
 /** Every tool Duet looks for. Only some can be driven so far. */
 export const AGENTS: { id: AgentId; name: string; runnable: boolean; install: string }[] = [
   { id: "claude", name: "Claude Code", runnable: true, install: "https://claude.com/claude-code" },
-  { id: "gemini", name: "Gemini CLI", runnable: true, install: "https://github.com/google-gemini/gemini-cli" },
-  { id: "agy", name: "Antigravity", runnable: false, install: "" },
+  { id: "agy", name: "Antigravity", runnable: true, install: "https://antigravity.google" },
   { id: "codex", name: "Codex", runnable: false, install: "" },
   { id: "opencode", name: "OpenCode", runnable: false, install: "" },
 ];

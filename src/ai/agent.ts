@@ -127,7 +127,7 @@ function onClaudeLine(line: string) {
 }
 
 
-// ---- Gemini CLI: streams small pieces of text, then tool calls, then a result ----
+// ---- Antigravity: streams small pieces of text, tool steps, then a result ----
 
 let streamId: number | null = null;
 
@@ -143,36 +143,55 @@ function streamText(piece: string) {
   }
 }
 
-function onGeminiLine(line: string) {
+function showWorking(text: string) {
+  if (workingId !== null && getChat().messages.some((m) => m.id === workingId)) updateMsg(workingId, { text });
+  else workingId = addMsg({ role: "working", text });
+}
+
+function onAgyLine(line: string) {
   let ev: Record<string, unknown>;
   try {
     ev = JSON.parse(line) as Record<string, unknown>;
   } catch {
     return;
   }
-  if (ev.type === "message" && ev.role === "assistant" && typeof ev.content === "string") {
-    streamText(ev.content);
-  } else if (ev.type === "tool_use") {
+  if (ev.event === "init" && typeof ev.conversation_id === "string") {
+    setSessionId(ev.conversation_id);
+  } else if (ev.event === "step_update") {
+    const step = ev.step_update as Record<string, unknown> | undefined;
+    if (!step) return;
+    if (step.step_type === "agent_response") {
+      if (step.state === "ACTIVE" && typeof step.text_delta === "string") streamText(step.text_delta);
+      else if (step.state === "DONE") streamId = null;
+    } else if (step.step_type === "tool" && step.state === "ACTIVE") {
+      streamId = null;
+      const info = step.tool_info as { parameters?: { ToolName?: string } } | undefined;
+      if (step.tool_name === "call_mcp_tool") {
+        showWorking(`${WORKING[String(info?.parameters?.ToolName ?? "")] ?? "Working"}...`);
+      } else {
+        // Antigravity can reach for its own tools too. Say so, so nothing happens out of sight.
+        showWorking(`Antigravity is using its own tool (${String(step.tool_name ?? "unknown")})...`);
+      }
+    }
+  } else if (ev.event === "result") {
     streamId = null;
-    const tool = String(ev.tool_name ?? "").replace(/^mcp_duet_/, "");
-    const text = `${WORKING[tool] ?? "Working"}...`;
-    if (workingId !== null && getChat().messages.some((m) => m.id === workingId)) updateMsg(workingId, { text });
-    else workingId = addMsg({ role: "working", text });
-  } else if (ev.type === "result") {
-    streamId = null;
-    if (ev.status === "success") {
-      setSessionId("latest"); // follow-up messages continue this conversation
-    } else {
+    const r = (ev.result ?? {}) as Record<string, unknown>;
+    if (typeof r.conversation_id === "string") setSessionId(r.conversation_id);
+    if (r.status !== "SUCCESS") {
       removeWorking();
-      const err = ev.error as { message?: string } | string | undefined;
-      addMsg({ role: "error", text: friendly(typeof err === "string" ? err : (err?.message ?? stderrLines.join(" "))) });
+      const err = typeof r.error === "string" ? r.error : typeof r.response === "string" ? r.response : "";
+      addMsg({ role: "error", text: friendly(err || stderrLines.join(" ")) });
+      sawText = true;
+    } else if (!sawText && typeof r.response === "string" && r.response.trim()) {
+      removeWorking();
+      addMsg({ role: "duet", text: r.response.trim() });
       sawText = true;
     }
   }
 }
 
 function onLine(line: string) {
-  if (getChat().agent === "gemini") onGeminiLine(line);
+  if (getChat().agent === "agy") onAgyLine(line);
   else onClaudeLine(line);
 }
 
@@ -230,15 +249,13 @@ export async function sendToAgent(text: string) {
     const session = getChat().sessionId;
     let args: string[];
 
-    if (agent === "gemini") {
-      // Gemini reads its settings and instructions from the folder it runs in, so nothing global is touched.
-      await invoke("write_agent_file", {
-        name: ".gemini/settings.json",
-        body: JSON.stringify({ mcpServers: { duet: { httpUrl: url, headers, trust: true } } }),
-      });
-      await invoke("write_agent_file", { name: "GEMINI.md", body: systemPrompt() });
-      args = ["-p", "", "-o", "stream-json", "--allowed-mcp-server-names", "duet", "--skip-trust", "--approval-mode", "default"];
-      if (session) args.push("--resume", session);
+    if (agent === "agy") {
+      // Antigravity has no flag for instructions or per-run connections. Duet joins its list once
+      // (a small bridge that finds the running Duet), and the instructions go in with the message.
+      await invoke("agy_connect");
+      const brief = `${systemPrompt()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\nThe designer says:\n${prompt}`;
+      args = ["--print", brief, "--output-format", "stream-json"];
+      if (session) args.push("--conversation", session);
     } else {
       const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {
         system: systemPrompt(),

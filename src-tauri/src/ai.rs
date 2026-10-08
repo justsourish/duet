@@ -176,12 +176,12 @@ fn shell_command(program: &str, args: &[String]) -> Command {
 
 /// Tools Duet can look for.
 fn known(program: &str) -> bool {
-    matches!(program, "claude" | "gemini" | "agy" | "codex" | "opencode")
+    matches!(program, "claude" | "agy" | "codex" | "opencode")
 }
 
 /// Tools Duet knows how to drive.
 fn supported(program: &str) -> bool {
-    matches!(program, "claude" | "gemini")
+    matches!(program, "claude" | "agy")
 }
 
 /// Is this agent tool installed on this computer?
@@ -327,5 +327,86 @@ pub fn agent_run(
 pub fn agent_cancel(state: State<AgentState>) {
     if let Some(child) = state.child.lock().unwrap().as_mut() {
         let _ = child.kill();
+    }
+}
+
+/// Runs as `duet --mcp-bridge`: speaks MCP over stdin and stdout for tools that can only be told
+/// about a command, not a changing address (Antigravity). Each request is passed on to the Duet
+/// that is running right now, found through ~/.duet/session.json, so the bridge is set up once.
+pub fn bridge() {
+    use std::io::Read;
+    use std::net::TcpStream;
+
+    let session = || -> Option<(u16, String)> {
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
+        let raw = std::fs::read_to_string(std::path::Path::new(&home).join(".duet").join("session.json")).ok()?;
+        let v: Value = serde_json::from_str(&raw).ok()?;
+        Some((v["port"].as_u64()? as u16, v["token"].as_str()?.to_string()))
+    };
+
+    let stdin = std::io::stdin();
+    let mut out = std::io::stdout();
+    for line in stdin.lock().lines().map_while(Result::ok) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let id = serde_json::from_str::<Value>(&line).ok().and_then(|v| v.get("id").cloned());
+        let fail = |msg: &str| {
+            if let Some(id) = &id {
+                let _ = writeln!(std::io::stdout(), "{}", rpc_error(id, -32603, msg));
+            }
+        };
+        let Some((port, token)) = session() else {
+            fail("Duet is not running. Open Duet first.");
+            continue;
+        };
+        let Ok(mut conn) = TcpStream::connect(("127.0.0.1", port)) else {
+            fail("Duet is not running. Open Duet first.");
+            continue;
+        };
+        let req = format!(
+            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{line}",
+            line.len()
+        );
+        if conn.write_all(req.as_bytes()).is_err() {
+            fail("Could not reach Duet.");
+            continue;
+        }
+        let mut raw = Vec::new();
+        let _ = conn.read_to_end(&mut raw);
+        let text = String::from_utf8_lossy(&raw);
+        let body = text.split("\r\n\r\n").nth(1).unwrap_or("").trim();
+        if id.is_some() && !body.is_empty() {
+            let _ = writeln!(out, "{}", body.replace('\n', " "));
+            let _ = out.flush();
+        }
+    }
+}
+
+/// Make sure Antigravity knows about Duet. Added once, to Antigravity's own list, and only when it
+/// is missing or points at a Duet that has moved.
+#[tauri::command]
+pub fn agy_connect() -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = exe.to_string_lossy().to_string();
+    let listed = shell_command("agy", &["mcp".into(), "list".into()])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("Could not start agy: {e}"))?;
+    let text = String::from_utf8_lossy(&listed.stdout);
+    if text.lines().any(|l| l.trim_start().starts_with("duet ") && l.contains(&exe)) {
+        return Ok(());
+    }
+    let added = shell_command(
+        "agy",
+        &["mcp".into(), "add".into(), "duet".into(), exe, "--mcp-bridge".into()],
+    )
+    .stdin(Stdio::null())
+    .output()
+    .map_err(|e| e.to_string())?;
+    if added.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&added.stderr).to_string())
     }
 }

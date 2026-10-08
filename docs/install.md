@@ -33,7 +33,7 @@ Windows builds are new. If something is broken, please open an issue and say wha
 
 ## Connect your AI (optional)
 
-Duet works without an AI. For the chat, install [Claude Code](https://claude.com/claude-code) or [Gemini CLI](https://github.com/google-gemini/gemini-cli) and sign in once in a terminal. Then open Duet. The chat finds them by itself, and a switch at the top of the chat lets you choose. Antigravity, Codex and OpenCode are planned.
+Duet works without an AI. For the chat, install [Claude Code](https://claude.com/claude-code) or Antigravity (`agy`) and sign in once in a terminal. Then open Duet. The chat finds them by itself, and a switch at the top of the chat lets you choose. The first time you chat with Antigravity, Duet adds itself to Antigravity's list of connections (named `duet`). Codex and OpenCode are planned.
 
 ## Your projects
 

@@ -2,5 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    if std::env::args().any(|a| a == "--mcp-bridge") {
+        return duet_app_lib::bridge();
+    }
     duet_app_lib::run()
 }

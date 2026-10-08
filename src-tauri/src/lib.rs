@@ -295,11 +295,14 @@ fn git_name_version(path: String, tag: String, title: String) -> Result<(), Stri
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub use ai::bridge;
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            ai::agy_connect,
             read_text_file,
             write_text_file,
             write_binary_file,
