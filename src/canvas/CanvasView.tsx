@@ -41,6 +41,7 @@ import { pickImages, placeFiles } from "../project/imageImport";
 import { deleteSelectedNode, doubleClickNode, dragNode, editing, enterNodeEdit, exitNodeEdit, hitNode, nodesOf, selectNode } from "./nodes";
 import type { NodeHit } from "./nodes";
 import type { AbsNode } from "../document/path";
+import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
 import { draw, labelRect, screenRect } from "./render";
 import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
@@ -671,6 +672,20 @@ export default function CanvasView() {
       if (mod && key === "a") {
         e.preventDefault();
         select([...currentDoc(s).rootIds]);
+        return;
+      }
+      if (e.shiftKey && !mod && key === "a") {
+        e.preventDefault();
+        const sel = s.selection.filter((id) => currentDoc(s).elements[id]);
+        const doc = currentDoc(s);
+        if (sel.length === 1 && doc.elements[sel[0]].type === "frame") {
+          const f = doc.elements[sel[0]];
+          dispatch("set_layout", { id: f.id, layout: f.layout ? null : defaultLayout() });
+        } else if (sel.length >= 1) {
+          const id = newId("frame");
+          dispatch("wrap_in_layout", { ids: sel, frameId: id });
+          if (currentDoc().elements[id]) select([id]);
+        }
         return;
       }
       if (mod && e.shiftKey && key === "k") {

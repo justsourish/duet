@@ -21,6 +21,8 @@ const EL_KEYS: (keyof El)[] = [
   "gradient",
   "link",
   "src",
+  "layout",
+  "grow",
   "nodes",
   "closed",
   "childIds",
@@ -44,6 +46,8 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   gradient: null,
   link: null,
   src: "",
+  layout: null,
+  grow: 0,
   nodes: [],
   closed: false,
   childIds: [],
@@ -55,7 +59,7 @@ export function serializeDoc(doc: Doc): string {
   for (const id of Object.keys(doc.elements).sort()) {
     const el = doc.elements[id];
     const ordered: Record<string, unknown> = {};
-    for (const k of EL_KEYS) if ((k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
+    for (const k of EL_KEYS) if ((k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
   return JSON.stringify({ version: doc.version, rootIds: doc.rootIds, elements }, null, 2) + "\n";

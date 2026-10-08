@@ -1,6 +1,7 @@
 import type { ClipPayload } from "../document/clipboard";
 import { descendants, worldPos } from "../document/geometry";
-import type { Doc, El, ElementType } from "../document/types";
+import { orderByPosition, relayout } from "../document/layout";
+import type { Doc, El, ElementType, Layout } from "../document/types";
 
 /**
  * Every change to a design goes through one of these named commands.
@@ -84,6 +85,8 @@ const createElement: CommandDef<CreateArgs> = {
       gradient: null,
       link: null,
       src: "",
+      layout: null,
+      grow: 0,
       nodes: [],
       closed: false,
       childIds: [],
@@ -93,6 +96,7 @@ const createElement: CommandDef<CreateArgs> = {
     next.elements[id] = el;
     if (parentId) next.elements[parentId].childIds.push(id);
     else next.rootIds.push(id);
+    orderByPosition(next, parentId);
     return next;
   },
 };
@@ -114,6 +118,8 @@ const moveElements: CommandDef<MoveArgs> = {
       el.x += a.dx;
       el.y += a.dy;
     }
+    // in an auto layout frame, moving a child past its neighbours changes the order
+    for (const pid of new Set(a.ids.map((id) => next.elements[id]?.parentId))) orderByPosition(next, pid ?? null);
     return next;
   },
 };
@@ -137,6 +143,8 @@ const resizeElement: CommandDef<ResizeArgs> = {
     el.y = a.y;
     el.width = Math.max(1, a.width);
     el.height = Math.max(1, a.height);
+    // sizing a frame by hand means it no longer hugs its content
+    if (el.layout?.hug && (el.width !== doc.elements[a.id].width || el.height !== doc.elements[a.id].height)) el.layout = { ...el.layout, hug: false };
     return next;
   },
 };
@@ -227,6 +235,7 @@ const reparentElements: CommandDef<ReparentArgs> = {
       el.y = w.y - parentWorld.y;
       index = at + 1;
     }
+    orderByPosition(next, a.parentId);
     return next;
   },
 };
@@ -274,6 +283,85 @@ const pasteElements: CommandDef<PasteArgs> = {
   },
 };
 
+// ---- set_layout ----
+export interface SetLayoutArgs {
+  id: string;
+  layout: Layout | null;
+}
+
+const setLayout: CommandDef<SetLayoutArgs> = {
+  label: (a) => (a.layout ? "Turn on auto layout" : "Turn off auto layout"),
+  run: (doc, a) => {
+    if (doc.elements[a.id]?.type !== "frame") return doc;
+    const next = clone(doc);
+    next.elements[a.id].layout = a.layout;
+    orderByPosition(next, a.id); // the children keep the order they sit in
+    return next;
+  },
+};
+
+// ---- wrap_in_layout ----
+export interface WrapArgs {
+  ids: string[];
+  frameId: string;
+}
+
+const wrapInLayout: CommandDef<WrapArgs> = {
+  label: () => "Add auto layout",
+  run: (doc, a) => {
+    const els = a.ids.map((id) => doc.elements[id]).filter(Boolean);
+    if (els.length === 0) return doc;
+    const parentId = els[0].parentId;
+    if (!els.every((e) => e.parentId === parentId)) return doc;
+    const next = clone(doc);
+    const list = parentId ? next.elements[parentId].childIds : next.rootIds;
+    const x = Math.min(...els.map((e) => e.x));
+    const y = Math.min(...els.map((e) => e.y));
+    const w = Math.max(...els.map((e) => e.x + e.width)) - x;
+    const h = Math.max(...els.map((e) => e.y + e.height)) - y;
+    const at = Math.min(...els.map((e) => list.indexOf(e.id)).filter((i) => i >= 0));
+    const frame: El = {
+      id: a.frameId,
+      type: "frame",
+      name: nextName(doc, "frame"),
+      parentId,
+      x,
+      y,
+      width: w,
+      height: h,
+      fill: "#ffffff00",
+      stroke: null,
+      strokeWidth: 1,
+      radius: 0,
+      opacity: 1,
+      text: "",
+      fontSize: 16,
+      shadow: null,
+      gradient: null,
+      link: null,
+      src: "",
+      layout: { dir: w >= h ? "row" : "column", gap: 12, padX: 0, padY: 0, align: "start", justify: "start", hug: true },
+      grow: 0,
+      nodes: [],
+      closed: false,
+      childIds: [],
+    };
+    next.elements[frame.id] = frame;
+    for (const id of a.ids) {
+      const i = list.indexOf(id);
+      if (i >= 0) list.splice(i, 1);
+      const el = next.elements[id];
+      el.parentId = frame.id;
+      el.x -= x;
+      el.y -= y;
+      frame.childIds.push(id);
+    }
+    list.splice(Math.max(0, at), 0, frame.id);
+    orderByPosition(next, frame.id);
+    return next;
+  },
+};
+
 // ---- registry ----
 export const commands = {
   create_element: createElement,
@@ -283,6 +371,8 @@ export const commands = {
   delete_elements: deleteElements,
   reparent_elements: reparentElements,
   paste_elements: pasteElements,
+  set_layout: setLayout,
+  wrap_in_layout: wrapInLayout,
 } as const;
 
 export type CommandName = keyof typeof commands;
@@ -290,7 +380,7 @@ export type CommandName = keyof typeof commands;
 type ArgsOf<N extends CommandName> = (typeof commands)[N] extends CommandDef<infer A> ? A : never;
 
 export function runCommand<N extends CommandName>(doc: Doc, name: N, args: ArgsOf<N>): Doc {
-  return (commands[name] as CommandDef<ArgsOf<N>>).run(doc, args);
+  return relayout((commands[name] as CommandDef<ArgsOf<N>>).run(doc, args));
 }
 
 export function commandLabel<N extends CommandName>(name: N, args: ArgsOf<N>): string {

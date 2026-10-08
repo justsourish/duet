@@ -178,6 +178,9 @@ button {
 .f > span {
   color: var(--muted);
   min-width: 14px;
+  flex: none;
+  white-space: nowrap;
+  margin-right: 4px;
 }
 .f input {
   width: 100%;

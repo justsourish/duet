@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runCommand } from "../commands";
 import { descendants, frameAt, hitTest, snapRect, topLevelOnly, worldPos, worldRect } from "../document/geometry";
 import { emptyDoc } from "../document/types";
+import { defaultLayout, relayout } from "../document/layout";
 import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
 import { resizeRect } from "../canvas/handles";
 import {
@@ -626,5 +627,103 @@ describe("editing the points of a line", () => {
     expect(removeNode([corner(0, 0), corner(1, 1)], false, 0)).toHaveLength(2);
     expect(removeNode([corner(0, 0), corner(1, 1), corner(2, 0)], true, 0)).toHaveLength(3);
     expect(removeNode([corner(0, 0), corner(1, 1), corner(2, 0)], false, 1)).toHaveLength(2);
+  });
+});
+
+describe("auto layout", () => {
+  const stack = (layout: Partial<NonNullable<import("../document/types").El["layout"]>> = {}) => {
+    let d = frame("box"); // 300 by 400 at 100,50
+    for (const [id, w, h] of [["a", 100, 40], ["b", 80, 60], ["c", 120, 20]] as const) {
+      d = runCommand(d, "create_element", { id, type: "rect", parentId: "box", x: 0, y: 0, width: w, height: h });
+    }
+    return runCommand(d, "set_props", { ids: ["box"], props: { layout: { ...defaultLayout(), ...layout } } });
+  };
+  const at = (d: ReturnType<typeof stack>, id: string) => [d.elements[id].x, d.elements[id].y];
+
+  it("stacks children in a column with a gap and padding", () => {
+    const d = stack({ dir: "column", gap: 10, padX: 20, padY: 30 });
+    expect(at(d, "a")).toEqual([20, 30]);
+    expect(at(d, "b")).toEqual([20, 80]);
+    expect(at(d, "c")).toEqual([20, 150]);
+  });
+
+  it("lines children up in a row", () => {
+    const d = stack({ dir: "row", gap: 8, padX: 10, padY: 10 });
+    expect(at(d, "a")).toEqual([10, 10]);
+    expect(at(d, "b")).toEqual([118, 10]);
+    expect(at(d, "c")).toEqual([206, 10]);
+  });
+
+  it("centres children across the direction", () => {
+    const d = stack({ dir: "column", align: "center", padX: 0, padY: 0, gap: 0 });
+    expect(d.elements.a.x).toBe(100); // (300 - 100) / 2
+    expect(d.elements.b.x).toBe(110);
+  });
+
+  it("spreads children with equal space between", () => {
+    const d = stack({ dir: "column", justify: "between", padX: 0, padY: 0, gap: 0 });
+    expect(d.elements.a.y).toBe(0);
+    expect(d.elements.c.y).toBe(380); // 400 - 20
+    expect(d.elements.b.y).toBe(180); // equal gaps of 140: 40 + 140
+  });
+
+  it("hugs its content", () => {
+    const d = stack({ dir: "column", gap: 10, padX: 20, padY: 30, hug: true });
+    expect(d.elements.box.height).toBe(30 + 40 + 10 + 60 + 10 + 20 + 30);
+    expect(d.elements.box.width).toBe(20 + 120 + 20);
+  });
+
+  it("stretches children across the frame", () => {
+    const d = stack({ dir: "column", align: "stretch", padX: 10, padY: 0, gap: 0 });
+    expect(d.elements.a.width).toBe(280);
+    expect(d.elements.c.width).toBe(280);
+  });
+
+  it("lets a child grow to fill the free space", () => {
+    let d = stack({ dir: "column", gap: 0, padX: 0, padY: 0 });
+    d = runCommand(d, "set_props", { ids: ["b"], props: { grow: 1 } });
+    expect(d.elements.b.height).toBe(400 - 40 - 20);
+    expect(d.elements.c.y).toBe(380);
+  });
+
+  it("reorders when a child is moved past another", () => {
+    let d = stack({ dir: "column", gap: 0, padX: 0, padY: 0 });
+    d = runCommand(d, "move_elements", { ids: ["a"], dx: 0, dy: 200 });
+    expect(d.elements.box.childIds).toEqual(["b", "c", "a"]);
+  });
+
+  it("changes nothing when no frame uses it", () => {
+    const d = frame("plain");
+    expect(relayout(d)).toBe(d);
+  });
+
+  it("saves and reopens a layout, and leaves other files unchanged", () => {
+    const d = stack({ dir: "row" });
+    expect(parseDoc(serializeDoc(d)).elements.box.layout?.dir).toBe("row");
+    expect(serializeDoc(frame())).not.toContain('"layout"');
+  });
+});
+
+describe("wrapping in auto layout", () => {
+  it("puts selected siblings in a new frame that hugs them", () => {
+    let d = frame("box");
+    d = runCommand(d, "create_element", { id: "a", type: "rect", parentId: "box", x: 20, y: 30, width: 50, height: 50 });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", parentId: "box", x: 120, y: 40, width: 60, height: 40 });
+    d = runCommand(d, "wrap_in_layout", { ids: ["a", "b"], frameId: "wrap" });
+    expect(d.elements.a.parentId).toBe("wrap");
+    expect(d.elements.box.childIds).toEqual(["wrap"]);
+    expect(d.elements.wrap.layout?.hug).toBe(true);
+    expect(d.elements.wrap.layout?.dir).toBe("row");
+    // 50 + 12 + 60 wide, as tall as the tallest
+    expect([d.elements.wrap.width, d.elements.wrap.height]).toEqual([122, 50]);
+    expect([d.elements.wrap.x, d.elements.wrap.y]).toEqual([20, 30]);
+  });
+
+  it("will not wrap things that live in different frames", () => {
+    let d = runCommand(frame("one"), "create_element", { id: "two", type: "frame", x: 500, y: 0, width: 100, height: 100 });
+    d = runCommand(d, "create_element", { id: "a", type: "rect", parentId: "one", x: 0, y: 0, width: 10, height: 10 });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", parentId: "two", x: 0, y: 0, width: 10, height: 10 });
+    const same = runCommand(d, "wrap_in_layout", { ids: ["a", "b"], frameId: "wrap" });
+    expect(same.elements.wrap).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { currentDoc, dispatch, useStore } from "../state/store";
-import type { El } from "../document/types";
+import type { El, Layout } from "../document/types";
+import { defaultLayout } from "../document/layout";
 import { measureText } from "../canvas/text";
 
 function NumField({ label, value, onCommit, min }: { label: string; value: number | ""; onCommit: (n: number) => void; min?: number }) {
@@ -56,6 +57,56 @@ function ColorField({ value, onCommit, none }: { value: string | null; onCommit:
           if (e.key === "Enter") e.currentTarget.blur();
         }}
       />
+    </div>
+  );
+}
+
+function Seg<T extends string>({ value, options, onPick }: { value: T; options: [T, string][]; onPick: (v: T) => void }) {
+  return (
+    <div className="seg2">
+      {options.map(([v, label]) => (
+        <span key={v} className={value === v ? "on" : ""} onClick={() => onPick(v)}>
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LayoutSection({ frame }: { frame: El }) {
+  const l = frame.layout;
+  if (!l) {
+    return (
+      <div className="sec">
+        <h4>Auto layout</h4>
+        <div className="linkbtn" onClick={() => dispatch("set_layout", { id: frame.id, layout: defaultLayout() })}>
+          + Add auto layout
+        </div>
+        <div className="hint2">Lines up what is inside this frame. Shortcut: Shift A.</div>
+      </div>
+    );
+  }
+  const change = (patch: Partial<Layout>, label: string) => dispatch("set_props", { ids: [frame.id], props: { layout: { ...l, ...patch } }, label });
+  return (
+    <div className="sec">
+      <h4>Auto layout</h4>
+      <Seg value={l.dir} options={[["column", "Vertical"], ["row", "Horizontal"]]} onPick={(dir) => change({ dir }, "Change direction")} />
+      <div className="gap" />
+      <div className="field">
+        <NumField label="Gap" value={l.gap} min={0} onCommit={(n) => change({ gap: n }, "Change gap")} />
+        <div />
+        <NumField label="Pad X" value={l.padX} min={0} onCommit={(n) => change({ padX: n }, "Change padding")} />
+        <NumField label="Pad Y" value={l.padY} min={0} onCommit={(n) => change({ padY: n }, "Change padding")} />
+      </div>
+      <div className="gap" />
+      <Seg value={l.align} options={[["start", "Start"], ["center", "Middle"], ["end", "End"], ["stretch", "Stretch"]]} onPick={(align) => change({ align }, "Change alignment")} />
+      <div className="gap" />
+      <Seg value={l.justify} options={l.dir === "row" ? [["start", "Left"], ["center", "Centre"], ["end", "Right"], ["between", "Spread"]] : [["start", "Top"], ["center", "Centre"], ["end", "Bottom"], ["between", "Spread"]]} onPick={(justify) => change({ justify }, "Change spacing")} />
+      <div className="gap" />
+      <Seg value={l.hug ? "hug" : "fixed"} options={[["hug", "Hug content"], ["fixed", "Fixed size"]]} onPick={(v) => change({ hug: v === "hug" }, "Change sizing")} />
+      <div className="linkbtn" style={{ marginTop: 10 }} onClick={() => dispatch("set_layout", { id: frame.id, layout: null })}>
+        Remove auto layout
+      </div>
     </div>
   );
 }
@@ -146,6 +197,15 @@ export default function PropertiesPanel() {
           ) : (
             <ColorField value={first.fill} onCommit={(c) => c && set({ fill: c }, "Change fill")} />
           )}
+        </div>
+      )}
+
+      {one?.type === "frame" && <LayoutSection frame={one} />}
+
+      {one && one.parentId && doc.elements[one.parentId]?.layout && (
+        <div className="sec">
+          <h4>In auto layout</h4>
+          <Seg value={one.grow ? "fill" : "keep"} options={[["keep", "Keep size"], ["fill", "Fill space"]]} onPick={(v) => set({ grow: v === "fill" ? 1 : 0 }, "Change sizing")} />
         </div>
       )}
 

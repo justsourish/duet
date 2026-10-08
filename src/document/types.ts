@@ -12,6 +12,20 @@ export interface PathNode {
   oy: number;
 }
 
+/** Lines up a frame's children in a row or a column. */
+export interface Layout {
+  dir: "row" | "column";
+  gap: number;
+  padX: number;
+  padY: number;
+  /** Across the direction: start, centre, end, or stretch to fill the frame. */
+  align: "start" | "center" | "end" | "stretch";
+  /** Along the direction: where the children sit, or spread out with equal space between. */
+  justify: "start" | "center" | "end" | "between";
+  /** Shrink the frame to fit what is inside it. */
+  hug: boolean;
+}
+
 export interface Shadow {
   x: number;
   y: number;
@@ -49,6 +63,10 @@ export interface El {
   gradient: Gradient | null;
   /** For images: where the picture file lives inside the project, like assets/3fa9c1.png. */
   src: string;
+  /** For frames: auto layout, or null to place children by hand. */
+  layout: Layout | null;
+  /** Inside an auto layout frame: 1 to grow and fill the free space along the direction, 0 to keep its size. */
+  grow: number;
   /** For drawn lines: the points, and whether the line joins back to its start. */
   nodes: PathNode[];
   closed: boolean;
