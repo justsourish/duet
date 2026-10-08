@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { exportDesign } from "../project/exporter";
 import { getRecents, inTauri, newProject, openProject, openProjectAt, saveNow } from "../project/project";
 import { currentDoc, getState, redo, undo } from "../state/store";
+import { getLayout, resetLayout, setLayout } from "./layout";
 import { deleteSelection, detachSelection, duplicateSelection, groupSelection, makeComponent, toggleAutoLayout, toggleLock, ungroupSelection } from "./actions";
 
 /**
@@ -96,6 +97,11 @@ export async function installMenu() {
       await item("Actual size", () => send("duet:zoom", 1), "CmdOrCtrl+0"),
       await item("Fit everything", () => send("duet:fit")),
       await item("Zoom to selection", () => send("duet:fit-selection")),
+      await line(),
+      await item("Show or hide the layers panel", () => setLayout({ leftHidden: !getLayout().leftHidden }), "CmdOrCtrl+Alt+1"),
+      await item("Show or hide the design panel", () => setLayout({ rightHidden: !getLayout().rightHidden }), "CmdOrCtrl+Alt+2"),
+      await item("Swap the panel sides", () => setLayout({ swapped: !getLayout().swapped })),
+      await item("Reset the layout", resetLayout),
       await line(),
       await MenuItem.new({ text: "Present", enabled: hasFrames(), action: () => send("duet:present"), accelerator: "CmdOrCtrl+Enter" }),
       await line(),

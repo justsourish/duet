@@ -1,6 +1,6 @@
 /** One icon set for the whole app: 24 grid, round ends, same stroke weight everywhere. */
 
-export type IconName = "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "image" | "pen" | "group" | "lock" | "unlock" | "component" | "instance";
+export type IconName = "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "image" | "pen" | "group" | "lock" | "unlock" | "component" | "instance" | "panel-left" | "panel-right";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   move: <path d="M5.5 3.5l13 6.3-5.7 1.8-1.8 5.9z" />,
@@ -12,6 +12,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M4 8V5.5A1.5 1.5 0 015.5 4H8M16 4h2.5A1.5 1.5 0 0120 5.5V8M20 16v2.5a1.5 1.5 0 01-1.5 1.5H16M8 20H5.5A1.5 1.5 0 014 18.5V16" />
       <rect x="9" y="9" width="6" height="6" rx="1" />
+    </>
+  ),
+  "panel-left": (
+    <>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M9.5 5v14" />
+    </>
+  ),
+  "panel-right": (
+    <>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M14.5 5v14" />
     </>
   ),
   component: <path d="M12 3.5l6 6-6 6-6-6zM12 15.5l3 3-3 3-3-3z" />,

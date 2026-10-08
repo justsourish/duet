@@ -1254,3 +1254,64 @@ button {
 .home-empty li {
   margin: 4px 0;
 }
+
+/* panels you can move, resize and hide */
+.app.swapped .left {
+  margin: 8px 8px 8px 0;
+}
+.app.swapped .right {
+  margin: 8px 0 8px 8px;
+}
+.grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 20;
+  cursor: col-resize;
+}
+.grip-l {
+  left: 0;
+}
+.grip-r {
+  right: 0;
+}
+.grip:hover {
+  background: var(--accent-soft);
+}
+.pill.icon {
+  padding: 5px 8px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+}
+.pill.icon.on {
+  color: var(--text);
+}
+.chat.c-tl {
+  left: 16px;
+  top: 16px;
+  right: auto;
+  bottom: auto;
+}
+.chat.c-tr {
+  right: 16px;
+  top: 16px;
+  bottom: auto;
+}
+.chat.c-bl {
+  left: 16px;
+  bottom: 16px;
+  right: auto;
+}
+.chat.free {
+  right: auto;
+  bottom: auto;
+}
+.chat.moving {
+  transition: none;
+  opacity: 0.92;
+}
+.chead {
+  touch-action: none;
+}

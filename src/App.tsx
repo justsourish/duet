@@ -8,6 +8,8 @@ import { inTauri, newProject, openProject, restoreLast, saveNow, startAutosave }
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import ContextMenu from "./ui/ContextMenu";
 import { installMenu } from "./ui/menu";
+import { clampW, getLayout, setLayout, useLayout } from "./ui/layout";
+import Icon from "./ui/Icons";
 import Home from "./ui/Home";
 import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
@@ -26,6 +28,28 @@ const STATUS: Record<string, string> = {
   error: "Could not save",
 };
 
+/** A thin handle on the edge of the canvas: drag it to make the panel next to it wider or narrower. */
+function Grip({ side }: { side: "l" | "r" }) {
+  const dock = useLayout((d) => d);
+  // which panel is on this side of the canvas
+  const key = (side === "l") !== dock.swapped ? "leftW" : "rightW";
+  const hidden = key === "leftW" ? dock.leftHidden : dock.rightHidden;
+  if (hidden) return null;
+  const down = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = getLayout()[key];
+    const move = (m: PointerEvent) => setLayout({ [key]: clampW(startW + (side === "l" ? m.clientX - startX : startX - m.clientX)) });
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return <div className={`grip grip-${side}`} onPointerDown={down} onDoubleClick={() => setLayout({ [key]: key === "leftW" ? 232 : 248 })} title="Drag to resize. Double-click to reset." />;
+}
+
 export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);
   const project = useStore((s) => s.project);
@@ -33,6 +57,7 @@ export default function App() {
   useDismiss(zoomMenu, () => setZoomMenu(false), ".zoomwrap.zoomonly");
   const [presenting, setPresenting] = useState(false);
   const [home, setHome] = useState(false);
+  const dock = useLayout((d) => d);
   const hasFrames = useStore((s) => Object.values(s.timeline[s.cursor].doc.elements).some((e) => e.type === "frame"));
 
   useEffect(() => {
@@ -89,8 +114,16 @@ export default function App() {
     };
   }, []);
 
+  // The grid follows the panels: their widths, which side they are on, and whether they are shown.
+  const lw = dock.leftHidden ? 0 : dock.leftW;
+  const rw = dock.rightHidden ? 0 : dock.rightW;
+  const appStyle = {
+    gridTemplateColumns: dock.swapped ? `${rw}px 1fr ${lw}px` : `${lw}px 1fr ${rw}px`,
+    gridTemplateAreas: dock.swapped ? '"top top top" "right canvas left" "hist hist hist"' : '"top top top" "left canvas right" "hist hist hist"',
+  };
+
   return (
-    <div className="app">
+    <div className={`app ${dock.swapped ? "swapped" : ""}`} style={appStyle}>
       <header className="top">
         <span className="logo">
           Du<b>et</b>
@@ -122,6 +155,12 @@ export default function App() {
         <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
           Present
         </button>
+        <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
+          <Icon name="panel-left" size={15} />
+        </button>
+        <button className={`pill icon ${dock.rightHidden ? "" : "on"}`} title="Show or hide the design panel" onClick={() => setLayout({ rightHidden: !dock.rightHidden })}>
+          <Icon name="panel-right" size={15} />
+        </button>
         <ExportMenu />
         <div className="zoomwrap zoomonly">
           <button className="pill" onClick={() => setZoomMenu(!zoomMenu)} title="Zoom">
@@ -144,13 +183,15 @@ export default function App() {
           )}
         </div>
       </header>
-      <LayersPanel />
+      {!dock.leftHidden && <LayersPanel />}
       <main className="canvas">
         <CanvasView />
+        <Grip side="l" />
+        <Grip side="r" />
         <Toolbar />
         <ChatPanel />
       </main>
-      <PropertiesPanel />
+      {!dock.rightHidden && <PropertiesPanel />}
       <HistoryStrip />
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />

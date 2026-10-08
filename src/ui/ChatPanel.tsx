@@ -8,6 +8,8 @@ import type { AgentId } from "../ai/chat";
 import type { Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { useStore } from "../state/store";
+import { setLayout, useLayout } from "./layout";
+import type { Corner } from "./layout";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
   { mode: "suggest", label: "Suggest", hint: "Duet only suggests. Nothing changes until you tap Apply." },
@@ -36,6 +38,49 @@ export default function ChatPanel() {
   }, [agent, agyModels.length]);
   const modelList = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
   const cursor = useStore((s) => s.cursor);
+  const place = useLayout((d) => d.chat);
+  const box = useRef<HTMLDivElement>(null);
+  const [moving, setMoving] = useState<{ x: number; y: number } | null>(null);
+  const justMoved = useRef(false);
+
+  /** Drag the chat by its title. Let go near a corner and it snaps there. Anywhere else, it stays put. */
+  const grab = (e: React.PointerEvent) => {
+    if ((e.target as Element).closest(".mode") || e.button !== 0) return;
+    const el = box.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+    const b = el.getBoundingClientRect();
+    const p = parent.getBoundingClientRect();
+    const start = { px: e.clientX, py: e.clientY, ox: b.left - p.left, oy: b.top - p.top };
+    let dragged = false;
+    const at = (m: PointerEvent) => ({
+      x: Math.max(0, Math.min(p.width - b.width, start.ox + m.clientX - start.px)),
+      y: Math.max(0, Math.min(p.height - b.height, start.oy + m.clientY - start.py)),
+    });
+    const move = (m: PointerEvent) => {
+      if (!dragged && Math.hypot(m.clientX - start.px, m.clientY - start.py) < 5) return;
+      dragged = true;
+      setMoving(at(m));
+    };
+    const up = (m: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (!dragged) return;
+      justMoved.current = true;
+      setTimeout(() => (justMoved.current = false), 0);
+      const pos = at(m);
+      const near = 110;
+      const left = pos.x < near;
+      const right = p.width - (pos.x + b.width) < near;
+      const top = pos.y < near;
+      const bottom = p.height - (pos.y + b.height) < near;
+      setMoving(null);
+      if ((left || right) && (top || bottom)) setLayout({ chat: { corner: `${top ? "t" : "b"}${left ? "l" : "r"}` as Corner } });
+      else setLayout({ chat: { x: pos.x, y: pos.y } });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
@@ -50,8 +95,17 @@ export default function ChatPanel() {
   };
 
   return (
-    <div className={`chat ${minimized ? "min" : ""}`}>
-      <div className="chead" onClick={() => setMinimized(!minimized)}>
+    <div
+      ref={box}
+      className={`chat ${minimized ? "min" : ""} ${moving ? "moving free" : "corner" in place ? `c-${place.corner}` : "free"}`}
+      style={moving ? { left: moving.x, top: moving.y } : "x" in place ? { left: place.x, top: place.y } : undefined}
+    >
+      <div
+        className="chead"
+        onPointerDown={grab}
+        title="Drag to move me. Let go near a corner and I will snap there."
+        onClick={() => !justMoved.current && setMinimized(!minimized)}
+      >
         <div className="av">D</div>
         <div className="ctitle">Duet</div>
         <div className="mode" onClick={(e) => e.stopPropagation()}>
