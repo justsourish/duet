@@ -438,19 +438,57 @@ export default function PropertiesPanel() {
       {one && frames.length > 0 && (
         <div className="sec">
           <h4>Prototype</h4>
-          <label className="f">
-            <span>Opens</span>
-            <select value={one.link ?? ""} onChange={(e) => set({ link: e.target.value || null }, e.target.value ? "Link to a screen" : "Remove link")}>
-              <option value="">Nothing</option>
-              {frames
-                .filter((f) => f.id !== one.id)
-                .map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <Seg
+            value={one.linkKind === "back" ? "back" : one.linkKind === "overlay" ? "overlay" : "go"}
+            options={[["go", "Go to"], ["overlay", "Open on top"], ["back", "Go back"]]}
+            onPick={(v) => set({ linkKind: v === "go" ? "" : (v as "overlay" | "back") }, "Change what a click does")}
+          />
+          {one.linkKind !== "back" && (
+            <>
+              <div className="gap" />
+              <label className="f">
+                <span>Screen</span>
+                <select value={one.link ?? ""} onChange={(e) => set({ link: e.target.value || null }, e.target.value ? "Link to a screen" : "Remove link")}>
+                  <option value="">Nothing</option>
+                  {frames
+                    .filter((f) => f.id !== one.id && !f.id.includes("::"))
+                    .map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </>
+          )}
+          {(one.link || one.linkKind === "back") && (
+            <>
+              <div className="gap" />
+              <label className="f">
+                <span>Moves</span>
+                <select value={one.transition} onChange={(e) => set({ transition: e.target.value }, "Change the animation")}>
+                  <option value="">Instantly</option>
+                  <option value="dissolve">Dissolve</option>
+                  <option value="push-left">Push left</option>
+                  <option value="push-right">Push right</option>
+                  <option value="push-up">Push up</option>
+                  <option value="push-down">Push down</option>
+                </select>
+              </label>
+              {one.transition && (
+                <>
+                  <div className="gap" />
+                  <NumField label="Ms" value={one.transitionMs || 300} min={50} onCommit={(n) => set({ transitionMs: Math.round(n) }, "Change the animation time")} />
+                </>
+              )}
+            </>
+          )}
+          {one.type === "frame" && !one.parentId && (
+            <>
+              <div className="gap" />
+              <Seg value={one.scroll ? "on" : "off"} options={[["off", "Fixed"], ["on", "Scrolls in Present"]]} onPick={(v) => set({ scroll: v === "on" }, "Change scrolling")} />
+            </>
+          )}
           <div className="hint2">Press Present at the top to click through your screens.</div>
         </div>
       )}

@@ -20,7 +20,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Layers panel with drag and drop in and out of frames. Properties for position, size, corners, fill, gradient, stroke, shadow, opacity and text.
 - Copy, paste and duplicate (Cmd or Ctrl + D), including between projects.
 - Export PNG (1x, 2x, 3x) and SVG, for one thing or every screen.
-- Prototype in its first form: link a shape to another screen, press Present, and click through.
+- Prototype: link anything to a screen and choose what a click does (go there, open it on top as an overlay, or go back), how it arrives (dissolve or push in any direction, with its own time), and let tall screens scroll. Press Present to click through, with an optional phone frame. Selecting a linked thing draws an arrow to its screen.
 - A project is one `.duet` file. It holds your design, your pictures and your whole history, and it saves itself as you work. You can export the design as plain JSON any time.
 - A history that survives closing the app, drawn as two lanes: **You** and **Duet**. Save a named version ("Client round 1") and go back to it any time. Nothing is ever lost when you go back.
 - A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
@@ -31,7 +31,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 Be honest with yourself before you try it for real work.
 
 - No variants, colour styles or boolean operations yet. Gradients are linear only, and there is one shadow per shape.
-- Prototyping is links between screens only. No transitions or animation yet.
+- Prototyping has no animation inside a screen yet, and no hover or timed triggers.
 - The AI chat works with **Claude Code** and the **Antigravity CLI** today (the command line tools, not the desktop apps). Codex and OpenCode are detected but not connected yet.
 - Windows builds are new and less tested than Mac. The AI chat on Windows is untested.
 - The app is not signed, so your computer will warn you the first time. See the install guide.

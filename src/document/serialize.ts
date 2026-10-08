@@ -29,6 +29,10 @@ const EL_KEYS: (keyof El)[] = [
   "shadow",
   "gradient",
   "link",
+  "linkKind",
+  "transition",
+  "transitionMs",
+  "scroll",
   "src",
   "component",
   "componentId",
@@ -42,6 +46,8 @@ const EL_KEYS: (keyof El)[] = [
 ];
 
 const TEXT_ONLY = new Set<keyof El>(["fontFamily", "fontWeight", "textAlign", "lineHeight", "letterSpacing", "textFixed", "textStyleId"]);
+
+const PROTOTYPE_ONLY = new Set<keyof El>(["linkKind", "transition", "transitionMs", "scroll"]);
 
 const FALLBACK: Omit<El, "id" | "type"> = {
   name: "Untitled",
@@ -67,6 +73,10 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   shadow: null,
   gradient: null,
   link: null,
+  linkKind: "",
+  transition: "",
+  transitionMs: 0,
+  scroll: false,
   src: "",
   component: false,
   componentId: "",
@@ -88,7 +98,7 @@ export function serializeDoc(doc: Doc): string {
     const ordered: Record<string, unknown> = {};
     for (const k of EL_KEYS) if (TEXT_ONLY.has(k) && (el.type !== "text" || el[k] === (FALLBACK as Record<string, unknown>)[k])) continue;
     else if (k === "childIds" && el.type === "instance") ordered[k] = [];
-    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
+    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (!PROTOTYPE_ONLY.has(k) || el[k] !== (FALLBACK as Record<string, unknown>)[k]) && (k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
   const out: Record<string, unknown> = { version: doc.version, rootIds: doc.rootIds, elements };

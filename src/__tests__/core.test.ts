@@ -471,7 +471,7 @@ describe("SVG export", () => {
   });
 });
 
-import { linkAt, startFrame } from "../ui/PresentView";
+import { linkAt, linkInfoAt, startFrame } from "../ui/PresentView";
 
 describe("present mode", () => {
   const flow = () => {
@@ -1064,5 +1064,54 @@ describe("the outline the AI reads", () => {
     const text = outline(scene(), ["r"]);
     expect(text).toContain('rect "Rectangle 1" r');
     expect(text).not.toContain("Hello");
+  });
+});
+
+describe("prototype", () => {
+  const screens = () => {
+    let d = runCommand(emptyDoc(), "create_element", { id: "home", type: "frame", x: 0, y: 0, width: 300, height: 500 });
+    d = runCommand(d, "create_element", { id: "detail", type: "frame", x: 400, y: 0, width: 300, height: 500 });
+    d = runCommand(d, "create_element", { id: "menu", type: "frame", x: 800, y: 0, width: 200, height: 300 });
+    d = runCommand(d, "create_element", { id: "btn", type: "rect", parentId: "home", x: 20, y: 20, width: 100, height: 40 });
+    d = runCommand(d, "create_element", { id: "more", type: "rect", parentId: "home", x: 20, y: 100, width: 100, height: 40 });
+    d = runCommand(d, "create_element", { id: "close", type: "rect", parentId: "menu", x: 10, y: 10, width: 40, height: 40 });
+    d = runCommand(d, "set_props", { ids: ["btn"], props: { link: "detail", transition: "push-left", transitionMs: 450 } });
+    d = runCommand(d, "set_props", { ids: ["more"], props: { link: "menu", linkKind: "overlay", transition: "dissolve" } });
+    d = runCommand(d, "set_props", { ids: ["close"], props: { linkKind: "back" } });
+    return d;
+  };
+
+  it("knows how a click arrives, and for how long", () => {
+    const info = linkInfoAt(screens(), "home", 30, 30);
+    expect(info).toEqual({ kind: "go", target: "detail", transition: "push-left", ms: 450 });
+  });
+
+  it("uses 300 milliseconds when no time is set", () => {
+    expect(linkInfoAt(screens(), "home", 30, 110)).toMatchObject({ kind: "overlay", target: "menu", transition: "dissolve", ms: 300 });
+  });
+
+  it("treats a back button as going back, with no screen to go to", () => {
+    expect(linkInfoAt(screens(), "menu", 820, 20)).toMatchObject({ kind: "back", target: null });
+  });
+
+  it("does nothing when a click lands on something with no link", () => {
+    expect(linkInfoAt(screens(), "home", 250, 400)).toBeNull();
+  });
+
+  it("still tells which screen a click goes to", () => {
+    expect(linkAt(screens(), "home", 30, 30)).toBe("detail");
+    expect(linkAt(screens(), "menu", 820, 20)).toBeNull();
+  });
+
+  it("saves the animation, the action and scrolling, and leaves other files alone", () => {
+    let d = screens();
+    d = runCommand(d, "set_props", { ids: ["home"], props: { scroll: true } });
+    const back = parseDoc(serializeDoc(d));
+    expect(back.elements.btn).toMatchObject({ transition: "push-left", transitionMs: 450, linkKind: "" });
+    expect(back.elements.more.linkKind).toBe("overlay");
+    expect(back.elements.close.linkKind).toBe("back");
+    expect(back.elements.home.scroll).toBe(true);
+    const plain = serializeDoc(frame());
+    for (const k of ["linkKind", "transition", "transitionMs", "scroll"]) expect(plain).not.toContain(`"${k}"`);
   });
 });

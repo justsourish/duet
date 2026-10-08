@@ -8,6 +8,9 @@ import { getPicture } from "../project/assets";
 import { HANDLES } from "./handles";
 import { FONT_STACK, fontCss, layoutText, lineStep, lineWidth, measureText } from "./text";
 
+/** How far each scrolling screen is scrolled while presenting. Empty in the editor. */
+export const presentScroll: Record<string, number> = {};
+
 export const COLORS = {
   bg: "#141417",
   dot: "#2a2a31",
@@ -222,6 +225,8 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
       roundedPath(ctx, x, y, el.width, el.height, el.radius);
     }
     ctx.clip();
+    const scrolled = presentScroll[el.id] ?? 0;
+    if (scrolled) ctx.translate(0, -scrolled);
     for (const id of el.childIds) {
       const child = doc.elements[id];
       if (child) drawElement(ctx, doc, child, x, y);
@@ -329,6 +334,38 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     const ww = Math.max(...wr.map((r) => r.x + r.width)) - Math.min(...wr.map((r) => r.x));
     const wh = Math.max(...wr.map((r) => r.y + r.height)) - Math.min(...wr.map((r) => r.y));
     pill(ctx, `${Math.round(ww)} × ${Math.round(wh)}`, (x1 + x2) / 2, y2 + 10);
+  }
+
+  // where the selected thing leads when presenting: an arrow to that screen
+  for (const id of s.selection) {
+    const el = doc.elements[id];
+    const target = el?.link ? doc.elements[el.link] : null;
+    if (!el || !target || target.type !== "frame") continue;
+    const a = screenRect(s, worldRect(doc, id));
+    const b = screenRect(s, worldRect(doc, target.id));
+    const from = { x: a.x + a.width / 2, y: a.y + a.height / 2 };
+    const goesRight = b.x > a.x + a.width / 2;
+    const to = { x: goesRight ? b.x : b.x + b.width, y: Math.max(b.y + 24, Math.min(b.y + b.height - 24, from.y)) };
+    const bend = Math.max(40, Math.abs(to.x - from.x) / 2);
+    ctx.strokeStyle = COLORS.accent;
+    ctx.fillStyle = COLORS.accent;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(el.linkKind === "overlay" ? [6, 5] : []);
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.bezierCurveTo(from.x + (goesRight ? bend : -bend), from.y, to.x + (goesRight ? -bend : bend), to.y, to.x, to.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const dir = goesRight ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - dir * 9, to.y - 5);
+    ctx.lineTo(to.x - dir * 9, to.y + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(from.x, from.y, 4, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // the points of a line being edited
