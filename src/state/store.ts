@@ -26,7 +26,16 @@ export interface Overlay {
   hoverId: string | null;
 }
 
+export interface Project {
+  /** Folder that holds design.json. Null while the work has not been saved anywhere. */
+  path: string | null;
+  name: string;
+  status: "unsaved" | "saving" | "saved" | "error";
+  error: string | null;
+}
+
 export interface State {
+  project: Project;
   timeline: HistoryEntry[];
   cursor: number;
   /** Live preview while dragging. Not in history until committed. */
@@ -41,6 +50,7 @@ export interface State {
 const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null });
 
 const initial = (): State => ({
+  project: { path: null, name: "Untitled", status: "unsaved", error: null },
   timeline: [{ doc: emptyDoc(), label: "New file", actor: "you" }],
   cursor: 0,
   transientDoc: null,
@@ -129,6 +139,22 @@ export function dragCommit(label: string, actor: Actor = "you") {
 
 export function dragCancel() {
   set({ transientDoc: null });
+}
+
+// ---- project ----
+
+export const setProject = (patch: Partial<Project>) => set({ project: { ...state.project, ...patch } });
+
+/** Replace everything with a freshly opened document. History starts over. */
+export function loadDoc(doc: Doc, label = "Opened") {
+  set({
+    timeline: [{ doc, label, actor: "you" }],
+    cursor: 0,
+    transientDoc: null,
+    selection: [],
+    editingId: null,
+    overlay: noOverlay(),
+  });
 }
 
 // ---- history ----

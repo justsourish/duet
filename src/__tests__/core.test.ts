@@ -194,3 +194,41 @@ describe("store and history", () => {
     expect(getState().selection).toEqual([]);
   });
 });
+
+import { DesignFileError, parseDoc, serializeDoc } from "../document/serialize";
+
+describe("design file", () => {
+  const sample = () => {
+    let d = runCommand(emptyDoc(), "create_element", { id: "z-frame", type: "frame", x: 0, y: 0, width: 300, height: 300 });
+    d = runCommand(d, "create_element", { id: "a-rect", type: "rect", x: 5, y: 5, width: 50, height: 50, parentId: "z-frame" });
+    return d;
+  };
+
+  it("round-trips exactly", () => {
+    const doc = sample();
+    expect(parseDoc(serializeDoc(doc))).toEqual(doc);
+  });
+
+  it("writes elements sorted by id, so diffs stay small", () => {
+    const keys = Object.keys(JSON.parse(serializeDoc(sample())).elements);
+    expect(keys).toEqual(["a-rect", "z-frame"]);
+  });
+
+  it("gives the same text for the same design", () => {
+    expect(serializeDoc(sample())).toBe(serializeDoc(sample()));
+  });
+
+  it("fills in missing properties from older files", () => {
+    const text = JSON.stringify({ version: 1, rootIds: ["a"], elements: { a: { type: "rect", x: 1, y: 2 } } });
+    const doc = parseDoc(text);
+    expect(doc.elements.a.width).toBe(100);
+    expect(doc.elements.a.childIds).toEqual([]);
+  });
+
+  it("rejects things that are not design files", () => {
+    expect(() => parseDoc("hello")).toThrow(DesignFileError);
+    expect(() => parseDoc("{}")).toThrow(DesignFileError);
+    expect(() => parseDoc(JSON.stringify({ version: 1, rootIds: ["x"], elements: {} }))).toThrow(DesignFileError);
+    expect(() => parseDoc(JSON.stringify({ version: 1, rootIds: [], elements: { a: { type: "star" } } }))).toThrow(DesignFileError);
+  });
+});

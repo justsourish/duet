@@ -371,3 +371,20 @@ button {
   font-size: 11px;
   z-index: 5;
 }
+
+/* project status */
+.status {
+  color: var(--muted);
+  font-size: 11px;
+}
+.status.saved {
+  color: #4ade80;
+}
+.status.error {
+  color: #f87171;
+}
+.pill.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
