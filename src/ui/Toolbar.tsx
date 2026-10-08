@@ -1,5 +1,6 @@
 import { setTool, useStore } from "../state/store";
 import type { Tool } from "../state/store";
+import { pickImages } from "../project/imageImport";
 import Icon from "./Icons";
 import type { IconName } from "./Icons";
 
@@ -26,6 +27,9 @@ export default function Toolbar() {
           <Icon name={t.icon} />
         </button>
       ))}
+      <button className="tool" title="Image (Shift Cmd K)" onClick={() => void pickImages()}>
+        <Icon name="image" />
+      </button>
     </div>
   );
 }

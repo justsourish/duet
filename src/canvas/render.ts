@@ -2,6 +2,7 @@ import { worldRect } from "../document/geometry";
 import type { Doc, El, Rect } from "../document/types";
 import { currentDoc } from "../state/store";
 import type { State } from "../state/store";
+import { getPicture } from "../project/assets";
 import { HANDLES } from "./handles";
 import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
 
@@ -52,6 +53,41 @@ export function makeGradient(ctx: CanvasRenderingContext2D, g: NonNullable<El["g
   return grad;
 }
 
+/** A picture, filled into its box without stretching (the extra is cropped), with rounded corners and a shadow. */
+function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
+  const pic = getPicture(el.src);
+  roundedPath(ctx, x, y, el.width, el.height, el.radius);
+  if (el.shadow) {
+    const k = ctx.getTransform().a;
+    ctx.shadowColor = el.shadow.color;
+    ctx.shadowBlur = el.shadow.blur * k;
+    ctx.shadowOffsetX = el.shadow.x * k;
+    ctx.shadowOffsetY = el.shadow.y * k;
+  }
+  ctx.fillStyle = pic ? "#ffffff" : "#2a2a31";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  if (pic) {
+    ctx.save();
+    roundedPath(ctx, x, y, el.width, el.height, el.radius);
+    ctx.clip();
+    const scale = Math.max(el.width / pic.naturalWidth, el.height / pic.naturalHeight);
+    const w = pic.naturalWidth * scale;
+    const h = pic.naturalHeight * scale;
+    ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+    ctx.restore();
+  }
+  if (el.stroke && el.strokeWidth > 0) {
+    roundedPath(ctx, x, y, el.width, el.height, el.radius);
+    ctx.strokeStyle = el.stroke;
+    ctx.lineWidth = el.strokeWidth;
+    ctx.stroke();
+  }
+}
+
 /** Draw an element and everything inside it. ox and oy are where its parent sits. */
 export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox: number, oy: number) {
   const x = ox + el.x;
@@ -64,6 +100,12 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
     ctx.font = `400 ${el.fontSize}px ${FONT_STACK}`;
     ctx.textBaseline = "top";
     el.text.split("\n").forEach((line, i) => ctx.fillText(line, x, y + i * el.fontSize * LINE_HEIGHT));
+    ctx.restore();
+    return;
+  }
+
+  if (el.type === "image") {
+    drawImage(ctx, el, x, y);
     ctx.restore();
     return;
   }

@@ -1,4 +1,4 @@
-export type ElementType = "frame" | "rect" | "ellipse" | "text";
+export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image";
 
 export interface Shadow {
   x: number;
@@ -35,6 +35,8 @@ export interface El {
   shadow: Shadow | null;
   /** A linear gradient used instead of the solid fill, or null. */
   gradient: Gradient | null;
+  /** For images: where the picture file lives inside the project, like assets/3fa9c1.png. */
+  src: string;
   /** In Present mode, clicking this takes you to the frame with this id. */
   link: string | null;
   childIds: string[];

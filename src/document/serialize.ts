@@ -20,6 +20,7 @@ const EL_KEYS: (keyof El)[] = [
   "shadow",
   "gradient",
   "link",
+  "src",
   "childIds",
 ];
 
@@ -40,6 +41,7 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   shadow: null,
   gradient: null,
   link: null,
+  src: "",
   childIds: [],
 };
 
@@ -49,7 +51,7 @@ export function serializeDoc(doc: Doc): string {
   for (const id of Object.keys(doc.elements).sort()) {
     const el = doc.elements[id];
     const ordered: Record<string, unknown> = {};
-    for (const k of EL_KEYS) ordered[k] = el[k];
+    for (const k of EL_KEYS) if (k !== "src" || el.type === "image") ordered[k] = el[k];
     elements[id] = ordered;
   }
   return JSON.stringify({ version: doc.version, rootIds: doc.rootIds, elements }, null, 2) + "\n";
@@ -57,7 +59,7 @@ export function serializeDoc(doc: Doc): string {
 
 export class DesignFileError extends Error {}
 
-const TYPES = new Set(["frame", "rect", "ellipse", "text"]);
+const TYPES = new Set(["frame", "rect", "ellipse", "text", "image"]);
 
 /** Parse and check a design file. Fills in missing properties so older files still open. */
 export function parseDoc(text: string): Doc {

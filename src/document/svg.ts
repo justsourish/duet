@@ -1,3 +1,4 @@
+import { assetUrl } from "../project/assets";
 import type { Doc, El } from "./types";
 
 const LINE_HEIGHT = 1.3;
@@ -31,6 +32,15 @@ export function toSvg(doc: Doc, id: string): string {
         .map((l, i) => `<tspan x="${num(x)}" y="${num(y + i * el.fontSize * LINE_HEIGHT)}">${esc(l)}</tspan>`)
         .join("");
       return `<text font-family="${esc(FONT)}" font-size="${num(el.fontSize)}" fill="${esc(el.fill)}" dominant-baseline="text-before-edge"${op}>${spans}</text>`;
+    }
+
+    if (el.type === "image") {
+      const url = assetUrl(el.src);
+      const r0 = Math.max(0, Math.min(el.radius, el.width / 2, el.height / 2));
+      const cid = `c${n++}`;
+      defs.push(`<clipPath id="${cid}"><rect x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}"${r0 ? ` rx="${num(r0)}"` : ""}/></clipPath>`);
+      if (!url) return "";
+      return `<g${op}><image href="${esc(url)}" x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${cid})"/></g>`;
     }
 
     let fill = esc(el.fill);

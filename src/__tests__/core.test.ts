@@ -486,3 +486,37 @@ describe("present mode", () => {
     expect(linkAt(d, "home", 100, 520)).toBeNull();
   });
 });
+
+describe("images", () => {
+  const withImage = () =>
+    runCommand(frame(), "create_element", {
+      id: "pic",
+      type: "image",
+      parentId: "f1",
+      x: 10,
+      y: 10,
+      width: 120,
+      height: 80,
+      props: { src: "assets/abc123.png", name: "Photo" },
+    });
+
+  it("keeps the picture's place in the project through save and open", () => {
+    const back = parseDoc(serializeDoc(withImage()));
+    expect(back.elements.pic.type).toBe("image");
+    expect(back.elements.pic.src).toBe("assets/abc123.png");
+  });
+
+  it("leaves old designs without a picture field, so their files do not change", () => {
+    expect(serializeDoc(frame())).not.toContain('"src"');
+  });
+
+  it("opens files that have no src at all", () => {
+    const text = serializeDoc(frame());
+    expect(parseDoc(text).elements.f1.src).toBe("");
+  });
+
+  it("writes a picture into the SVG export, clipped to its box", () => {
+    const svg = toSvg(withImage(), "f1");
+    expect(svg).toContain("<clipPath");
+  });
+});

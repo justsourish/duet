@@ -1,3 +1,4 @@
+import { flushPictures } from "./assets";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
 import { emptyDoc } from "../document/types";
@@ -47,6 +48,7 @@ async function oops(text: string) {
 }
 
 async function writeDesign(path: string, doc: Doc) {
+  await flushPictures(path, doc);
   await invoke("write_text_file", { path: join(path, FILE), contents: serializeDoc(doc) });
 }
 

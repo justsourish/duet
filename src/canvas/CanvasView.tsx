@@ -37,6 +37,7 @@ import {
 import type { Tool } from "../state/store";
 import { HANDLES, resizeRect } from "./handles";
 import type { HandleKey } from "./handles";
+import { pickImages, placeFiles } from "../project/imageImport";
 import { draw, labelRect, screenRect } from "./render";
 import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
 
@@ -53,6 +54,7 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   rect: { w: 120, h: 120 },
   ellipse: { w: 120, h: 120 },
   text: { w: 40, h: 21 },
+  image: { w: 240, h: 160 },
 };
 
 /** Copy of what was last copied inside this window, in case the system clipboard is unavailable. */
@@ -179,9 +181,11 @@ export default function CanvasView() {
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
     const unsub = subscribe(schedule);
+    window.addEventListener("duet:repaint", schedule);
     return () => {
       ro.disconnect();
       unsub();
+      window.removeEventListener("duet:repaint", schedule);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -506,6 +510,12 @@ export default function CanvasView() {
     const cut = (e: ClipboardEvent) => onCopy(e, true);
     const paste = (e: ClipboardEvent) => {
       if (typing(e.target)) return;
+      const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+      if (files.length) {
+        e.preventDefault();
+        void placeFiles(files);
+        return;
+      }
       const fromSystem = textToPayload(e.clipboardData?.getData("text/plain") ?? "");
       const payload = fromSystem ?? inMemoryClip;
       if (!payload) return;
@@ -556,6 +566,11 @@ export default function CanvasView() {
       if (mod && key === "a") {
         e.preventDefault();
         select([...currentDoc(s).rootIds]);
+        return;
+      }
+      if (mod && e.shiftKey && key === "k") {
+        e.preventDefault();
+        void pickImages();
         return;
       }
       if (mod && key === "d") {
@@ -653,7 +668,21 @@ export default function CanvasView() {
   }, [viewport, docNow]);
 
   return (
-    <div className="canvas-wrap" ref={wrapRef}>
+    <div
+      className="canvas-wrap"
+      ref={wrapRef}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        const rect = wrapRef.current?.getBoundingClientRect();
+        const vp = getState().viewport;
+        const at = rect ? { x: (e.clientX - rect.left - vp.x) / vp.zoom, y: (e.clientY - rect.top - vp.y) / vp.zoom } : undefined;
+        void placeFiles(Array.from(e.dataTransfer.files), at);
+      }}
+    >
       <canvas
         ref={canvasRef}
         onPointerDown={onPointerDown}

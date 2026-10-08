@@ -82,7 +82,8 @@ export default function PropertiesPanel() {
   const set = (props: Partial<El>, label?: string) => dispatch("set_props", { ids, props, label });
   const first = els[0];
   const allText = els.every((e) => e.type === "text");
-  const hasRadius = els.every((e) => e.type === "frame" || e.type === "rect");
+  const allImages = els.every((e) => e.type === "image");
+  const hasRadius = els.every((e) => e.type === "frame" || e.type === "rect" || e.type === "image");
 
   return (
     <aside className="right">
@@ -117,33 +118,35 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      <div className="sec">
-        <h4>{allText ? "Text colour" : "Fill"}</h4>
-        {!allText && (
-          <div className="seg2">
-            <span className={!first.gradient ? "on" : ""} onClick={() => first.gradient && set({ gradient: null }, "Use a solid fill")}>
-              Solid
-            </span>
-            <span
-              className={first.gradient ? "on" : ""}
-              onClick={() => !first.gradient && set({ gradient: { from: first.fill, to: "#7c5cff", angle: 90 } }, "Use a gradient")}
-            >
-              Gradient
-            </span>
-          </div>
-        )}
-        {first.gradient && !allText ? (
-          <>
-            <ColorField value={first.gradient.from} onCommit={(c) => c && set({ gradient: { ...first.gradient!, from: c } }, "Change gradient")} />
-            <div className="gap" />
-            <ColorField value={first.gradient.to} onCommit={(c) => c && set({ gradient: { ...first.gradient!, to: c } }, "Change gradient")} />
-            <div className="gap" />
-            <NumField label="Angle" value={first.gradient.angle} onCommit={(n) => set({ gradient: { ...first.gradient!, angle: n } }, "Change gradient angle")} />
-          </>
-        ) : (
-          <ColorField value={first.fill} onCommit={(c) => c && set({ fill: c }, "Change fill")} />
-        )}
-      </div>
+      {!allImages && (
+        <div className="sec">
+          <h4>{allText ? "Text colour" : "Fill"}</h4>
+          {!allText && (
+            <div className="seg2">
+              <span className={!first.gradient ? "on" : ""} onClick={() => first.gradient && set({ gradient: null }, "Use a solid fill")}>
+                Solid
+              </span>
+              <span
+                className={first.gradient ? "on" : ""}
+                onClick={() => !first.gradient && set({ gradient: { from: first.fill, to: "#7c5cff", angle: 90 } }, "Use a gradient")}
+              >
+                Gradient
+              </span>
+            </div>
+          )}
+          {first.gradient && !allText ? (
+            <>
+              <ColorField value={first.gradient.from} onCommit={(c) => c && set({ gradient: { ...first.gradient!, from: c } }, "Change gradient")} />
+              <div className="gap" />
+              <ColorField value={first.gradient.to} onCommit={(c) => c && set({ gradient: { ...first.gradient!, to: c } }, "Change gradient")} />
+              <div className="gap" />
+              <NumField label="Angle" value={first.gradient.angle} onCommit={(n) => set({ gradient: { ...first.gradient!, angle: n } }, "Change gradient angle")} />
+            </>
+          ) : (
+            <ColorField value={first.fill} onCommit={(c) => c && set({ fill: c }, "Change fill")} />
+          )}
+        </div>
+      )}
 
       {!allText && (
         <div className="sec">

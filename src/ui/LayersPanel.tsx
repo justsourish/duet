@@ -12,7 +12,7 @@ interface Drop {
 }
 
 function LayerIcon({ type }: { type: El["type"] }) {
-  const name = type === "text" ? "text" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
+  const name = type === "text" ? "text" : type === "image" ? "image" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
   return <Icon name={name} size={14} className="ico" />;
 }
 

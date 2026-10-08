@@ -47,6 +47,14 @@ fn write_binary_file(path: String, data_base64: String) -> Result<(), String> {
     fs::rename(&tmp, target).map_err(|e| format!("Could not save {path}: {e}"))
 }
 
+/// Read a binary file (such as a picture) and hand it over as base64 text.
+#[tauri::command]
+fn read_binary_file(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = fs::read(&path).map_err(|e| format!("Could not read {path}: {e}"))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
 #[tauri::command]
 fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
@@ -304,6 +312,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ai::agy_connect,
             read_text_file,
+            read_binary_file,
             write_text_file,
             write_binary_file,
             path_exists,

@@ -5,6 +5,7 @@ import { topLevelOnly } from "../document/geometry";
 import { toSvg } from "../document/svg";
 import type { Doc } from "../document/types";
 import { currentDoc, getState } from "../state/store";
+import { preloadPictures } from "./assets";
 
 export type Format = "png" | "svg";
 
@@ -46,6 +47,7 @@ export async function exportDesign(format: Format, scale: number): Promise<strin
   const doc = currentDoc();
   const ids = exportTargets(doc, getState().selection);
   if (ids.length === 0) return "Nothing to export yet. Draw a frame first.";
+  await preloadPictures(doc);
   const names = uniqueNames(ids.map((i) => doc.elements[i].name));
   const ext = format;
   const suffix = format === "png" && scale !== 1 ? `@${scale}x` : "";
