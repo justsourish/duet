@@ -378,22 +378,17 @@ button {
 .pt.ver.now {
   background: #fbbf24;
 }
-.pt:hover::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%) rotate(0deg);
+.tip {
+  position: fixed;
+  transform: translate(-50%, -100%);
   white-space: nowrap;
   padding: 4px 8px;
   border-radius: 6px;
   background: #000;
   color: #fff;
   font-size: 11px;
-  z-index: 5;
-}
-.pt.ver:hover::after {
-  transform: translateX(-50%) rotate(-45deg);
+  pointer-events: none;
+  z-index: 50;
 }
 .hist-actions {
   display: flex;

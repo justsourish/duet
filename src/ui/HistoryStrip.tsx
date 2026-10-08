@@ -16,6 +16,8 @@ export default function HistoryStrip() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  // The tooltip is drawn outside the scrolling strip, so it is never clipped.
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
 
   // keep the current step in view
   useEffect(() => {
@@ -58,7 +60,15 @@ export default function HistoryStrip() {
               key={i}
               className={`pt ${e.actor === "ai" ? "ai" : ""} ${i === cursor ? "now" : ""} ${i > cursor ? "future" : ""} ${e.version ? "ver" : ""}`}
               style={{ left: x(i), top: y(i) }}
-              data-tip={`${e.version ? `Version: ${e.version}. ` : ""}${e.label} · ${e.actor === "ai" ? "Duet" : "You"} · ${timeText(e.time)}`}
+              onMouseEnter={(ev) => {
+                const r = ev.currentTarget.getBoundingClientRect();
+                setTip({
+                  text: `${e.version ? `Version: ${e.version}. ` : ""}${e.label} · ${e.actor === "ai" ? "Duet" : "You"} · ${timeText(e.time)}`,
+                  x: r.left + r.width / 2,
+                  y: r.top,
+                });
+              }}
+              onMouseLeave={() => setTip(null)}
               onClick={() => goTo(i)}
               aria-label={e.label}
             />
@@ -77,6 +87,12 @@ export default function HistoryStrip() {
           Versions{versions.length ? ` (${versions.length})` : ""}
         </button>
       </div>
+
+      {tip && (
+        <div className="tip" style={{ left: tip.x, top: tip.y - 10 }}>
+          {tip.text}
+        </div>
+      )}
 
       {open && (
         <div className="popover">
