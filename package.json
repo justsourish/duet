@@ -26,8 +26,8 @@
     "vite": "^8.0.16",
     "vitest": "^4.1.11"
   },
-  "description": "A free, open source design app where you and an AI work on the same canvas",
-  "license": "MIT",
+  "description": "An opinionated design tool, built by designers, for designers. You and your AI work hand in hand on one canvas.",
+  "license": "PolyForm-Shield-1.0.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/justsourish/duet.git"

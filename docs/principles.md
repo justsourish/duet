@@ -4,7 +4,7 @@ Written from Sourish's own words, 8 October 2026. This is the core of the app.
 
 ## What Duet is
 
-A free, open source desktop design app, made by a designer for designers. Hands-on first, with AI built in from the start. Opinionated: it ships with design skills and a point of view.
+A free desktop design app with public source code, made by a designer for designers. Hands-on first, with AI built in from the start. Opinionated: it ships with design skills and a point of view.
 
 Primary focus is UI/UX. It should be good enough that people also use it for graphic design, and later for print and book layout.
 
@@ -48,7 +48,7 @@ Designs are saved as plain files, so Git history is readable and the agent can r
 ## Platforms and distribution
 
 - Built on a Mac, but many users will be on Windows, especially in India. Both are first-class.
-- Free forever, open source, public from day one of the first working build.
+- Free to use, with the source public from day one of the first working build. Licensed under PolyForm Shield so nobody can repackage and sell it. (Version 0.1.0 shipped under MIT and stays MIT.)
 - Unsigned apps for now. Install tutorials cover the Mac and Windows warnings.
 - Free version cannot rely on paid API keys. Users bring the AI tool they already have.
 - Building in public. Audience feedback shapes it from the start.

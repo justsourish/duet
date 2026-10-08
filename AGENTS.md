@@ -1,6 +1,6 @@
 # Duet
 
-A free, open source desktop design app where a designer and an AI work on the same canvas. Read `README.md` for what exists, `docs/principles.md` for why.
+An opinionated, free-to-use desktop design app (source available under PolyForm Shield) where a designer and an AI work on the same canvas. Read `README.md` for what exists, `docs/principles.md` for why.
 
 ## Run it
 

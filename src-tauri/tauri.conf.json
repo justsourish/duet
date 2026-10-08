@@ -34,7 +34,7 @@
     ],
     "category": "GraphicsAndDesign",
     "shortDescription": "Design with an AI, side by side",
-    "longDescription": "A free, open source design app where you and an AI work on the same canvas.",
+    "longDescription": "An opinionated design tool, built by designers, for designers. You and your AI work hand in hand on one canvas.",
     "macOS": {
       "minimumSystemVersion": "13.0"
     }

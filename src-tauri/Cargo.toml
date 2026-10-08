@@ -1,9 +1,9 @@
 [package]
 name = "duet-app"
 version = "0.1.0"
-description = "A free, open source design app where you and an AI work on the same canvas"
+description = "An opinionated design tool, built by designers, for designers. You and your AI work hand in hand on one canvas."
 authors = ["Sourish Mazumdar"]
-license = "MIT"
+license = "PolyForm-Shield-1.0.0"
 repository = "https://github.com/justsourish/duet"
 edition = "2021"
 

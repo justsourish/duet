@@ -33,6 +33,10 @@ Open an issue. Say what you want in your own words, as a designer would. Mockups
 - **Nothing copied from other design tools.** Our own icons, colours, code and wording.
 - Add a test when you add a command.
 
+## Licence of your contribution
+
+Duet uses the [PolyForm Shield 1.0.0](LICENSE) licence. By opening a pull request, you agree that your contribution is licensed under those same terms, and that the project owner may also license it under other terms in the future.
+
 ## Using an AI agent to help you contribute
 
 Welcome. `AGENTS.md` tells an agent how this project is laid out.

@@ -1,10 +1,12 @@
 # Duet
 
-A free, open source design app where you and an AI work on the same canvas.
+An opinionated design tool, built by designers, for designers. You and your AI work hand in hand on the same canvas.
+
+Free to use. The code is public, so you can read it, learn from it and change it for yourself. See [Licence](#licence).
 
 You draw by hand. When you want help, you ask Duet in plain words, and it changes the design with the very same controls you use. Every change it makes is marked as its own in your history, and you can undo any of it.
 
-Duet is early. It is built in the open, and it is being shaped by the designers who try it.
+Duet is early. It is built in public, and it is being shaped by the designers who try it.
 
 ## What works today
 
@@ -71,4 +73,10 @@ Designers, developers, and people who just have opinions are all welcome. Start 
 
 ## Licence
 
-[MIT](LICENSE).
+Duet uses the [PolyForm Shield 1.0.0](LICENSE) licence. In plain words:
+
+- Use Duet for anything, including paid client work.
+- Read the code, learn from it, and change it for yourself.
+- Do not sell Duet, repackage it, or offer it (or a changed copy) as a product or service that competes with it.
+
+That makes Duet **source available**, not open source in the strict sense, because open source licences allow reselling. Duet 0.1.0 was released earlier under the MIT licence, and that release stays MIT. Everything after it uses PolyForm Shield. The licence covers the software only. What you make with Duet is yours.
