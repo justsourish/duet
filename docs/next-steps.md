@@ -17,7 +17,7 @@ Written 8 October 2026 for whoever picks this up next, human or agent. Read `AGE
 - `src/ui/ChatPanel.tsx`: the AI tool picker lists `AGENTS`, so it follows automatically.
 - Docs: `README.md`, `docs/install.md`, `docs/ai-bridge.md` (the "How each tool is connected" section), `docs/v1-scope.md`.
 - Website repo `justsourish/duet-site`: home bento card "Bring the AI you already use", `src/lib/faq.ts`, `src/content/status.ts`, `src/app/llms*.txt/route.ts`, `src/app/download/page.tsx` callout, `README.md`. Search for "Gemini".
-- Delete `~/.duet/agent-workspace/.gemini` and `GEMINI.md` is only a local leftover, not in the repo.
+- Local leftovers on the creator's Mac (not in the repo): `~/.duet/agent-workspace/.gemini/` and `GEMINI.md`. They can be deleted.
 
 ### Add Antigravity (`agy`)
 What was learned on 8 Oct 2026 (agy 1.3.1, installed at `/opt/homebrew/bin/agy`):
