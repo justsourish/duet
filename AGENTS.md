@@ -27,6 +27,14 @@ Restart `tauri dev` after installing a new npm package. Vite re-bundles dependen
 - `src-tauri/src/ai.rs` local MCP server (127.0.0.1, token), and the runner for the user's agent tool.
 - `mockups/` how the interface was thought through. `docs/` plans and decisions.
 
+## Project links
+
+- Website (private repo `justsourish/duet-site`, folder `~/Desktop/DEV/duet-site`): https://duet.noisyarchitects.org. Deploy with `npm run deploy` there. Update what works in `src/content/status.ts` after each version.
+- Feedback form: https://forms.gle/Zs6s7bX6CpJigCCf6. Creator booking: https://cal.com/rish-lc/coffee.
+- Release: push a tag like `v0.2.0`. GitHub Actions builds Mac and Windows installers into a draft release. Publish with `gh release edit <tag> --draft=false --prerelease`.
+- Licence: PolyForm Shield 1.0.0 (source available, not open source). v0.1.0 was MIT.
+- Use the GitHub noreply email in this repo: `10191373+justsourish@users.noreply.github.com`.
+
 ## Rules
 
 - Every design change goes through a command in `src/commands/`. The interface and the AI use the same ones. Never edit the document any other way.
