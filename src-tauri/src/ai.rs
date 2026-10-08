@@ -184,11 +184,58 @@ fn supported(program: &str) -> bool {
     matches!(program, "claude" | "agy")
 }
 
+/// Look for a program in the usual install folders, without starting a shell. Shells started
+/// from inside an app can stall or skip the user's setup, which made installed tools look missing.
+fn find_in_folders(program: &str) -> bool {
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default();
+    let mut dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    for d in [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/usr/local/sbin",
+    ] {
+        dirs.push(d.into());
+    }
+    if !home.is_empty() {
+        let h = std::path::Path::new(&home);
+        for d in [
+            ".npm-global/bin",
+            ".local/bin",
+            ".claude/local",
+            ".bun/bin",
+            ".volta/bin",
+            ".cargo/bin",
+            "AppData/Roaming/npm",
+            "AppData/Local/Programs/Antigravity/bin",
+        ] {
+            dirs.push(h.join(d));
+        }
+        // Node version managers keep tools in a folder named after the version.
+        if let Ok(rd) = std::fs::read_dir(h.join(".nvm/versions/node")) {
+            for v in rd.flatten() {
+                dirs.push(v.path().join("bin"));
+            }
+        }
+    }
+    let names: Vec<String> = if cfg!(windows) {
+        ["", ".exe", ".cmd", ".bat"].iter().map(|e| format!("{program}{e}")).collect()
+    } else {
+        vec![program.to_string()]
+    };
+    dirs.iter().any(|d| names.iter().any(|n| d.join(n).is_file()))
+}
+
 /// Is this agent tool installed on this computer?
 #[tauri::command]
 pub fn agent_available(program: String) -> bool {
     if !known(&program) {
         return false;
+    }
+    if find_in_folders(&program) {
+        return true;
     }
     #[cfg(unix)]
     {
