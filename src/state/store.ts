@@ -36,8 +36,10 @@ export interface Overlay {
 }
 
 export interface Project {
-  /** Folder that holds design.json. Null while the work has not been saved anywhere. */
+  /** Folder that holds design.json (for a single file project, its unpacked working copy). Null while the work has not been saved anywhere. */
   path: string | null;
+  /** The single .duet file this project is saved in. Null for an older folder project. */
+  file: string | null;
   name: string;
   status: "unsaved" | "saving" | "saved" | "error";
   error: string | null;
@@ -59,7 +61,7 @@ export interface State {
 const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null, pen: null, nodeEdit: null });
 
 const initial = (): State => ({
-  project: { path: null, name: "Untitled", status: "unsaved", error: null },
+  project: { path: null, file: null, name: "Untitled", status: "unsaved", error: null },
   timeline: [{ doc: emptyDoc(), label: "New file", actor: "you", time: Date.now() }],
   cursor: 0,
   transientDoc: null,

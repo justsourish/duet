@@ -4,7 +4,10 @@ import { detectAgent, startAgentListeners } from "./ai/agent";
 import { startMcp } from "./ai/mcp";
 import { loadSkills } from "./ai/skills";
 import CanvasView from "./canvas/CanvasView";
-import { inTauri, newProject, openProject, restoreLast, saveNow, startAutosave } from "./project/project";
+import { flushPack, inTauri, newProject, openProject, openProjectAt, restoreLast, saveNow, startAutosave } from "./project/project";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import ContextMenu from "./ui/ContextMenu";
 import { installMenu } from "./ui/menu";
@@ -69,6 +72,13 @@ export default function App() {
     const stops: (() => void)[] = [];
     let alive = true;
     if (inTauri()) {
+      // a project file double-clicked in Finder or Explorer
+      void invoke<string | null>("launch_file").then((f) => f && void openProjectAt(f));
+      void listen<string>("open-file", (e) => void openProjectAt(e.payload));
+      // make sure the last save is in the file before the window closes
+      void getCurrentWindow().onCloseRequested(async () => {
+        await flushPack();
+      });
       void installMenu();
       loadSkills();
       detectAgent();
@@ -133,8 +143,8 @@ export default function App() {
         </button>
         <span className="crumb">/ {project.name}</span>
         {project.path && (
-          <span className="crumb-path" title={`${project.path}\nClick to show it in Finder`} onClick={() => void revealItemInDir(project.path as string)}>
-            {project.path.replace(/^\/Users\/[^/]+/, "~")}
+          <span className="crumb-path" title={`${project.file ?? project.path}\nClick to show it in Finder`} onClick={() => void revealItemInDir((project.file ?? project.path) as string)}>
+            {(project.file ?? project.path).replace(/^\/Users\/[^/]+/, "~")}
           </span>
         )}
         <span className={`status ${project.status}`} title={project.error ?? undefined}>

@@ -1,4 +1,5 @@
 mod ai;
+mod package;
 
 use git2::{Repository, Signature};
 use serde::Serialize;
@@ -82,6 +83,57 @@ fn duet_home() -> Result<String, String> {
     Ok(duet_home_dir()?.to_string_lossy().to_string())
 }
 
+/// Where a project file keeps its unpacked working copy.
+#[tauri::command]
+fn work_dir_for(file: String) -> Result<String, String> {
+    Ok(package::work_dir_for_file(&file)?.to_string_lossy().to_string())
+}
+
+/// An empty working folder for a new project file.
+#[tauri::command]
+fn fresh_work_dir(file: String) -> Result<String, String> {
+    let dir = package::work_dir_for_file(&file)?;
+    if dir.exists() {
+        fs::remove_dir_all(&dir).map_err(err)?;
+    }
+    fs::create_dir_all(&dir).map_err(err)?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+/// Pack a project's working folder into its single file.
+#[tauri::command]
+fn pack_project(dir: String, file: String) -> Result<(), String> {
+    package::pack(Path::new(&dir), Path::new(&file))
+}
+
+/// Unpack a project file into its working folder, and say where it went.
+#[tauri::command]
+fn unpack_project(file: String) -> Result<String, String> {
+    let dir = package::work_dir_for_file(&file)?;
+    // a crash can leave the working copy newer than the file: keep that one, the next save packs it
+    let design = dir.join(DESIGN_FILE);
+    let newer = match (fs::metadata(&design).and_then(|m| m.modified()), fs::metadata(&file).and_then(|m| m.modified())) {
+        (Ok(w), Ok(f)) => w > f + std::time::Duration::from_secs(3),
+        _ => false,
+    };
+    if !newer {
+        package::unpack(Path::new(&file), &dir)?;
+    }
+    Ok(dir.to_string_lossy().to_string())
+}
+
+/// Is this a folder (an older project) or a single file?
+#[tauri::command]
+fn is_directory(path: String) -> bool {
+    Path::new(&path).is_dir()
+}
+
+/// The project file Duet was asked to open when it started, if any (double-click on Windows).
+#[tauri::command]
+fn launch_file() -> Option<String> {
+    std::env::args().skip(1).find(|a| a.to_lowercase().ends_with(".duet") && Path::new(a).exists())
+}
+
 /// The one folder where new projects go by default: Documents/Duet. Made if it is missing.
 #[tauri::command]
 fn default_projects_dir() -> Result<String, String> {
@@ -121,6 +173,16 @@ fn find_projects(root: String) -> Vec<FoundProject> {
         let Ok(read) = fs::read_dir(dir) else { return };
         for entry in read.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
+            if entry.path().is_file() && name.to_lowercase().ends_with(".duet") {
+                let modified = fs::metadata(entry.path())
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                out.push(FoundProject { path: entry.path().to_string_lossy().to_string(), modified });
+                continue;
+            }
             if name.starts_with('.') || name == "node_modules" || name == "target" || name == "Library" {
                 continue;
             }
@@ -367,6 +429,12 @@ pub fn run() {
             read_text_file,
             read_binary_file,
             default_projects_dir,
+            work_dir_for,
+            fresh_work_dir,
+            pack_project,
+            unpack_project,
+            is_directory,
+            launch_file,
             find_projects,
             write_text_file,
             write_binary_file,
@@ -393,8 +461,21 @@ pub fn run() {
             ai::start(app.handle()).map_err(|e| format!("Could not start the agent bridge: {e}"))?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Duet");
+        .build(tauri::generate_context!())
+        .expect("error while building Duet")
+        .run(|app, event| {
+            // a project file opened from Finder while Duet is already running
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                use tauri::Emitter;
+                for u in urls {
+                    if let Ok(p) = u.to_file_path() {
+                        let _ = app.emit("open-file", p.to_string_lossy().to_string());
+                    }
+                }
+            }
+            let _ = (&app, &event);
+        });
 }
 
 #[cfg(test)]

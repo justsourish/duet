@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useState } from "react";
-import { findProjects, getRecents, inTauri, newProject, openProject, openProjectAt, removeRecent } from "../project/project";
+import { findProjects, getRecents, inTauri, newProject, openOldFolder, openProject, openProjectAt, removeRecent } from "../project/project";
 import type { Recent } from "../project/project";
 import { getState, useStore } from "../state/store";
 import { useDismiss } from "./useDismiss";
@@ -29,7 +29,7 @@ const previews = new Map<string, string | null>();
 function usePreview(path: string): string | null {
   const [src, setSrc] = useState<string | null>(previews.get(path) ?? null);
   useEffect(() => {
-    if (!inTauri() || previews.has(path)) return;
+    if (!path || !inTauri() || previews.has(path)) return;
     let alive = true;
     invoke<string>("read_binary_file", { path: `${path}/preview.png` })
       .then((b64) => {
@@ -45,7 +45,8 @@ function usePreview(path: string): string | null {
 }
 
 function Card({ r, now, gone, onOpen }: { r: Recent; now: boolean; gone: boolean; onOpen: () => void }) {
-  const src = usePreview(r.path);
+  const own = usePreview(r.thumb ? "" : r.path);
+  const src = r.thumb ?? own;
   return (
     <div className={`pcard ${gone ? "gone" : ""} ${now ? "now" : ""}`} onClick={onOpen}>
       <div className="pthumb">{src ? <img src={src} alt="" /> : <span>{gone ? "Moved or deleted" : "No preview yet"}</span>}</div>
@@ -148,7 +149,14 @@ export default function Home({ onClose }: { onClose: () => void }) {
           New project
         </button>
         <button className="pill wide" onClick={browse}>
-          Open a folder
+          Open a file
+        </button>
+        <button className="pill wide" onClick={async () => {
+          const before = getState().project.path;
+          await openOldFolder();
+          if (getState().project.path !== before) onClose();
+        }}>
+          Open an older folder
         </button>
         <button className="pill wide" onClick={find}>
           Find my projects
@@ -160,7 +168,7 @@ export default function Home({ onClose }: { onClose: () => void }) {
             Back to {project.name}
           </button>
         )}
-        <div className="hint2">New projects go in Documents/Duet. Everything is a plain folder you own.</div>
+        <div className="hint2">New projects go in Documents/Duet. Each project is one .duet file, with its history inside.</div>
       </aside>
 
       <main className="home-main">
@@ -202,7 +210,7 @@ export default function Home({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               {shown.map((r) => (
-                <Card key={r.path} r={r} now={project.path === r.path} gone={!!missing[r.path]} onOpen={() => openIt(r)} />
+                <Card key={r.path} r={r} now={(project.file ?? project.path) === r.path} gone={!!missing[r.path]} onOpen={() => openIt(r)} />
               ))}
             </div>
           </>

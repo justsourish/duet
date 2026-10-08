@@ -66,15 +66,30 @@ const RECENT_KEY = "duet:recent";
 export interface Recent {
   path: string;
   name: string;
+  /** A small picture of the first screen, as a data address. */
+  thumb?: string;
   /** When it was last opened, as milliseconds. */
   opened: number;
 }
 
 /** Every project you have made or opened here, newest first. */
+/** If someone picks the design file inside an older project folder, they mean the folder. */
+const projectPath = (p: string) => p.replace(/[\\/]design\.json$/i, "");
+
 export function getRecents(): Recent[] {
   try {
     const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as Recent[];
-    return Array.isArray(raw) ? raw.filter((r) => r && typeof r.path === "string") : [];
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set<string>();
+    const out: Recent[] = [];
+    for (const r of raw) {
+      if (!r || typeof r.path !== "string") continue;
+      const path = projectPath(r.path);
+      if (seen.has(path)) continue;
+      seen.add(path);
+      out.push({ ...r, path, name: r.path === path ? r.name : baseName(path) });
+    }
+    return out;
   } catch {
     return [];
   }
@@ -93,8 +108,9 @@ function remember(path: string | null) {
   try {
     if (!path) return;
     localStorage.setItem(LAST_KEY, path);
+    const old = getRecents().find((r) => r.path === path);
     const rest = getRecents().filter((r) => r.path !== path);
-    localStorage.setItem(RECENT_KEY, JSON.stringify([{ path, name: baseName(path), opened: Date.now() }, ...rest].slice(0, 40)));
+    localStorage.setItem(RECENT_KEY, JSON.stringify([{ path, name: baseName(path), opened: Date.now(), thumb: old?.thumb }, ...rest].slice(0, 40)));
     window.dispatchEvent(new Event("duet:recents"));
   } catch {
     /* private mode: nothing to remember */
@@ -106,18 +122,45 @@ async function oops(text: string) {
   else console.error(text);
 }
 
-/** A small picture of the first screen, kept in the project folder so the projects list can show it. */
+/** A small picture of the first screen, kept with the project in the list of projects. */
 async function writePreview(path: string, doc: Doc) {
   try {
     const id = doc.rootIds.find((i) => doc.elements[i]?.type === "frame" || doc.elements[i]?.type === "instance") ?? doc.rootIds[0];
     if (!id) return;
     const el = doc.elements[id];
     await preloadPictures(doc);
-    const scale = Math.min(1, 520 / Math.max(el.width, el.height, 1));
-    await invoke("write_binary_file", { path: join(path, "preview.png"), dataBase64: renderPng(doc, id, scale) });
+    const scale = Math.min(1, 360 / Math.max(el.width, el.height, 1));
+    const b64 = renderPng(doc, id, scale);
+    await invoke("write_binary_file", { path: join(path, "preview.png"), dataBase64: b64 });
+    const key = getState().project.file ?? path;
+    const list = getRecents().map((r) => (r.path === key ? { ...r, thumb: `data:image/png;base64,${b64}` } : r));
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+    window.dispatchEvent(new Event("duet:recents"));
   } catch (e) {
     console.warn("Could not make a preview:", e);
   }
+}
+
+// ---- one file: the project is packed into its .duet file after every save ----
+let packTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function packNow() {
+  clearTimeout(packTimer);
+  packTimer = undefined;
+  const { path, file } = getState().project;
+  if (!path || !file) return;
+  await invoke("pack_project", { dir: path, file });
+}
+
+function schedulePack() {
+  if (!getState().project.file) return;
+  clearTimeout(packTimer);
+  packTimer = setTimeout(() => void packNow().catch((e) => setProject({ status: "error", error: String(e) })), 1200);
+}
+
+/** Write the file right now if a write is waiting. Used when the window closes. */
+export async function flushPack() {
+  if (packTimer) await packNow().catch(() => undefined);
 }
 
 async function writeDesign(path: string, doc: Doc) {
@@ -165,6 +208,7 @@ export function saveNow(): Promise<void> {
     try {
       await writeDesign(path, doc);
       await recordStep(path, stepMessage(entry, wentBack));
+      schedulePack();
       setProject({ status: committed() === doc ? "saved" : "unsaved" });
     } catch (e) {
       lastSaved = previous;
@@ -190,23 +234,38 @@ export async function saveAs() {
   await once(saveAsDialog);
 }
 
+/** Ask where to keep a project file. Returns the chosen path, or null. */
+async function chooseFile(title: string): Promise<string | null> {
+  const choice = await save({ title, defaultPath: await startFolder("My design.duet"), filters: [{ name: "Duet project", extensions: ["duet"] }] });
+  if (!choice) return null;
+  const picked = withExt(choice);
+  if ((await invoke<boolean>("is_directory", { path: picked })) === true) {
+    await oops("There is an older project folder with that name. Pick a different name.");
+    return null;
+  }
+  return picked;
+}
+
+/** Make the project file and its working copy from a design. */
+async function createProject(picked: string, doc: Doc, label: string) {
+  const work = await invoke<string>("fresh_work_dir", { file: picked });
+  await writeDesign(work, doc);
+  await startHistory(work, label);
+  return work;
+}
+
 async function saveAsDialog() {
   if (!inTauri()) return;
-  const choice = await save({ title: "Save your project", defaultPath: await startFolder("My design.duet") });
-  if (!choice) return;
-  const picked = withExt(choice);
+  const picked = await chooseFile("Save your project");
+  if (!picked) return;
   const doc = committed();
   try {
-    if ((await invoke<boolean>("path_exists", { path: join(picked, FILE) })) === true) {
-      await oops("That folder already has a design in it. Pick a new name, or use Open.");
-      return;
-    }
-    await invoke("make_dir", { path: picked });
-    await writeDesign(picked, doc);
-    await startHistory(picked, "Start of project");
+    const work = await createProject(picked, doc, "Start of project");
     lastSaved = doc;
-    setProject({ path: picked, name: baseName(picked), status: "saved", error: null });
+    setProject({ path: work, file: picked, name: baseName(picked), status: "saved", error: null });
+    await packNow();
     remember(picked);
+    void writePreview(work, doc);
   } catch (e) {
     await oops(String(e));
   }
@@ -229,21 +288,15 @@ async function newProjectDialog() {
     });
     if (!go) return;
   }
-  const choice = await save({ title: "Name your new project", defaultPath: await startFolder("My design.duet") });
-  if (!choice) return;
-  const picked = withExt(choice);
+  const picked = await chooseFile("Name your new project");
+  if (!picked) return;
   try {
-    if ((await invoke<boolean>("path_exists", { path: join(picked, FILE) })) === true) {
-      await oops("That folder already has a design in it. Pick a new name, or use Open.");
-      return;
-    }
     const doc = emptyDoc();
-    await invoke("make_dir", { path: picked });
-    await writeDesign(picked, doc);
-    await startHistory(picked, "New file");
+    const work = await createProject(picked, doc, "New file");
     loadDoc(doc, "New file");
     lastSaved = committed();
-    setProject({ path: picked, name: baseName(picked), status: "saved", error: null });
+    setProject({ path: work, file: picked, name: baseName(picked), status: "saved", error: null });
+    await packNow();
     remember(picked);
   } catch (e) {
     await oops(String(e));
@@ -284,14 +337,14 @@ async function readHistory(path: string): Promise<HistoryEntry[]> {
   }
 }
 
-async function loadFrom(path: string, quiet = false): Promise<boolean> {
+async function loadFrom(path: string, quiet = false, file: string | null = null): Promise<boolean> {
   try {
-    const file = join(path, FILE);
-    if (!((await invoke<boolean>("path_exists", { path: file })) === true)) {
+    const design = join(path, FILE);
+    if (!((await invoke<boolean>("path_exists", { path: design })) === true)) {
       if (!quiet) await oops(`There is no ${FILE} in that folder. Use New to start a project there, or pick a different folder.`);
       return false;
     }
-    const doc = parseDoc(await invoke<string>("read_text_file", { path: file }));
+    const doc = parseDoc(await invoke<string>("read_text_file", { path: design }));
     const entries = await readHistory(path);
     if (entries.length === 0) {
       loadDoc(doc);
@@ -305,8 +358,8 @@ async function loadFrom(path: string, quiet = false): Promise<boolean> {
       loadTimeline(entries);
     }
     lastSaved = committed();
-    setProject({ path, name: baseName(path), status: "saved", error: null });
-    remember(path);
+    setProject({ path, file, name: baseName(file ?? path), status: "saved", error: null });
+    remember(file ?? path);
     void writePreview(path, committed()); // older projects get their picture the first time they are opened
     return true;
   } catch (e) {
@@ -328,18 +381,82 @@ export async function openProjectAt(path: string): Promise<boolean> {
     });
     if (!go) return false;
   }
-  return loadFrom(path);
+  return openAny(path);
 }
 
-/** Choose a project folder and open it. */
+/** Open a project file, or an older project folder. */
+async function openAny(picked: string, quiet = false): Promise<boolean> {
+  const path = projectPath(picked);
+  try {
+    if ((await invoke<boolean>("is_directory", { path })) === true) return loadFrom(path, quiet, null);
+    if ((await invoke<boolean>("path_exists", { path })) !== true) {
+      if (!quiet) await oops("That project was moved or deleted.");
+      return false;
+    }
+    const work = await invoke<string>("unpack_project", { file: path });
+    return loadFrom(work, quiet, path);
+  } catch (e) {
+    if (!quiet) await oops(String(e));
+    return false;
+  }
+}
+
+/** Choose a project file and open it. */
 export async function openProject() {
   await once(openProjectDialog);
 }
 
 async function openProjectDialog() {
   if (!inTauri()) return;
-  const picked = await open({ directory: true, multiple: false, title: "Open a Duet project (a folder ending in .duet)" });
-  if (typeof picked === "string") await loadFrom(picked);
+  const picked = await open({ directory: false, multiple: false, title: "Open a Duet project", filters: [{ name: "Duet project", extensions: ["duet"] }] });
+  if (typeof picked === "string") await openAny(picked);
+}
+
+/** Open an older project, one that is a folder. */
+export async function openOldFolder() {
+  await once(async () => {
+    if (!inTauri()) return;
+    const picked = await open({ directory: true, multiple: false, title: "Open an older Duet project folder" });
+    if (typeof picked === "string") await openAny(picked);
+  });
+}
+
+/** Turn the project you have open, or an older folder, into a single file. */
+export async function saveAsSingleFile() {
+  await once(async () => {
+    if (!inTauri()) return;
+    const s = getState();
+    if (!s.project.path) {
+      await oops("Save your project first, or open the older folder you want to convert.");
+      return;
+    }
+    if (s.project.file) {
+      await oops("This project is already a single file.");
+      return;
+    }
+    const picked = await chooseFile("Save as a single file");
+    if (!picked) return;
+    try {
+      await saveNow();
+      await invoke("pack_project", { dir: s.project.path, file: picked });
+      await openAny(picked, true);
+    } catch (e) {
+      await oops(String(e));
+    }
+  });
+}
+
+/** Save the design as plain data (a .json file), for people and programs that want it. */
+export async function exportDesignData() {
+  if (!inTauri()) return;
+  const name = getState().project.name || "design";
+  const target = await save({ title: "Export the design data", defaultPath: `${name}.json`, filters: [{ name: "JSON", extensions: ["json"] }] });
+  if (!target) return;
+  try {
+    await invoke("write_text_file", { path: target, contents: serializeDoc(committed()) });
+  } catch (e) {
+    await oops(String(e));
+  }
 }
 
 /** On launch, go back to where you were. */
@@ -351,7 +468,7 @@ export async function restoreLast() {
   } catch {
     path = null;
   }
-  if (path) await loadFrom(path, true);
+  if (path) await openAny(path, true);
 }
 
 /**
@@ -373,6 +490,7 @@ export async function saveVersion(name: string): Promise<string | null> {
   const slug = clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "version";
   try {
     await invoke("git_name_version", { path, tag: `v${Date.now()}-${slug}`, title: clean });
+    schedulePack();
     setEntryVersion(getState().cursor, clean);
     return null;
   } catch (e) {

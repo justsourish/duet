@@ -1,7 +1,7 @@
 import { Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/menu";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { exportDesign } from "../project/exporter";
-import { getRecents, inTauri, newProject, openProject, openProjectAt, saveNow } from "../project/project";
+import { exportDesignData, getRecents, inTauri, newProject, openOldFolder, openProject, openProjectAt, saveAsSingleFile, saveNow } from "../project/project";
 import { currentDoc, getState, redo, undo } from "../state/store";
 import { getLayout, resetLayout, setLayout } from "./layout";
 import { deleteSelection, detachSelection, duplicateSelection, groupSelection, makeComponent, toggleAutoLayout, toggleLock, ungroupSelection } from "./actions";
@@ -45,14 +45,17 @@ export async function installMenu() {
     items: [
       await item("New project…", () => void newProject(), "CmdOrCtrl+N"),
       await item("Open…", () => void openProject(), "CmdOrCtrl+O"),
+      await item("Open an older project folder…", () => void openOldFolder()),
       await Submenu.new({ text: "Open recent", items: recentItems }),
       await item("All projects", () => send("duet:home"), "CmdOrCtrl+Shift+O"),
       await line(),
       await item("Save", () => void saveNow(), "CmdOrCtrl+S"),
       await item("Save a version…", () => send("duet:versions"), "CmdOrCtrl+Shift+S"),
+      await item("Turn an older folder project into one file…", () => void saveAsSingleFile()),
       await line(),
       await item("Export as PNG…", () => void exportDesign("png", 2)),
       await item("Export as SVG…", () => void exportDesign("svg", 1)),
+      await item("Export the design data (.json)…", () => void exportDesignData()),
       await line(),
       await PredefinedMenuItem.new({ item: "CloseWindow" }),
     ],

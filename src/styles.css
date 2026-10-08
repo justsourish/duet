@@ -282,8 +282,7 @@ button {
 .toolbar {
   position: absolute;
   left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 14px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1184,15 +1183,19 @@ button {
   cursor: default;
 }
 .pthumb {
+  position: relative;
   height: 150px;
+  overflow: hidden;
   display: grid;
   place-items: center;
   background: var(--canvas);
   color: var(--muted);
 }
 .pthumb img {
-  max-width: 100%;
-  max-height: 100%;
+  position: absolute;
+  inset: 8px;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
   object-fit: contain;
 }
 .pnew .pthumb span {
@@ -1277,7 +1280,7 @@ button {
   right: 0;
 }
 .grip:hover {
-  background: var(--accent-soft);
+  background: linear-gradient(to right, transparent 3px, var(--line) 3px, var(--line) 5px, transparent 5px);
 }
 .pill.icon {
   padding: 5px 8px;

@@ -33,6 +33,15 @@
       "icons/icon.ico"
     ],
     "category": "GraphicsAndDesign",
+    "fileAssociations": [
+      {
+        "ext": ["duet"],
+        "name": "Duet project",
+        "description": "A Duet design, with its history inside",
+        "role": "Editor",
+        "mimeType": "application/x-duet-project"
+      }
+    ],
     "shortDescription": "Design with an AI, side by side",
     "longDescription": "An opinionated design tool, built by designers, for designers. You and your AI work hand in hand on one canvas.",
     "macOS": {
