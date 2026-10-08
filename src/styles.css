@@ -375,7 +375,7 @@ button {
 }
 .links .link.ai {
   stroke: var(--duet);
-  opacity: 0.9;
+  opacity: 0.45;
 }
 .pt {
   position: absolute;
@@ -389,9 +389,10 @@ button {
   cursor: pointer;
 }
 .pt.ai {
-  border-color: var(--duet);
+  border-color: rgba(255, 138, 92, 0.5);
 }
 .pt.ai.now {
+  opacity: 1;
   background: var(--duet);
   border-color: var(--duet);
 }
@@ -679,6 +680,39 @@ button {
 }
 
 /* floating chat */
+.csize {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  z-index: 2;
+  touch-action: none;
+}
+.csize.l { left: 0; cursor: nwse-resize; }
+.csize.r { right: 0; cursor: nesw-resize; }
+.csize.t { top: 0; }
+.csize.b { bottom: 0; }
+.csize.l.t, .csize.r.b { cursor: nwse-resize; }
+.csize.r.t, .csize.l.b { cursor: nesw-resize; }
+.csize::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 0 solid var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.chat:hover .csize::after {
+  opacity: 0.3;
+}
+.csize.t.l::after { top: 4px; left: 4px; border-width: 2px 0 0 2px; border-top-left-radius: 4px; }
+.csize.t.r::after { top: 4px; right: 4px; border-width: 2px 2px 0 0; border-top-right-radius: 4px; }
+.csize.b.l::after { bottom: 4px; left: 4px; border-width: 0 0 2px 2px; border-bottom-left-radius: 4px; }
+.csize.b.r::after { bottom: 4px; right: 4px; border-width: 0 2px 2px 0; border-bottom-right-radius: 4px; }
+.csize:hover::after { opacity: 1; width: 10px; height: 10px; }
+.chat:has(.csize:hover) {
+  border-color: var(--accent);
+}
 .chat {
   position: absolute;
   right: 16px;

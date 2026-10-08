@@ -133,6 +133,7 @@ function onClaudeLine(line: string) {
 // ---- Antigravity: streams small pieces of text, tool steps, then a result ----
 
 let streamId: number | null = null;
+let lastStreamId: number | null = null;
 
 function streamText(piece: string) {
   removeWorking();
@@ -144,6 +145,7 @@ function streamText(piece: string) {
   } else {
     streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, "") });
   }
+  lastStreamId = streamId;
 }
 
 function showWorking(text: string) {
@@ -189,6 +191,15 @@ function onAgyLine(line: string) {
       removeWorking();
       addMsg({ role: "duet", text: r.response.trim() });
       sawText = true;
+    } else if (typeof r.response === "string" && r.response.trim() && lastStreamId !== null) {
+      // Streamed pieces can get lost on the way in. The final result holds the whole reply, so
+      // if the last message on screen is a shorter start of it, show the full text instead.
+      const full = r.response.trim();
+      const cur = getChat().messages.find((m) => m.id === lastStreamId);
+      const shown = (cur?.text ?? "").trim();
+      if (cur && shown.length < full.length && full.startsWith(shown.slice(0, Math.min(20, shown.length)))) {
+        updateMsg(lastStreamId, { text: full });
+      }
     }
   }
 }
@@ -242,6 +253,7 @@ export async function sendToAgent(text: string) {
   setRunning(true);
   sawText = false;
   streamId = null;
+  lastStreamId = null;
   stderrLines = [];
   workingId = addMsg({ role: "working", text: "Thinking..." });
   try {
@@ -259,7 +271,7 @@ export async function sendToAgent(text: string) {
       const brief = `${systemPrompt()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\nThe designer says:\n${prompt}`;
       args = ["--print", brief, "--output-format", "stream-json"];
       if (getChat().models.agy) args.push("--model", getChat().models.agy as string);
-      if (getChat().effort) args.push("--effort", getChat().effort);
+      // The Antigravity model names already carry their level, e.g. "(High)", so no --effort here.
       if (session) args.push("--conversation", session);
     } else {
       const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {

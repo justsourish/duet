@@ -13,12 +13,17 @@ export interface Dock {
   swapped: boolean;
   /** The chat sits in a corner, or wherever it was dropped. */
   chat: { corner: Corner } | { x: number; y: number };
+  /** How wide the chat is, and how tall its message area is. */
+  chatW: number;
+  chatH: number;
 }
 
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, chat: { corner: "br" } });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, chat: { corner: "br" }, chatW: 320, chatH: 340 });
+export const CHAT_MIN = { w: 280, h: 140 };
+export const CHAT_MAX = { w: 720, h: 900 };
 
 function load(): Dock {
   try {

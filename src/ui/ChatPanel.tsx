@@ -8,7 +8,7 @@ import type { AgentId } from "../ai/chat";
 import type { Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { useStore } from "../state/store";
-import { setLayout, useLayout } from "./layout";
+import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
@@ -39,6 +39,36 @@ export default function ChatPanel() {
   const modelList = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
   const cursor = useStore((s) => s.cursor);
   const place = useLayout((d) => d.chat);
+  const chatW = useLayout((d) => d.chatW);
+  const chatH = useLayout((d) => d.chatH);
+  const [sizing, setSizing] = useState<{ w: number; h: number } | null>(null);
+  // The grip sits on the corner farthest from where the chat is anchored, so pulling it outward grows the chat.
+  const anchor = "corner" in place ? place.corner : "tl";
+  const growX = anchor.endsWith("l") ? 1 : -1;
+  const growY = anchor.startsWith("t") ? 1 : -1;
+
+  /** Pull the grip to make the chat wider and taller. Minimizing and reopening keeps the size. */
+  const resize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const start = { x: e.clientX, y: e.clientY, w: chatW, h: chatH };
+    const at = (m: PointerEvent) => ({
+      w: Math.max(CHAT_MIN.w, Math.min(CHAT_MAX.w, start.w + (m.clientX - start.x) * growX)),
+      h: Math.max(CHAT_MIN.h, Math.min(CHAT_MAX.h, start.h + (m.clientY - start.y) * growY)),
+    });
+    const move = (m: PointerEvent) => setSizing(at(m));
+    const up = (m: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const next = at(m);
+      setSizing(null);
+      setLayout({ chatW: next.w, chatH: next.h });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const w = sizing?.w ?? chatW;
+  const h = sizing?.h ?? chatH;
   const box = useRef<HTMLDivElement>(null);
   const [moving, setMoving] = useState<{ x: number; y: number } | null>(null);
   const justMoved = useRef(false);
@@ -98,7 +128,10 @@ export default function ChatPanel() {
     <div
       ref={box}
       className={`chat ${minimized ? "min" : ""} ${moving ? "moving free" : "corner" in place ? `c-${place.corner}` : "free"}`}
-      style={moving ? { left: moving.x, top: moving.y } : "x" in place ? { left: place.x, top: place.y } : undefined}
+      style={{
+        ...(moving ? { left: moving.x, top: moving.y } : "x" in place ? { left: place.x, top: place.y } : {}),
+        width: w,
+      }}
     >
       <div
         className="chead"
@@ -119,6 +152,7 @@ export default function ChatPanel() {
 
       {!minimized && (
         <>
+          <div className={`csize ${growX > 0 ? "r" : "l"} ${growY > 0 ? "b" : "t"}`} onPointerDown={resize} title="Pull to make the chat bigger or smaller" />
           <div className="tool-row">
             <span>AI tool</span>
             <select value={agent} disabled={running} onChange={(e) => setAgent(e.target.value as AgentId)}>
@@ -142,6 +176,7 @@ export default function ChatPanel() {
                 </option>
               ))}
             </select>
+            {agent === "claude" && (
             <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)} style={{ flex: "none", width: 92 }}>
               {EFFORTS.map((x) => (
                 <option key={x} value={x}>
@@ -149,9 +184,10 @@ export default function ChatPanel() {
                 </option>
               ))}
             </select>
+            )}
           </div>
           <div className="mode-hint">{MODES.find((m) => m.mode === mode)?.hint}</div>
-          <div className="cbody">
+          <div className="cbody" style={{ maxHeight: h }}>
             {found === false && (
               <div className="m">
                 Duet works with the AI tool you already use, so it costs nothing extra. I could not find{" "}
