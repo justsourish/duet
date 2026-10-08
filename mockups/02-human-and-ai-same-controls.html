@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duet mockup 02: same controls</title>
+<style>
+  :root {
+    --bg: #1b1b1f; --panel: #232328; --panel-2: #2a2a30; --line: #34343b;
+    --text: #e8e8ec; --muted: #8d8d98; --accent: #7c5cff; --accent-soft: rgba(124,92,255,.16);
+    --canvas: #141417; --dot: #2a2a31; --ok: #4ade80; --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  .app { display: grid; height: 100vh; grid-template-columns: 220px 1fr 320px; grid-template-rows: 44px 1fr 52px;
+    grid-template-areas: "top top top" "left canvas right" "hist hist hist"; }
+  .top { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .logo { font-weight: 700; } .logo b { color: var(--accent); }
+  .crumb { color: var(--muted); } .spacer { flex: 1; }
+  .pill { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-size: 12px; cursor: pointer; }
+  .pill.primary { background: var(--accent); border-color: var(--accent); }
+  kbd { font: 11px ui-monospace, Menlo, monospace; padding: 1px 5px; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
+
+  .left, .right { background: var(--panel); overflow: auto; }
+  .left { grid-area: left; border-right: 1px solid var(--line); }
+  .right { grid-area: right; border-left: 1px solid var(--line); }
+  .sec { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .sec h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; }
+  .row:hover { background: var(--panel-2); }
+  .row.sel { background: var(--accent-soft); outline: 1px solid var(--accent); }
+  .row.l1 { margin-left: 14px; }
+  .ico { width: 12px; height: 12px; border: 1.5px solid var(--muted); border-radius: 3px; flex: none; }
+  .ico.f { border-style: dashed; border-radius: 2px; }
+  .skill { display: inline-block; margin: 0 4px 4px 0; padding: 3px 8px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+
+  .canvas { grid-area: canvas; position: relative; overflow: hidden; background: var(--canvas);
+    background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 22px 22px; }
+  svg.stage { width: 100%; height: 100%; display: block; }
+  .frame-label { fill: var(--muted); font-size: 12px; }
+
+  .approval { position: absolute; right: 22px; top: 20px; width: 290px; padding: 12px; border-radius: 12px; background: var(--panel);
+    border: 1px solid var(--warn); box-shadow: 0 10px 28px rgba(0,0,0,.45); display: none; }
+  .approval.show { display: block; }
+  .approval h5 { margin: 0 0 4px; font-size: 12px; color: var(--warn); }
+  .approval .diff { margin: 8px 0; padding: 8px; border-radius: 8px; background: var(--panel-2); font: 11px ui-monospace, Menlo, monospace; }
+  .btns { display: flex; gap: 6px; }
+
+  .toolbar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 4px; padding: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .tool { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); cursor: pointer; }
+  .tool.on { background: var(--accent); color: #fff; }
+  .tool svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* right panel */
+  .who { display: flex; gap: 10px; align-items: center; }
+  .avatar { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; font-weight: 700; }
+  .who small { color: var(--muted); display: block; }
+  .ctx { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); color: var(--muted); font: 11px ui-monospace, Menlo, monospace; line-height: 1.6; }
+  .ctx b { color: var(--text); font-weight: 600; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg div { padding: 7px 4px; text-align: center; cursor: pointer; background: var(--panel-2); color: var(--muted); border-right: 1px solid var(--line); }
+  .seg div:last-child { border-right: 0; }
+  .seg div.on { background: var(--accent); color: #fff; }
+  .hint { margin-top: 8px; color: var(--muted); }
+  .log { display: flex; flex-direction: column; gap: 6px; max-height: 190px; overflow: auto; }
+  .entry { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--panel-2); }
+  .who-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 999px; background: var(--panel); color: var(--muted); border: 1px solid var(--line); }
+  .who-tag.ai { color: #cbbdff; border-color: var(--accent); background: var(--accent-soft); }
+  .entry code { font: 11px ui-monospace, Menlo, monospace; flex: 1; }
+  .undo { color: var(--muted); cursor: pointer; text-decoration: underline; }
+  .undo:hover { color: var(--text); }
+  .ask { display: flex; gap: 6px; }
+  .inp { flex: 1; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+  .try { margin-top: 8px; display: block; text-align: center; padding: 7px; border-radius: 8px; border: 1px dashed var(--line); color: var(--muted); cursor: pointer; }
+  .try:hover { color: var(--text); border-color: var(--accent); }
+
+  .hist { grid-area: hist; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: var(--panel); border-top: 1px solid var(--line); }
+  .track { flex: 1; position: relative; height: 24px; display: flex; align-items: center; }
+  .track::before { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--line); }
+  .pt { position: relative; width: 12px; height: 12px; border-radius: 50%; background: var(--panel-2); border: 2px solid var(--muted); margin-right: 46px; cursor: pointer; flex: none; }
+  .pt.ai { border-color: var(--accent); }
+  .pt.now { background: var(--accent); border-color: var(--accent); }
+  .pt:hover::after { content: attr(data-tip); position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+    padding: 4px 8px; border-radius: 6px; background: #000; color: #fff; font-size: 11px; z-index: 5; }
+  .note { color: var(--muted); }
+
+  /* command palette */
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-start; justify-content: center; padding-top: 12vh; z-index: 20; }
+  .scrim.show { display: flex; }
+  .palette { width: 520px; max-width: 92vw; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.6); overflow: hidden; }
+  .palette .q { padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  .cmd { display: flex; align-items: center; gap: 10px; padding: 9px 16px; }
+  .cmd:hover, .cmd.hot { background: var(--accent-soft); }
+  .cmd code { font: 12px ui-monospace, Menlo, monospace; flex: 1; }
+  .cmd .both { font-size: 10px; color: var(--muted); }
+  .palette .foot { padding: 10px 16px; color: var(--muted); border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <span class="logo">Du<b>et</b></span>
+    <span class="crumb">/ Habit app / Home</span>
+    <span class="spacer"></span>
+    <span class="pill" id="openPal">Commands <kbd>Ctrl K</kbd></span>
+    <span class="pill"><span class="dot"></span>AI connected</span>
+    <span class="pill primary">Export</span>
+  </header>
+
+  <aside class="left">
+    <div class="sec">
+      <h4>Layers</h4>
+      <div class="row"><span class="ico f"></span>Frame: Home</div>
+      <div class="row l1"><span class="ico"></span>Header</div>
+      <div class="row l1"><span class="ico"></span>Streak card</div>
+      <div class="row l1 sel"><span class="ico"></span>Button: Start</div>
+    </div>
+    <div class="sec">
+      <h4>Skills loaded</h4>
+      <span class="skill">mobile-ui</span><span class="skill">spacing-scale</span><span class="skill">type-scale</span><span class="skill">contrast</span>
+      <div class="hint">From your kit. Add or remove any.</div>
+    </div>
+  </aside>
+
+  <main class="canvas">
+    <svg class="stage" viewBox="0 0 700 600" preserveAspectRatio="xMidYMid slice">
+      <text class="frame-label" x="150" y="52">Home  360 x 560</text>
+      <rect x="150" y="62" width="250" height="450" rx="14" fill="#f6f4ef"/>
+      <rect x="150" y="62" width="250" height="52" rx="14" fill="#ece8df"/>
+      <rect x="150" y="100" width="250" height="14" fill="#ece8df"/>
+      <text x="168" y="94" font-size="15" font-weight="700" fill="#2a2620">Good morning</text>
+      <rect x="168" y="132" width="214" height="120" rx="14" fill="#2f6f5e"/>
+      <text x="186" y="166" font-size="12" fill="#bfe3d6">Current streak</text>
+      <text x="186" y="214" font-size="40" font-weight="700" fill="#fff">12 days</text>
+      <rect x="168" y="274" width="214" height="46" rx="10" fill="#fff"/>
+      <rect x="168" y="328" width="214" height="46" rx="10" fill="#fff"/>
+      <rect id="btn" x="168" y="432" width="214" height="48" rx="8" fill="#e8743b"/>
+      <text id="btnT" x="275" y="462" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">Start today</text>
+      <rect x="168" y="432" width="214" height="48" fill="none" stroke="#7c5cff" stroke-width="1.5"/>
+      <g id="grid" opacity="0">
+        <g stroke="#7c5cff" stroke-opacity=".35" stroke-width="1">
+          <path d="M150 62V512M158 62V512M166 62V512M174 62V512M182 62V512M190 62V512M198 62V512M206 62V512M214 62V512"/>
+        </g>
+      </g>
+    </svg>
+
+    <div class="approval" id="approval">
+      <h5>Duet wants to change a setting</h5>
+      <div>You asked for a finer grid. Settings need your OK.</div>
+      <div class="diff">canvas.grid_size<br>- 8<br>+ 4</div>
+      <div class="btns"><span class="pill primary" id="allow">Allow</span><span class="pill" id="deny">Not now</span></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="tool on"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><path d="M7 3v18M17 3v18M3 7h18M3 17h18"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><path d="M4 20l4-1L19 8l-3-3L5 16z"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg></div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="sec">
+      <h4>Agent</h4>
+      <div class="who"><div class="avatar">D</div><div><b>Duet agent</b><small>Same commands as you</small></div></div>
+      <div class="ctx">
+        <b>project</b> habit-app<br>
+        <b>page</b> Home<br>
+        <b>selected</b> Button: Start<br>
+        <b>skills</b> 4 loaded<br>
+        <b>commands</b> 42 available
+      </div>
+    </div>
+
+    <div class="sec">
+      <h4>What the agent may do</h4>
+      <div class="seg" id="mode">
+        <div data-m="suggest">Suggest only</div>
+        <div data-m="ask" class="on">Ask first</div>
+        <div data-m="auto">Auto</div>
+      </div>
+      <div class="hint" id="modeHint">Design edits go through. Settings and deletes wait for your OK.</div>
+    </div>
+
+    <div class="sec">
+      <h4>Activity</h4>
+      <div class="log" id="log">
+        <div class="entry"><span class="who-tag">YOU</span><code>move_element button</code></div>
+        <div class="entry"><span class="who-tag ai">AI</span><code>set_fill #2F6F5E</code><span class="undo">Undo</span></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h4>Talk to it</h4>
+      <div class="ask"><div class="inp">Ask or describe a change</div><span class="pill primary">Send</span></div>
+      <span class="try" id="try">Try: "make the grid finer"</span>
+    </div>
+  </aside>
+
+  <footer class="hist">
+    <span class="note">History</span>
+    <div class="track" id="track">
+      <div class="pt" data-tip="You: new page"></div>
+      <div class="pt ai" data-tip="AI: streak card"></div>
+      <div class="pt" data-tip="You: moved list"></div>
+      <div class="pt now" data-tip="Now"></div>
+    </div>
+    <span class="note">Every AI action is a checkpoint you can return to.</span>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim">
+  <div class="palette">
+    <div class="q">Type a command...</div>
+    <div class="cmd hot"><code>move_element</code><span class="both">you + AI</span></div>
+    <div class="cmd"><code>set_fill</code><span class="both">you + AI</span></div>
+    <div class="cmd"><code>create_frame</code><span class="both">you + AI</span></div>
+    <div class="cmd"><code>apply_skill spacing-scale</code><span class="both">you + AI</span></div>
+    <div class="cmd"><code>settings.grid_size</code><span class="both">you + AI (asks first)</span></div>
+    <div class="cmd"><code>history.go_back</code><span class="both">you + AI</span></div>
+    <div class="foot">Every command here is also available to the agent. Press Esc to close.</div>
+  </div>
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  let mode = 'ask';
+  const hints = {
+    suggest: 'The agent only proposes. Nothing changes until you apply it.',
+    ask: 'Design edits go through. Settings and deletes wait for your OK.',
+    auto: 'The agent acts on its own. Every step is still a checkpoint you can undo.'
+  };
+  document.querySelectorAll('#mode div').forEach(d => d.addEventListener('click', () => {
+    document.querySelectorAll('#mode div').forEach(x => x.classList.remove('on'));
+    d.classList.add('on'); mode = d.dataset.m; $('#modeHint').textContent = hints[mode];
+  }));
+
+  function addLog(who, text, undo) {
+    const e = document.createElement('div'); e.className = 'entry';
+    e.innerHTML = '<span class="who-tag ' + (who === 'AI' ? 'ai' : '') + '">' + who + '</span><code>' + text + '</code>' + (undo ? '<span class="undo">Undo</span>' : '');
+    $('#log').appendChild(e); $('#log').scrollTop = 9999;
+    const p = document.createElement('div'); p.className = 'pt ' + (who === 'AI' ? 'ai' : ''); p.dataset.tip = who + ': ' + text;
+    const now = $('#track .now'); now.before(p);
+  }
+  function setGrid(on) { $('#grid').setAttribute('opacity', on ? 1 : 0); }
+
+  $('#try').addEventListener('click', () => {
+    if (mode === 'suggest') { addLog('AI', 'suggest settings.grid_size 4', false); }
+    else if (mode === 'ask') { $('#approval').classList.add('show'); }
+    else { setGrid(true); addLog('AI', 'settings.grid_size 8 -> 4', true); }
+  });
+  $('#allow').addEventListener('click', () => { $('#approval').classList.remove('show'); setGrid(true); addLog('AI', 'settings.grid_size 8 -> 4', true); });
+  $('#deny').addEventListener('click', () => { $('#approval').classList.remove('show'); addLog('YOU', 'declined settings change', false); });
+  $('#log').addEventListener('click', e => { if (e.target.classList.contains('undo')) { setGrid(false); e.target.parentElement.style.opacity = .4; e.target.remove(); } });
+
+  const open = () => $('#scrim').classList.add('show'), close = () => $('#scrim').classList.remove('show');
+  $('#openPal').addEventListener('click', open);
+  $('#scrim').addEventListener('click', e => { if (e.target.id === 'scrim') close(); });
+  addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') close();
+  });
+</script>
+</body>
+</html>
