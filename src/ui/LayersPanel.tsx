@@ -73,7 +73,10 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
             select([id]);
             window.dispatchEvent(new CustomEvent("duet:fit-selection", { detail: [id] }));
           } else if (e.shiftKey) select(selected ? selection.filter((i) => i !== id) : [...selection, id]);
-          else select([id]);
+          else {
+            select([id]);
+            window.dispatchEvent(new CustomEvent("duet:reveal", { detail: [id] }));
+          }
         }}
         onDoubleClick={() => setRenaming(true)}
       >
@@ -183,7 +186,7 @@ export default function LayersPanel() {
         </div>
       </div>
       {tab === "skills" && <SkillsPanel />}
-      {tab === "layers" && <div className="tip-line">Cmd or Ctrl click a layer to jump to it.</div>}
+      {tab === "layers" && <div className="tip-line">Click a layer to find it. Cmd or Ctrl click to zoom to it.</div>}
       <div
         className="layers"
         hidden={tab !== "layers"}

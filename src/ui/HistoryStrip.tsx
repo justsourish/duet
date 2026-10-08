@@ -11,7 +11,6 @@ const timeText = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-
 export default function HistoryStrip() {
   const timeline = useStore((s) => s.timeline);
   const cursor = useStore((s) => s.cursor);
-  const hasProject = useStore((s) => !!s.project.path);
   const scroller = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -108,7 +107,7 @@ export default function HistoryStrip() {
             <input
               autoFocus
               value={name}
-              placeholder={hasProject ? "Name it, like Client round 1" : "Save the project first"}
+              placeholder="Name it, like Client round 1"
               onChange={(e) => {
                 setName(e.target.value);
                 setNote(null);

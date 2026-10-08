@@ -109,6 +109,25 @@ export function zoomToElements(ids: string[], width: number, height: number) {
   fitBox(box, width, height, 4);
 }
 
+/** Bring things into view only if they are off screen, keeping the zoom when they fit. */
+export function revealElements(ids: string[], width: number, height: number) {
+  const doc = currentDoc();
+  const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldRect(doc, id)));
+  if (!box) return;
+  const vp = getState().viewport;
+  const left = box.x * vp.zoom + vp.x;
+  const top = box.y * vp.zoom + vp.y;
+  const right = left + box.width * vp.zoom;
+  const bottom = top + box.height * vp.zoom;
+  const visible = left >= 0 && top >= 0 && right <= width && bottom <= height;
+  if (visible) return;
+  if (box.width * vp.zoom <= width * 0.9 && box.height * vp.zoom <= height * 0.9) {
+    setViewport({ zoom: vp.zoom, x: width / 2 - (box.x + box.width / 2) * vp.zoom, y: height / 2 - (box.y + box.height / 2) * vp.zoom });
+  } else {
+    fitBox(box, width, height, 4);
+  }
+}
+
 /** Set the zoom level, keeping the middle of the screen where it is. */
 export function zoomTo(level: number, width: number, height: number) {
   const vp = getState().viewport;
@@ -609,14 +628,17 @@ export default function CanvasView() {
       const ids = (e as CustomEvent<string[] | undefined>).detail ?? getState().selection;
       zoomToElements(ids, sizeRef.current.w, sizeRef.current.h);
     };
+    const reveal = (e: Event) => revealElements((e as CustomEvent<string[]>).detail ?? [], sizeRef.current.w, sizeRef.current.h);
     const level = (e: Event) => zoomTo((e as CustomEvent<number>).detail, sizeRef.current.w, sizeRef.current.h);
     window.addEventListener("duet:fit", fit);
     window.addEventListener("duet:fit-selection", fitSelection);
     window.addEventListener("duet:zoom", level);
+    window.addEventListener("duet:reveal", reveal);
     return () => {
       window.removeEventListener("duet:fit", fit);
       window.removeEventListener("duet:fit-selection", fitSelection);
       window.removeEventListener("duet:zoom", level);
+      window.removeEventListener("duet:reveal", reveal);
     };
   }, []);
 

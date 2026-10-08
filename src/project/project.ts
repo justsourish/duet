@@ -245,8 +245,13 @@ export async function saveVersion(name: string): Promise<string | null> {
   const clean = name.trim();
   if (!clean) return "Give this version a name.";
   if (!inTauri()) return "Versions work in the desktop app.";
-  const path = getState().project.path;
-  if (!path) return "Save the project first, then name a version.";
+  let path = getState().project.path;
+  if (!path) {
+    // A version needs a home, so ask where the project should live, then carry on.
+    await saveAs();
+    path = getState().project.path;
+    if (!path) return "Choose a folder for your project, then save the version again.";
+  }
   await saveNow();
   const slug = clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "version";
   try {
