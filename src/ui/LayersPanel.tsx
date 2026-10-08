@@ -82,6 +82,11 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
           }
         }}
         onDoubleClick={() => setRenaming(true)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (!selected) select([id]);
+          window.dispatchEvent(new CustomEvent("duet:context", { detail: { x: e.clientX, y: e.clientY } }));
+        }}
       >
         <LayerIcon el={el} />
         {renaming ? (

@@ -896,6 +896,16 @@ export default function CanvasView() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onDoubleClick={onDoubleClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          const p = point(e);
+          const doc = currentDoc();
+          const hit = hitTest(doc, p.x, p.y, new Set(), e.metaKey || e.ctrlKey);
+          const sel = getState().selection;
+          if (hit && !sel.includes(hit)) select([hit]);
+          else if (!hit) select([]);
+          window.dispatchEvent(new CustomEvent("duet:context", { detail: { x: e.clientX, y: e.clientY } }));
+        }}
         onPointerLeave={() => !dragRef.current && getState().overlay.hoverId && setOverlay({ hoverId: null })}
       />
       {lost && (

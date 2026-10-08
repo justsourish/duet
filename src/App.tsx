@@ -5,6 +5,9 @@ import { startMcp } from "./ai/mcp";
 import { loadSkills } from "./ai/skills";
 import CanvasView from "./canvas/CanvasView";
 import { inTauri, newProject, openProject, restoreLast, saveNow, startAutosave } from "./project/project";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import ContextMenu from "./ui/ContextMenu";
+import Home from "./ui/Home";
 import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
@@ -12,7 +15,7 @@ import PresentView from "./ui/PresentView";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
 import Toolbar from "./ui/Toolbar";
-import { useStore } from "./state/store";
+import { getState, useStore } from "./state/store";
 import "./styles.css";
 
 const STATUS: Record<string, string> = {
@@ -28,11 +31,15 @@ export default function App() {
   const [zoomMenu, setZoomMenu] = useState(false);
   useDismiss(zoomMenu, () => setZoomMenu(false), ".zoomwrap.zoomonly");
   const [presenting, setPresenting] = useState(false);
+  const [home, setHome] = useState(false);
   const hasFrames = useStore((s) => Object.values(s.timeline[s.cursor].doc.elements).some((e) => e.type === "frame"));
 
   useEffect(() => {
     const stop = startAutosave();
-    restoreLast();
+    // go back to where you were; if there is nowhere to go back to, start at your projects
+    void restoreLast().then(() => {
+      if (inTauri() && !getState().project.path && getState().timeline.length <= 1) setHome(true);
+    });
     const stops: (() => void)[] = [];
     let alive = true;
     if (inTauri()) {
@@ -76,7 +83,15 @@ export default function App() {
         <span className="logo">
           Du<b>et</b>
         </span>
+        <button className="pill" onClick={() => setHome(true)} title="All your projects">
+          Projects
+        </button>
         <span className="crumb">/ {project.name}</span>
+        {project.path && (
+          <span className="crumb-path" title={`${project.path}\nClick to show it in Finder`} onClick={() => void revealItemInDir(project.path as string)}>
+            {project.path.replace(/^\/Users\/[^/]+/, "~")}
+          </span>
+        )}
         <span className={`status ${project.status}`} title={project.error ?? undefined}>
           {project.path ? STATUS[project.status] : "Not saved yet"}
         </span>
@@ -126,6 +141,8 @@ export default function App() {
       <PropertiesPanel />
       <HistoryStrip />
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
+      <ContextMenu />
+      {home && <Home onClose={() => setHome(false)} />}
     </div>
   );
 }

@@ -34,9 +34,41 @@ const committed = () => {
   return s.timeline[s.cursor].doc;
 };
 
+const RECENT_KEY = "duet:recent";
+
+export interface Recent {
+  path: string;
+  name: string;
+  /** When it was last opened, as milliseconds. */
+  opened: number;
+}
+
+/** Every project you have made or opened here, newest first. */
+export function getRecents(): Recent[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as Recent[];
+    return Array.isArray(raw) ? raw.filter((r) => r && typeof r.path === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function removeRecent(path: string) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(getRecents().filter((r) => r.path !== path)));
+  } catch {
+    /* nothing to do */
+  }
+  window.dispatchEvent(new Event("duet:recents"));
+}
+
 function remember(path: string | null) {
   try {
-    if (path) localStorage.setItem(LAST_KEY, path);
+    if (!path) return;
+    localStorage.setItem(LAST_KEY, path);
+    const rest = getRecents().filter((r) => r.path !== path);
+    localStorage.setItem(RECENT_KEY, JSON.stringify([{ path, name: baseName(path), opened: Date.now() }, ...rest].slice(0, 40)));
+    window.dispatchEvent(new Event("duet:recents"));
   } catch {
     /* private mode: nothing to remember */
   }
@@ -218,6 +250,22 @@ async function loadFrom(path: string, quiet = false): Promise<boolean> {
     if (!quiet) await oops(e instanceof DesignFileError ? e.message : String(e));
     return false;
   }
+}
+
+/** Open a project you already know the folder of, such as one from the projects list. */
+export async function openProjectAt(path: string): Promise<boolean> {
+  if (!inTauri()) return false;
+  const s = getState();
+  if (!s.project.path && s.timeline.length > 1) {
+    const go = await ask("Your current work has not been saved. Open another project anyway?", {
+      title: "Duet",
+      kind: "warning",
+      okLabel: "Open",
+      cancelLabel: "Cancel",
+    });
+    if (!go) return false;
+  }
+  return loadFrom(path);
 }
 
 /** Choose a project folder and open it. */

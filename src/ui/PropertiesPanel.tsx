@@ -376,6 +376,16 @@ export default function PropertiesPanel() {
         </div>
       )}
 
+      {one && (one.type === "frame" || one.type === "group") && !one.component && !one.id.includes("::") && (
+        <div className="sec">
+          <h4>Component</h4>
+          <button className="pill" onClick={() => dispatch("create_component", { id: one.id })}>
+            Make a component
+          </button>
+          <div className="hint2">Turn this into something you can reuse. Place copies from the Assets tab, and changing it changes them all.</div>
+        </div>
+      )}
+
       {one && (one.component || one.type === "instance") && (
         <ComponentSection el={one} copies={Object.values(doc.elements).filter((e) => e.type === "instance" && e.componentId === one.id && !e.id.includes("::")).length} />
       )}
