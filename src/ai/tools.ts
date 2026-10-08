@@ -1,3 +1,4 @@
+import { lookAtDesign, lookAtImage } from "./vision";
 import { commandLabel, newId } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
@@ -20,6 +21,8 @@ export interface ToolDef {
 
 export interface ToolResult {
   text: string;
+  /** A picture to show the AI, as base64. */
+  image?: { data: string; mime: string };
   isError?: boolean;
 }
 
@@ -44,6 +47,18 @@ export const TOOLS: ToolDef[] = [
     description:
       "Returns every element on the page. x and y are relative to the parent frame, or to the page for top-level things. Order in childIds and rootIds goes back to front.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "look_at_image",
+    description:
+      "See a picture the designer placed on the canvas (type image in get_document). You cannot see pictures unless you call this, and you must not guess what is in one. The picture is shrunk first, so call it once per picture and then work from what you saw. maxSize is the longest side in pixels (default 768).",
+    inputSchema: { type: "object", properties: { id: str, maxSize: num }, required: ["id"] },
+  },
+  {
+    name: "look_at_design",
+    description:
+      "See what a frame or shape looks like right now, drawn as the designer sees it. Use it to check your own work after changes, and to understand a design before you change it. Leave ids out to see the selection, or the first frame. maxSize is the longest side in pixels (default 768).",
+    inputSchema: { type: "object", properties: { ids, maxSize: num } },
   },
   {
     name: "select_elements",
@@ -297,6 +312,8 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
     const d = currentDoc();
     return { text: JSON.stringify({ rootIds: d.rootIds, elements: d.elements }) };
   }
+  if (name === "look_at_image") return lookAtImage(a.id, a.maxSize);
+  if (name === "look_at_design") return lookAtDesign(a.ids, a.maxSize);
   if (name === "select_elements") {
     const bad = missing(a.ids);
     if (bad.length) return fail(`No element with id: ${bad.join(", ")}.`);

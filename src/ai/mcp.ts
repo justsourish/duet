@@ -26,7 +26,9 @@ async function answer(rpc: Rpc): Promise<unknown> {
     case "tools/call": {
       const name = String(rpc.params?.name ?? "");
       const result = await callTool(name, rpc.params?.arguments);
-      return { content: [{ type: "text", text: result.text }], isError: !!result.isError };
+      const content: Record<string, unknown>[] = [{ type: "text", text: result.text }];
+      if (result.image) content.push({ type: "image", data: result.image.data, mimeType: result.image.mime });
+      return { content, isError: !!result.isError };
     }
     default:
       throw Object.assign(new Error(`Method not found: ${rpc.method}`), { code: -32601 });
