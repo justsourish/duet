@@ -1,3 +1,4 @@
+import Icon from "./Icons";
 import { useRef, useState } from "react";
 import { descendants, topLevelOnly } from "../document/geometry";
 import type { Doc, El } from "../document/types";
@@ -10,9 +11,9 @@ interface Drop {
   zone: Zone;
 }
 
-function Icon({ type }: { type: El["type"] }) {
-  if (type === "text") return <span className="ico t">T</span>;
-  return <span className={`ico ${type === "frame" ? "f" : ""} ${type === "ellipse" ? "round" : ""}`} />;
+function LayerIcon({ type }: { type: El["type"] }) {
+  const name = type === "text" ? "text" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
+  return <Icon name={name} size={14} className="ico" />;
 }
 
 interface DndProps {
@@ -80,7 +81,7 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
         }}
         onDoubleClick={() => setRenaming(true)}
       >
-        <Icon type={el.type} />
+        <LayerIcon type={el.type} />
         {renaming ? (
           <input
             className="rename"
