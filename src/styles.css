@@ -419,7 +419,7 @@ button {
 }
 .popover {
   position: absolute;
-  right: 16px;
+  left: 16px;
   bottom: calc(100% + 8px);
   width: 320px;
   max-height: 360px;
