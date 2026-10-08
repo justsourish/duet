@@ -143,3 +143,105 @@ export function distanceToLine(px: number, py: number, line: { x: number; y: num
   }
   return best;
 }
+
+// ---- editing the points of an existing line ----
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** Segments as pairs of point numbers: 0-1, 1-2, and the closing one when the shape is closed. */
+export function segments(count: number, closed: boolean): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i + 1 < count; i++) out.push([i, i + 1]);
+  if (closed && count > 2) out.push([count - 1, 0]);
+  return out;
+}
+
+const pointOn = (a: AbsNode, b: AbsNode, t: number): { x: number; y: number } => {
+  if (straight(a, b)) return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+  const u = 1 - t;
+  const p1x = a.x + a.ox;
+  const p1y = a.y + a.oy;
+  const p2x = b.x + b.ix;
+  const p2y = b.y + b.iy;
+  return {
+    x: u * u * u * a.x + 3 * u * u * t * p1x + 3 * u * t * t * p2x + t * t * t * b.x,
+    y: u * u * u * a.y + 3 * u * u * t * p1y + 3 * u * t * t * p2y + t * t * t * b.y,
+  };
+};
+
+/** The closest spot on the line to a point: which piece, how far along it, and how far away. */
+export function nearestOnLine(nodes: AbsNode[], closed: boolean, px: number, py: number) {
+  let best = { segment: -1, t: 0, distance: Infinity };
+  segments(nodes.length, closed).forEach(([i, j], s) => {
+    for (let k = 0; k <= 40; k++) {
+      const t = k / 40;
+      const q = pointOn(nodes[i], nodes[j], t);
+      const d = Math.hypot(px - q.x, py - q.y);
+      if (d < best.distance) best = { segment: s, t, distance: d };
+    }
+  });
+  return best;
+}
+
+/** Add a point on a piece of the line, keeping the shape exactly as it was. */
+export function splitSegment(nodes: AbsNode[], closed: boolean, segment: number, t: number): { nodes: AbsNode[]; index: number } {
+  const [i, j] = segments(nodes.length, closed)[segment];
+  const a = nodes[i];
+  const b = nodes[j];
+  let made: AbsNode;
+  let na = a;
+  let nb = b;
+  if (straight(a, b)) {
+    made = { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), ix: 0, iy: 0, ox: 0, oy: 0 };
+  } else {
+    const p = [a.x, a.y, a.x + a.ox, a.y + a.oy, b.x + b.ix, b.y + b.iy, b.x, b.y];
+    const q0 = [lerp(p[0], p[2], t), lerp(p[1], p[3], t)];
+    const q1 = [lerp(p[2], p[4], t), lerp(p[3], p[5], t)];
+    const q2 = [lerp(p[4], p[6], t), lerp(p[5], p[7], t)];
+    const r0 = [lerp(q0[0], q1[0], t), lerp(q0[1], q1[1], t)];
+    const r1 = [lerp(q1[0], q2[0], t), lerp(q1[1], q2[1], t)];
+    const s = [lerp(r0[0], r1[0], t), lerp(r0[1], r1[1], t)];
+    made = { x: s[0], y: s[1], ix: r0[0] - s[0], iy: r0[1] - s[1], ox: r1[0] - s[0], oy: r1[1] - s[1] };
+    na = { ...a, ox: q0[0] - a.x, oy: q0[1] - a.y };
+    nb = { ...b, ix: q2[0] - b.x, iy: q2[1] - b.y };
+  }
+  const out = nodes.map((n, k) => (k === i ? na : k === j ? nb : n));
+  // the closing piece goes after the last point; every other piece goes right after its first point
+  const at = j === 0 ? out.length : i + 1;
+  out.splice(at, 0, made);
+  return { nodes: out, index: at };
+}
+
+/** Does this point have two handles pointing in opposite directions (a smooth join)? */
+export function isSmooth(n: AbsNode): boolean {
+  const a = Math.hypot(n.ix, n.iy);
+  const b = Math.hypot(n.ox, n.oy);
+  if (!a || !b) return false;
+  const cross = Math.abs(n.ix * n.oy - n.iy * n.ox) / (a * b);
+  return cross < 0.02 && n.ix * n.ox + n.iy * n.oy < 0;
+}
+
+/** Corner to smooth, or smooth back to corner. */
+export function toggleSmooth(nodes: AbsNode[], closed: boolean, index: number): AbsNode[] {
+  const n = nodes[index];
+  if (n.ix || n.iy || n.ox || n.oy) return nodes.map((m, k) => (k === index ? { ...m, ix: 0, iy: 0, ox: 0, oy: 0 } : m));
+  const prev = nodes[index - 1] ?? (closed ? nodes[nodes.length - 1] : undefined);
+  const next = nodes[index + 1] ?? (closed ? nodes[0] : undefined);
+  const a = prev ?? n;
+  const b = next ?? n;
+  let dx = b.x - a.x;
+  let dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (!len) return nodes;
+  dx /= len;
+  dy /= len;
+  const reachOut = next ? Math.hypot(next.x - n.x, next.y - n.y) / 3 : len / 3;
+  const reachIn = prev ? Math.hypot(n.x - prev.x, n.y - prev.y) / 3 : len / 3;
+  return nodes.map((m, k) => (k === index ? { ...m, ox: dx * reachOut, oy: dy * reachOut, ix: -dx * reachIn, iy: -dy * reachIn } : m));
+}
+
+/** Take a point out. Keeps at least two points on an open line and three on a closed one. */
+export function removeNode(nodes: AbsNode[], closed: boolean, index: number): AbsNode[] {
+  if (nodes.length <= (closed ? 3 : 2)) return nodes;
+  return nodes.filter((_, k) => k !== index);
+}

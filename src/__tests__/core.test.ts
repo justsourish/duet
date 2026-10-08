@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runCommand } from "../commands";
 import { descendants, frameAt, hitTest, snapRect, topLevelOnly, worldPos, worldRect } from "../document/geometry";
 import { emptyDoc } from "../document/types";
-import { fromAbs, pathData } from "../document/path";
+import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
 import { resizeRect } from "../canvas/handles";
 import {
   currentDoc,
@@ -578,5 +578,53 @@ describe("drawn lines", () => {
       props: { nodes: shape.nodes, closed: false },
     });
     expect(parseDoc(serializeDoc(d)).elements.ln.nodes).toEqual(shape.nodes);
+  });
+});
+
+describe("editing the points of a line", () => {
+  const corner = (x: number, y: number) => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0 });
+
+  it("adds a point in the middle of a straight piece", () => {
+    const r = splitSegment([corner(0, 0), corner(100, 0)], false, 0, 0.5);
+    expect(r.nodes).toHaveLength(3);
+    expect(r.nodes[1]).toMatchObject({ x: 50, y: 0 });
+    expect(r.index).toBe(1);
+  });
+
+  it("splits a curve without changing its shape", () => {
+    const a = { x: 0, y: 0, ix: 0, iy: 0, ox: 0, oy: 60 };
+    const b = { x: 100, y: 0, ix: 0, iy: 60, ox: 0, oy: 0 };
+    const before = flatten([a, b], false, 40);
+    const r = splitSegment([a, b], false, 0, 0.5);
+    const after = flatten(r.nodes, false, 20);
+    const worst = Math.max(...after.map((p) => distanceToLine(p.x, p.y, before)));
+    expect(worst).toBeLessThan(0.6);
+  });
+
+  it("adds a point on the closing piece at the end", () => {
+    const r = splitSegment([corner(0, 0), corner(100, 0), corner(100, 100)], true, 2, 0.5);
+    expect(r.index).toBe(3);
+    expect(r.nodes[3]).toMatchObject({ x: 50, y: 50 });
+  });
+
+  it("finds the closest piece of the line", () => {
+    const hit = nearestOnLine([corner(0, 0), corner(100, 0), corner(100, 100)], false, 100, 60);
+    expect(hit.segment).toBe(1);
+    expect(hit.distance).toBeLessThan(1);
+  });
+
+  it("turns a corner into a smooth join and back", () => {
+    const nodes = [corner(0, 0), corner(50, 0), corner(100, 50)];
+    const smooth = toggleSmooth(nodes, false, 1);
+    expect(isSmooth(smooth[1])).toBe(true);
+    const back = toggleSmooth(smooth, false, 1);
+    expect(isSmooth(back[1])).toBe(false);
+    expect(back[1].ox).toBe(0);
+  });
+
+  it("will not remove points below the minimum", () => {
+    expect(removeNode([corner(0, 0), corner(1, 1)], false, 0)).toHaveLength(2);
+    expect(removeNode([corner(0, 0), corner(1, 1), corner(2, 0)], true, 0)).toHaveLength(3);
+    expect(removeNode([corner(0, 0), corner(1, 1), corner(2, 0)], false, 1)).toHaveLength(2);
   });
 });

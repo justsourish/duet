@@ -38,12 +38,16 @@ import type { Tool } from "../state/store";
 import { HANDLES, resizeRect } from "./handles";
 import type { HandleKey } from "./handles";
 import { pickImages, placeFiles } from "../project/imageImport";
+import { deleteSelectedNode, doubleClickNode, dragNode, editing, enterNodeEdit, exitNodeEdit, hitNode, nodesOf, selectNode } from "./nodes";
+import type { NodeHit } from "./nodes";
+import type { AbsNode } from "../document/path";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
 import { draw, labelRect, screenRect } from "./render";
 import { FONT_STACK, LINE_HEIGHT, measureText } from "./text";
 
 type Drag =
   | { kind: "pen"; index: number | null }
+  | { kind: "node"; hit: NodeHit; start: AbsNode[]; at: { x: number; y: number }; sx: number; sy: number; moved: boolean }
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number }
@@ -152,6 +156,13 @@ export default function CanvasView() {
   const editingId = useStore((s) => s.editingId);
   const viewport = useStore((s) => s.viewport);
 
+  // Choosing something else ends point editing.
+  const selNow = useStore((st) => st.selection);
+  useEffect(() => {
+    const ne = editing();
+    if (ne && !(selNow.length === 1 && selNow[0] === ne.id)) exitNodeEdit();
+  }, [selNow]);
+
   // Switching to another tool ends the line you were drawing.
   const toolNow = useStore((st) => st.tool);
   useEffect(() => {
@@ -219,7 +230,7 @@ export default function CanvasView() {
   const handleAt = (sx: number, sy: number): HandleKey | null => {
     const s = getState();
     const doc = currentDoc(s);
-    if (s.selection.length !== 1 || !doc.elements[s.selection[0]]) return null;
+    if (editing() || s.selection.length !== 1 || !doc.elements[s.selection[0]]) return null;
     const r = screenRect(s, worldRect(doc, s.selection[0]));
     for (const hd of HANDLES) {
       const hx = r.x + r.width * hd.fx;
@@ -272,6 +283,20 @@ export default function CanvasView() {
 
     // move tool
     const doc = currentDoc(s);
+    const ne = editing();
+    if (ne) {
+      const nh = hitNode(p.sx, p.sy);
+      if (nh) {
+        selectNode(nh.index);
+        dragRef.current = { kind: "node", hit: nh, start: nodesOf(doc, ne.id), at: { x: p.x, y: p.y }, sx: p.sx, sy: p.sy, moved: false };
+        return;
+      }
+      if (hitTest(doc, p.x, p.y) === ne.id) {
+        selectNode(null);
+        return;
+      }
+      exitNodeEdit();
+    }
     const handle = handleAt(p.sx, p.sy);
     if (handle) {
       const id = s.selection[0];
@@ -316,6 +341,13 @@ export default function CanvasView() {
       const doc = currentDoc(s);
       const hover = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y);
       if (hover !== s.overlay.hoverId) setOverlay({ hoverId: hover });
+      return;
+    }
+
+    if (d.kind === "node") {
+      if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
+      d.moved = true;
+      dragNode(d.hit, d.start, p.x - d.at.x, p.y - d.at.y, e.altKey);
       return;
     }
 
@@ -390,6 +422,12 @@ export default function CanvasView() {
     if (!d) return;
     const p = point(e);
 
+    if (d.kind === "node") {
+      if (d.moved) dragCommit("Edit points");
+      else dragCancel();
+      return;
+    }
+
     if (d.kind === "pen") return;
 
     if (d.kind === "pan") {
@@ -457,7 +495,14 @@ export default function CanvasView() {
     }
     const p = point(e);
     const doc = currentDoc();
+    if (editing()) {
+      if (doubleClickNode(p.x, p.y, hitNode(p.sx, p.sy))) return;
+    }
     const hit = hitTest(doc, p.x, p.y);
+    if (hit && doc.elements[hit].type === "path") {
+      enterNodeEdit(hit);
+      return;
+    }
     if (hit && doc.elements[hit].type === "text") {
       select([hit]);
       setEditing(hit);
@@ -572,6 +617,18 @@ export default function CanvasView() {
       const s = getState();
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
+
+      if (editing()) {
+        if (e.key === "Enter" || e.key === "Escape") {
+          e.preventDefault();
+          exitNodeEdit();
+          return;
+        }
+        if ((e.key === "Backspace" || e.key === "Delete") && deleteSelectedNode()) {
+          e.preventDefault();
+          return;
+        }
+      }
 
       if (s.tool === "pen" && penActive()) {
         if (e.key === "Enter") {

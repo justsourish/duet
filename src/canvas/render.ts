@@ -273,7 +273,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     const r = screenRect(s, worldRect(doc, id));
     ctx.strokeRect(r.x, r.y, r.width, r.height);
   }
-  if (sel.length === 1) {
+  if (sel.length === 1 && !s.overlay.nodeEdit) {
     const r = screenRect(s, worldRect(doc, sel[0]));
     for (const hd of HANDLES) {
       const hx = r.x + r.width * hd.fx;
@@ -296,6 +296,47 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     const ww = Math.max(...wr.map((r) => r.x + r.width)) - Math.min(...wr.map((r) => r.x));
     const wh = Math.max(...wr.map((r) => r.y + r.height)) - Math.min(...wr.map((r) => r.y));
     pill(ctx, `${Math.round(ww)} × ${Math.round(wh)}`, (x1 + x2) / 2, y2 + 10);
+  }
+
+  // the points of a line being edited
+  const ne = s.overlay.nodeEdit;
+  if (ne && doc.elements[ne.id]?.type === "path") {
+    const el = doc.elements[ne.id];
+    const at = worldRect(doc, ne.id);
+    const nodes = toAbs(el, at.x, at.y).map((n) => {
+      const a = toScreen(s, n.x, n.y);
+      const z = s.viewport.zoom;
+      return { x: a.x, y: a.y, ix: n.ix * z, iy: n.iy * z, ox: n.ox * z, oy: n.oy * z };
+    });
+    nodes.forEach((n, i) => {
+      const chosen = ne.selected === i;
+      if (chosen && (n.ox || n.oy || n.ix || n.iy)) {
+        ctx.strokeStyle = COLORS.accent;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(n.x + n.ix, n.y + n.iy);
+        ctx.lineTo(n.x, n.y);
+        ctx.lineTo(n.x + n.ox, n.y + n.oy);
+        ctx.stroke();
+        for (const [hx, hy, on] of [[n.x + n.ix, n.y + n.iy, n.ix || n.iy], [n.x + n.ox, n.y + n.oy, n.ox || n.oy]] as const) {
+          if (!on) continue;
+          ctx.fillStyle = COLORS.white;
+          ctx.strokeStyle = COLORS.accent;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = chosen ? COLORS.accent : COLORS.white;
+      ctx.strokeStyle = COLORS.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(n.x - 4, n.y - 4, 8, 8);
+      ctx.fill();
+      ctx.stroke();
+    });
   }
 
   // the line being drawn with the pen
