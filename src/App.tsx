@@ -4,7 +4,7 @@ import { detectAgent, startAgentListeners } from "./ai/agent";
 import { startMcp } from "./ai/mcp";
 import { loadSkills } from "./ai/skills";
 import CanvasView from "./canvas/CanvasView";
-import { flushPack, inTauri, newProject, openProject, openProjectAt, restoreLast, saveNow, startAutosave } from "./project/project";
+import { findProjects, flushPack, inTauri, newProject, openProject, openProjectAt, restoreLast, saveNow, startAutosave } from "./project/project";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -79,6 +79,8 @@ export default function App() {
       void getCurrentWindow().onCloseRequested(async () => {
         await flushPack();
       });
+      // projects in Documents/Duet always show up in the list, even ones made before this app knew them
+      void invoke<string>("default_projects_dir").then((d) => findProjects(d)).catch(() => undefined);
       void installMenu();
       loadSkills();
       detectAgent();

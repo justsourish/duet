@@ -37,4 +37,4 @@ Duet works without an AI. For the chat, install [Claude Code](https://claude.com
 
 ## Your projects
 
-A project is a folder whose name ends in `.duet`, with your design and its history inside. Keep it anywhere you like. Duet saves as you work, so there is nothing to remember to save. Press Cmd or Ctrl + S to be sure. Press Cmd or Ctrl + Shift + S to name a version you can come back to.
+A project is one file that ends in `.duet`, with your design, your pictures and its whole history inside. Keep it anywhere you like, or let Duet put new ones in `Documents/Duet`. Duet saves as you work, so there is no Save button to remember.

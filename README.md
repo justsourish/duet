@@ -12,7 +12,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 
 - An infinite canvas with frames, rectangles, ellipses, text, pictures and drawn lines. Pan, zoom, select, move, resize (Shift keeps proportions, Option scales from the centre), snapping guides.
 - A pen tool with corners and smooth curves, and point editing: double-click a line to move points, pull handles, add and remove points.
-- Pictures: drag them in, paste them, or use the Image button. They are kept once inside your project folder.
+- Pictures: drag them in, paste them, or use the Image button. They are kept once inside your project file.
 - Auto layout: Shift A lines up what is inside a frame in a row or a column, with gap, padding, alignment, hug and fill.
 - Components: Cmd Option K turns a frame or group into a component. Place copies from the Assets tab. Change the original and every copy follows. Change text, colour or pictures on one copy without touching the rest.
 - Real text: any installed font, weight, size, line height, letter spacing, alignment, and boxes that wrap. Save a text style and change it once for every text that uses it.
@@ -21,11 +21,10 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Copy, paste and duplicate (Cmd or Ctrl + D), including between projects.
 - Export PNG (1x, 2x, 3x) and SVG, for one thing or every screen.
 - Prototype in its first form: link a shape to another screen, press Present, and click through.
-- Projects are plain folders. Your design is a readable `design.json` that saves itself as you work.
+- A project is one `.duet` file. It holds your design, your pictures and your whole history, and it saves itself as you work. You can export the design as plain JSON any time.
 - A history that survives closing the app, drawn as two lanes: **You** and **Duet**. Save a named version ("Client round 1") and go back to it any time. Nothing is ever lost when you go back.
 - A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
 - Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens). Turn them on and off, write your own, or import skill files and folders.
-- A project is a folder ending in `.duet`, with your design and its history inside.
 
 ## What does not exist yet
 

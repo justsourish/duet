@@ -73,9 +73,6 @@ export interface Recent {
 }
 
 /** Every project you have made or opened here, newest first. */
-/** If someone picks the design file inside an older project folder, they mean the folder. */
-const projectPath = (p: string) => p.replace(/[\\/]design\.json$/i, "");
-
 export function getRecents(): Recent[] {
   try {
     const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as Recent[];
@@ -84,10 +81,10 @@ export function getRecents(): Recent[] {
     const out: Recent[] = [];
     for (const r of raw) {
       if (!r || typeof r.path !== "string") continue;
-      const path = projectPath(r.path);
-      if (seen.has(path)) continue;
-      seen.add(path);
-      out.push({ ...r, path, name: r.path === path ? r.name : baseName(path) });
+      // only single .duet files are projects now
+      if (!/\.duet$/i.test(r.path) || seen.has(r.path)) continue;
+      seen.add(r.path);
+      out.push(r);
     }
     return out;
   } catch {
@@ -337,7 +334,7 @@ async function readHistory(path: string): Promise<HistoryEntry[]> {
   }
 }
 
-async function loadFrom(path: string, quiet = false, file: string | null = null): Promise<boolean> {
+async function loadFrom(path: string, quiet: boolean, file: string): Promise<boolean> {
   try {
     const design = join(path, FILE);
     if (!((await invoke<boolean>("path_exists", { path: design })) === true)) {
@@ -358,8 +355,8 @@ async function loadFrom(path: string, quiet = false, file: string | null = null)
       loadTimeline(entries);
     }
     lastSaved = committed();
-    setProject({ path, file, name: baseName(file ?? path), status: "saved", error: null });
-    remember(file ?? path);
+    setProject({ path, file, name: baseName(file), status: "saved", error: null });
+    remember(file);
     void writePreview(path, committed()); // older projects get their picture the first time they are opened
     return true;
   } catch (e) {
@@ -384,11 +381,13 @@ export async function openProjectAt(path: string): Promise<boolean> {
   return openAny(path);
 }
 
-/** Open a project file, or an older project folder. */
-async function openAny(picked: string, quiet = false): Promise<boolean> {
-  const path = projectPath(picked);
+/** Open a project file. */
+async function openAny(path: string, quiet = false): Promise<boolean> {
   try {
-    if ((await invoke<boolean>("is_directory", { path })) === true) return loadFrom(path, quiet, null);
+    if ((await invoke<boolean>("is_directory", { path })) === true) {
+      if (!quiet) await oops("Duet projects are single .duet files now. Choose a file that ends in .duet.");
+      return false;
+    }
     if ((await invoke<boolean>("path_exists", { path })) !== true) {
       if (!quiet) await oops("That project was moved or deleted.");
       return false;
@@ -410,40 +409,6 @@ async function openProjectDialog() {
   if (!inTauri()) return;
   const picked = await open({ directory: false, multiple: false, title: "Open a Duet project", filters: [{ name: "Duet project", extensions: ["duet"] }] });
   if (typeof picked === "string") await openAny(picked);
-}
-
-/** Open an older project, one that is a folder. */
-export async function openOldFolder() {
-  await once(async () => {
-    if (!inTauri()) return;
-    const picked = await open({ directory: true, multiple: false, title: "Open an older Duet project folder" });
-    if (typeof picked === "string") await openAny(picked);
-  });
-}
-
-/** Turn the project you have open, or an older folder, into a single file. */
-export async function saveAsSingleFile() {
-  await once(async () => {
-    if (!inTauri()) return;
-    const s = getState();
-    if (!s.project.path) {
-      await oops("Save your project first, or open the older folder you want to convert.");
-      return;
-    }
-    if (s.project.file) {
-      await oops("This project is already a single file.");
-      return;
-    }
-    const picked = await chooseFile("Save as a single file");
-    if (!picked) return;
-    try {
-      await saveNow();
-      await invoke("pack_project", { dir: s.project.path, file: picked });
-      await openAny(picked, true);
-    } catch (e) {
-      await oops(String(e));
-    }
-  });
 }
 
 /** Save the design as plain data (a .json file), for people and programs that want it. */

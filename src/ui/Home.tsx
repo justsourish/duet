@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useState } from "react";
-import { findProjects, getRecents, inTauri, newProject, openOldFolder, openProject, openProjectAt, removeRecent } from "../project/project";
+import { findProjects, getRecents, inTauri, newProject, openProject, openProjectAt, removeRecent } from "../project/project";
 import type { Recent } from "../project/project";
 import { getState, useStore } from "../state/store";
 import { useDismiss } from "./useDismiss";
@@ -104,7 +104,14 @@ export default function Home({ onClose }: { onClose: () => void }) {
     if (!inTauri()) return;
     let alive = true;
     Promise.all(
-      recents.map(async (r) => [r.path, (await invoke<boolean>("path_exists", { path: r.path }).catch(() => false)) === false] as const),
+      recents.map(async (r) => {
+        // an older project folder is not a project any more, so it leaves the list
+        if ((await invoke<boolean>("is_directory", { path: r.path }).catch(() => false)) === true) {
+          removeRecent(r.path);
+          return [r.path, false] as const;
+        }
+        return [r.path, (await invoke<boolean>("path_exists", { path: r.path }).catch(() => false)) === false] as const;
+      }),
     ).then((pairs) => alive && setMissing(Object.fromEntries(pairs)));
     return () => {
       alive = false;
@@ -151,13 +158,6 @@ export default function Home({ onClose }: { onClose: () => void }) {
         <button className="pill wide" onClick={browse}>
           Open a file
         </button>
-        <button className="pill wide" onClick={async () => {
-          const before = getState().project.path;
-          await openOldFolder();
-          if (getState().project.path !== before) onClose();
-        }}>
-          Open an older folder
-        </button>
         <button className="pill wide" onClick={find}>
           Find my projects
         </button>
@@ -189,7 +189,7 @@ export default function Home({ onClose }: { onClose: () => void }) {
           <div className="home-empty">
             <b>Welcome. Here is how it goes.</b>
             <ol>
-              <li>Press <b>New project</b> and choose where it lives. A project is just a folder.</li>
+              <li>Press <b>New project</b> and choose where it lives. A project is one file, with its history inside.</li>
               <li>Press <b>F</b>, then drag to draw a frame. That is a screen. Draw shapes, text and lines inside it.</li>
               <li>Ask Duet in the chat for what you want. It works on the same canvas, in its own colour.</li>
             </ol>

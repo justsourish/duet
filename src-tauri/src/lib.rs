@@ -152,22 +152,11 @@ struct FoundProject {
     modified: u64,
 }
 
-/// Look inside a folder, a few levels down, for Duet projects (folders that hold a design.json).
+/// Look inside a folder, a few levels down, for Duet project files (.duet).
 #[tauri::command]
 fn find_projects(root: String) -> Vec<FoundProject> {
     fn walk(dir: &Path, depth: u32, out: &mut Vec<FoundProject>) {
         if depth > 3 {
-            return;
-        }
-        let design = dir.join(DESIGN_FILE);
-        if design.is_file() {
-            let modified = fs::metadata(&design)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            out.push(FoundProject { path: dir.to_string_lossy().to_string(), modified });
             return;
         }
         let Ok(read) = fs::read_dir(dir) else { return };

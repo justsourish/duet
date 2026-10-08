@@ -71,7 +71,7 @@ Real-time cloud multiplayer. Local first. Cloud storage comes later as its own d
 ## Build plan
 
 1. **Shell and canvas.** Tauri app on Mac and Windows. Infinite canvas, pan and zoom, frames, rectangle, ellipse, text. Renderer: start with plain Canvas 2D for speed of building. Move to PixiJS only if it gets slow.
-2. **Document and commands.** The JSON document. The command layer. Every GUI action goes through it. Save and open projects as folders.
+2. **Document and commands.** The JSON document. The command layer. Every GUI action goes through it. Save and open projects as single `.duet` files (a zip with the design, pictures and history inside).
 3. **Styling and layout.** Fill, stroke, radius, shadow, text styling, auto layout with Taffy.
 4. **History.** Local Git. Checkpoint per action. The history strip with restore.
 5. **AI.** MCP server and bridge. Chat panel running the user's agent tool. Permission levels. Skills tab.
