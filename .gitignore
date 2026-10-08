@@ -1,0 +1,6 @@
+# Pinterest and other inspiration. Kept local, not shared.
+ref/
+.DS_Store
+node_modules/
+target/
+dist/
