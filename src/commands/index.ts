@@ -1,4 +1,4 @@
-import { descendants } from "../document/geometry";
+import { descendants, worldPos } from "../document/geometry";
 import type { Doc, El, ElementType } from "../document/types";
 
 /**
@@ -172,6 +172,52 @@ const deleteElements: CommandDef<DeleteArgs> = {
   },
 };
 
+// ---- reparent_elements ----
+export interface ReparentArgs {
+  ids: string[];
+  /** New parent frame, or null for the page. */
+  parentId: string | null;
+  /** Position in the new parent's list. Later means in front. Defaults to the front. */
+  index?: number;
+  label?: string;
+}
+
+/** Move elements into another frame, out of a frame, or to a new place in the stack. Keeps them where they look. */
+const reparentElements: CommandDef<ReparentArgs> = {
+  label: (a) => a.label ?? "Move to another frame",
+  run: (doc, a) => {
+    if (a.parentId) {
+      const target = doc.elements[a.parentId];
+      if (!target || target.type !== "frame") return doc;
+      for (const id of a.ids) {
+        if (id === a.parentId || descendants(doc, id).includes(a.parentId)) return doc; // would create a loop
+      }
+    }
+    const next = clone(doc);
+    const parentWorld = a.parentId ? worldPos(next, a.parentId) : { x: 0, y: 0 };
+    const listOf = (pid: string | null) => (pid ? next.elements[pid].childIds : next.rootIds);
+    let index = a.index ?? listOf(a.parentId).length;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      if (!el) continue;
+      const w = worldPos(next, id);
+      const oldList = listOf(el.parentId);
+      const from = oldList.indexOf(id);
+      if (from >= 0) oldList.splice(from, 1);
+      const newList = listOf(a.parentId);
+      let at = index;
+      if (oldList === newList && from >= 0 && from < index) at -= 1;
+      at = Math.max(0, Math.min(newList.length, at));
+      newList.splice(at, 0, id);
+      el.parentId = a.parentId;
+      el.x = w.x - parentWorld.x;
+      el.y = w.y - parentWorld.y;
+      index = at + 1;
+    }
+    return next;
+  },
+};
+
 // ---- registry ----
 export const commands = {
   create_element: createElement,
@@ -179,6 +225,7 @@ export const commands = {
   resize_element: resizeElement,
   set_props: setProps,
   delete_elements: deleteElements,
+  reparent_elements: reparentElements,
 } as const;
 
 export type CommandName = keyof typeof commands;

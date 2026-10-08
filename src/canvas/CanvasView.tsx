@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { newId } from "../commands";
+import { newId, runCommand } from "../commands";
 import {
   descendants,
   frameAt,
@@ -20,6 +20,7 @@ import {
   dragCancel,
   dragCommit,
   dragPreview,
+  dragPreviewDoc,
   getState,
   redo,
   select,
@@ -326,8 +327,21 @@ export default function CanvasView() {
     }
 
     if (d.kind === "move") {
-      if (d.moved) dragCommit(d.ids.length > 1 ? `Move ${d.ids.length} elements` : "Move element");
-      else dragCancel();
+      if (d.moved) {
+        let label = d.ids.length > 1 ? `Move ${d.ids.length} elements` : "Move element";
+        const doc = d.base;
+        // Dropped over a different frame (or off every frame)? Change parent, like Figma.
+        if (d.ids.every((id) => doc.elements[id]?.type !== "frame")) {
+          const target = frameAt(doc, p.x, p.y);
+          const changing = d.ids.filter((id) => (doc.elements[id].parentId ?? null) !== target);
+          if (changing.length > 0) {
+            const name = target ? doc.elements[target].name : null;
+            label = name ? `Move into ${name}` : "Move out of frame";
+            dragPreviewDoc(runCommand(currentDoc(), "reparent_elements", { ids: changing, parentId: target, label }));
+          }
+        }
+        dragCommit(label);
+      } else dragCancel();
       setOverlay({ guidesX: [], guidesY: [] });
       return;
     }

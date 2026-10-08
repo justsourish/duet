@@ -232,3 +232,68 @@ describe("design file", () => {
     expect(() => parseDoc(JSON.stringify({ version: 1, rootIds: [], elements: { a: { type: "star" } } }))).toThrow(DesignFileError);
   });
 });
+
+describe("reparent_elements", () => {
+  const base = () => {
+    let d = emptyDoc();
+    d = runCommand(d, "create_element", { id: "f1", type: "frame", x: 100, y: 100, width: 300, height: 300 });
+    d = runCommand(d, "create_element", { id: "f2", type: "frame", x: 600, y: 0, width: 300, height: 300 });
+    d = runCommand(d, "create_element", { id: "r1", type: "rect", x: 20, y: 20, width: 50, height: 50, parentId: "f1" });
+    d = runCommand(d, "create_element", { id: "free", type: "rect", x: 650, y: 40, width: 50, height: 50 });
+    return d;
+  };
+
+  it("moves a shape into a frame and keeps it where it looks", () => {
+    const doc = runCommand(base(), "reparent_elements", { ids: ["free"], parentId: "f2" });
+    expect(doc.elements.free.parentId).toBe("f2");
+    expect(doc.elements.f2.childIds).toEqual(["free"]);
+    expect(doc.rootIds).toEqual(["f1", "f2"]);
+    expect(worldPos(doc, "free")).toEqual({ x: 650, y: 40 });
+  });
+
+  it("moves a shape out of a frame to the page", () => {
+    const doc = runCommand(base(), "reparent_elements", { ids: ["r1"], parentId: null });
+    expect(doc.elements.r1.parentId).toBeNull();
+    expect(doc.elements.f1.childIds).toEqual([]);
+    expect(doc.rootIds).toContain("r1");
+    expect(worldPos(doc, "r1")).toEqual({ x: 120, y: 120 });
+  });
+
+  it("moves between frames", () => {
+    const doc = runCommand(base(), "reparent_elements", { ids: ["r1"], parentId: "f2" });
+    expect(doc.elements.f1.childIds).toEqual([]);
+    expect(doc.elements.f2.childIds).toEqual(["r1"]);
+    expect(worldPos(doc, "r1")).toEqual({ x: 120, y: 120 });
+  });
+
+  it("refuses to put a frame inside itself or its own child", () => {
+    const d = base();
+    expect(runCommand(d, "reparent_elements", { ids: ["f1"], parentId: "f1" })).toBe(d);
+    const nested = runCommand(d, "reparent_elements", { ids: ["f2"], parentId: "f1" });
+    expect(runCommand(nested, "reparent_elements", { ids: ["f1"], parentId: "f2" })).toBe(nested);
+  });
+
+  it("refuses a parent that is not a frame", () => {
+    const d = base();
+    expect(runCommand(d, "reparent_elements", { ids: ["free"], parentId: "r1" })).toBe(d);
+  });
+
+  it("reorders inside the same list", () => {
+    let d = base();
+    d = runCommand(d, "create_element", { id: "r2", type: "rect", x: 0, y: 0, width: 10, height: 10, parentId: "f1" });
+    d = runCommand(d, "create_element", { id: "r3", type: "rect", x: 0, y: 0, width: 10, height: 10, parentId: "f1" });
+    expect(d.elements.f1.childIds).toEqual(["r1", "r2", "r3"]);
+    const front = runCommand(d, "reparent_elements", { ids: ["r1"], parentId: "f1" });
+    expect(front.elements.f1.childIds).toEqual(["r2", "r3", "r1"]);
+    const back = runCommand(d, "reparent_elements", { ids: ["r3"], parentId: "f1", index: 0 });
+    expect(back.elements.f1.childIds).toEqual(["r3", "r1", "r2"]);
+  });
+
+  it("moves several at once, keeping their order", () => {
+    let d = base();
+    d = runCommand(d, "create_element", { id: "r2", type: "rect", x: 0, y: 0, width: 10, height: 10, parentId: "f1" });
+    const doc = runCommand(d, "reparent_elements", { ids: ["r1", "r2"], parentId: "f2" });
+    expect(doc.elements.f2.childIds).toEqual(["r1", "r2"]);
+    expect(doc.elements.f1.childIds).toEqual([]);
+  });
+});
