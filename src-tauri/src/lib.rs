@@ -59,6 +59,27 @@ fn duet_home() -> Result<String, String> {
 }
 
 #[derive(Serialize)]
+struct DirEntryInfo {
+    name: String,
+    is_dir: bool,
+}
+
+/// List the entries of a folder. Used to import skills that come as folders.
+#[tauri::command]
+fn list_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
+    let mut out = Vec::new();
+    for entry in fs::read_dir(&path).map_err(|e| format!("Could not read {path}: {e}"))?.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        out.push(DirEntryInfo { is_dir: entry.path().is_dir(), name });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+#[derive(Serialize)]
 struct UserSkill {
     id: String,
     body: String,
@@ -268,6 +289,7 @@ pub fn run() {
             path_exists,
             make_dir,
             duet_home,
+            list_dir,
             list_user_skills,
             write_user_skill,
             delete_user_skill,
@@ -278,6 +300,7 @@ pub fn run() {
             ai::mcp_info,
             ai::mcp_reply,
             ai::write_agent_files,
+            ai::write_agent_file,
             ai::agent_available,
             ai::agent_run,
             ai::agent_cancel

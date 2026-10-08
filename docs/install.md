@@ -33,8 +33,8 @@ Windows builds are new. If something is broken, please open an issue and say wha
 
 ## Connect your AI (optional)
 
-Duet works without an AI. For the chat, install [Claude Code](https://claude.com/claude-code) and sign in once in a terminal. Then open Duet. The chat finds it by itself. Gemini and Antigravity are planned.
+Duet works without an AI. For the chat, install [Claude Code](https://claude.com/claude-code) or [Gemini CLI](https://github.com/google-gemini/gemini-cli) and sign in once in a terminal. Then open Duet. The chat finds them by itself, and a switch at the top of the chat lets you choose. Antigravity, Codex and OpenCode are planned.
 
 ## Your projects
 
-A project is a normal folder with a `design.json` inside. Keep it anywhere you like, except somewhere that gets cleaned out automatically. Duet saves as you work, and keeps your history inside the folder.
+A project is a folder whose name ends in `.duet`, with your design and its history inside. Keep it anywhere you like. Duet saves as you work, so there is nothing to remember to save. Press Cmd or Ctrl + S to be sure. Press Cmd or Ctrl + Shift + S to name a version you can come back to.

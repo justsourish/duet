@@ -12,15 +12,16 @@ Duet is early. It is built in the open, and it is being shaped by the designers 
 - Layers panel with drag and drop in and out of frames. Properties for position, size, corners, fill, stroke, opacity and text.
 - Projects are plain folders. Your design is a readable `design.json` that saves itself as you work.
 - A history that survives closing the app, drawn as two lanes: **You** and **Duet**. Save a named version ("Client round 1") and go back to it any time. Nothing is ever lost when you go back.
-- A chat with an AI that works on your canvas, with three permission levels: Suggest, Ask first, Auto.
-- Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens). Turn them on and off, or write your own.
+- A chat with an AI that works on your canvas, with three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or Gemini CLI.
+- Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens). Turn them on and off, write your own, or import skill files and folders.
+- A project is a folder ending in `.duet`, with your design and its history inside.
 
 ## What does not exist yet
 
 Be honest with yourself before you try it for real work.
 
 - No gradients, shadows, auto layout, components, images, boolean operations or pen tool yet. Export is not built yet.
-- The AI chat works with **Claude Code** today. Gemini CLI and Antigravity are planned.
+- The AI chat works with **Claude Code** and **Gemini CLI** today. Antigravity, Codex and OpenCode are detected but not connected yet.
 - Windows builds are new and less tested than Mac. The AI chat on Windows is untested.
 - The app is not signed, so your computer will warn you the first time. See the install guide.
 
@@ -28,7 +29,7 @@ Be honest with yourself before you try it for real work.
 
 Duet has no AI of its own and no servers. It uses the AI tool you already have on your computer, so it costs nothing extra to run and your design stays with you.
 
-To use the chat today: install [Claude Code](https://claude.com/claude-code), sign in once in a terminal, then open Duet.
+To use the chat today: install [Claude Code](https://claude.com/claude-code) or [Gemini CLI](https://github.com/google-gemini/gemini-cli), sign in once in a terminal, then open Duet. Use the AI tool switch in the chat to choose.
 
 ## Install
 

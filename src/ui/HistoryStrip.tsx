@@ -19,6 +19,13 @@ export default function HistoryStrip() {
   // The tooltip is drawn outside the scrolling strip, so it is never clipped.
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
 
+  // Cmd or Ctrl + Shift + S opens the versions list, ready to type a name
+  useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener("duet:versions", show);
+    return () => window.removeEventListener("duet:versions", show);
+  }, []);
+
   // keep the current step in view
   useEffect(() => {
     const el = scroller.current;
@@ -99,6 +106,7 @@ export default function HistoryStrip() {
           <div className="pop-title">Save a version</div>
           <div className="pop-row">
             <input
+              autoFocus
               value={name}
               placeholder={hasProject ? "Name it, like Client round 1" : "Save the project first"}
               onChange={(e) => {

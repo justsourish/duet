@@ -2,20 +2,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { saveNow } from "../project/project";
 import {
+  AGENTS,
   addMsg,
   declineAllWaiting,
   getChat,
   removeWorking,
-  setAgentFound,
+  setInstalled,
   setRunning,
   setSessionId,
   updateMsg,
 } from "./chat";
+import type { AgentId } from "./chat";
 import { getSkills } from "./skills";
 
 /** Runs the AI tool the designer already has, and shows what it says as chat. */
-
-const PROGRAM = "claude";
 
 const WORKING: Record<string, string> = {
   get_context: "Looking at your design",
@@ -33,12 +33,19 @@ let sawText = false;
 let stderrLines: string[] = [];
 let workingId: number | null = null;
 
+/** Look for every AI tool this computer has. */
 export async function detectAgent() {
-  try {
-    setAgentFound(await invoke<boolean>("agent_available", { program: PROGRAM }));
-  } catch {
-    setAgentFound(false);
-  }
+  const found: Partial<Record<AgentId, boolean>> = {};
+  await Promise.all(
+    AGENTS.map(async (a) => {
+      try {
+        found[a.id] = await invoke<boolean>("agent_available", { program: a.id });
+      } catch {
+        found[a.id] = false;
+      }
+    }),
+  );
+  setInstalled(found);
 }
 
 function systemPrompt(): string {
@@ -49,7 +56,7 @@ function systemPrompt(): string {
   return `You are Duet, a design partner working next to a designer inside the Duet design app. You and the designer share one canvas and the same controls.
 
 How you work:
-- You can see and change the design only through the Duet tools. You have no other tools.
+- You can see and change the design only through the Duet tools. Use no other tool, and never read or write files or run commands.
 - Start with get_context, and get_document when you need detail. Look before you change anything.
 - Make small, clear changes. Prefer one good result over many options, unless asked for options.
 - Everything you change is saved as a step in the designer's history, marked as yours, and they can undo it.
@@ -67,7 +74,7 @@ The designer has loaded these skills. Follow them when they apply:
 ${skills || "(no skills loaded)"}`;
 }
 
-function onLine(line: string) {
+function onClaudeLine(line: string) {
   let ev: Record<string, unknown>;
   try {
     ev = JSON.parse(line) as Record<string, unknown>;
@@ -119,15 +126,65 @@ function onLine(line: string) {
   }
 }
 
+
+// ---- Gemini CLI: streams small pieces of text, then tool calls, then a result ----
+
+let streamId: number | null = null;
+
+function streamText(piece: string) {
+  removeWorking();
+  workingId = null;
+  sawText = true;
+  if (streamId !== null && getChat().messages.some((m) => m.id === streamId)) {
+    const cur = getChat().messages.find((m) => m.id === streamId);
+    updateMsg(streamId, { text: (cur?.text ?? "") + piece });
+  } else {
+    streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, "") });
+  }
+}
+
+function onGeminiLine(line: string) {
+  let ev: Record<string, unknown>;
+  try {
+    ev = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  if (ev.type === "message" && ev.role === "assistant" && typeof ev.content === "string") {
+    streamText(ev.content);
+  } else if (ev.type === "tool_use") {
+    streamId = null;
+    const tool = String(ev.tool_name ?? "").replace(/^mcp_duet_/, "");
+    const text = `${WORKING[tool] ?? "Working"}...`;
+    if (workingId !== null && getChat().messages.some((m) => m.id === workingId)) updateMsg(workingId, { text });
+    else workingId = addMsg({ role: "working", text });
+  } else if (ev.type === "result") {
+    streamId = null;
+    if (ev.status === "success") {
+      setSessionId("latest"); // follow-up messages continue this conversation
+    } else {
+      removeWorking();
+      const err = ev.error as { message?: string } | string | undefined;
+      addMsg({ role: "error", text: friendly(typeof err === "string" ? err : (err?.message ?? stderrLines.join(" "))) });
+      sawText = true;
+    }
+  }
+}
+
+function onLine(line: string) {
+  if (getChat().agent === "gemini") onGeminiLine(line);
+  else onClaudeLine(line);
+}
+
 /** Turn technical failures into something a designer can act on. */
 function friendly(raw: string): string {
   const t = raw.toLowerCase();
   if (t.includes("login") || t.includes("authenticat") || t.includes("api key") || t.includes("sign in"))
-    return "Your AI tool is not signed in. Open a terminal, run claude once, sign in, then try again.";
+    return "Your AI tool is not signed in. Open a terminal, run it once, sign in, then try again.";
   if (t.includes("rate") || t.includes("limit") || t.includes("usage"))
     return "Your AI tool says you have hit its usage limit. Try again a little later.";
   if (t.includes("not found") || t.includes("command not found"))
-    return "Duet could not find your AI tool. Check that Claude Code is installed.";
+    return "Duet could not find your AI tool. Check that it is installed.";
   return raw ? `Something went wrong: ${raw.slice(0, 240)}` : "Something went wrong and the AI stopped.";
 }
 
@@ -158,45 +215,53 @@ export async function startAgentListeners(): Promise<() => void> {
 export async function sendToAgent(text: string) {
   const prompt = text.trim();
   if (!prompt || getChat().running) return;
+  const agent = getChat().agent;
   addMsg({ role: "you", text: prompt });
   setRunning(true);
   sawText = false;
+  streamId = null;
   stderrLines = [];
   workingId = addMsg({ role: "working", text: "Thinking..." });
   try {
     const info = await invoke<{ port: number; token: string }>("mcp_info");
     const home = await invoke<string>("duet_home");
-    const config = {
-      mcpServers: {
-        duet: {
-          type: "http",
-          url: `http://127.0.0.1:${info.port}/mcp`,
-          headers: { Authorization: `Bearer ${info.token}` },
-        },
-      },
-    };
-    const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {
-      system: systemPrompt(),
-      mcp: JSON.stringify(config),
-    });
-    const args = [
-      "-p",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-      "--tools",
-      "",
-      "--strict-mcp-config",
-      "--mcp-config",
-      files.mcp,
-      "--allowedTools",
-      "mcp__duet",
-      "--append-system-prompt-file",
-      files.system,
-    ];
+    const url = `http://127.0.0.1:${info.port}/mcp`;
+    const headers = { Authorization: `Bearer ${info.token}` };
     const session = getChat().sessionId;
-    if (session) args.push("--resume", session);
-    await invoke("agent_run", { program: PROGRAM, args, input: prompt, cwd: `${home}/agent-workspace` });
+    let args: string[];
+
+    if (agent === "gemini") {
+      // Gemini reads its settings and instructions from the folder it runs in, so nothing global is touched.
+      await invoke("write_agent_file", {
+        name: ".gemini/settings.json",
+        body: JSON.stringify({ mcpServers: { duet: { httpUrl: url, headers, trust: true } } }),
+      });
+      await invoke("write_agent_file", { name: "GEMINI.md", body: systemPrompt() });
+      args = ["-p", "", "-o", "stream-json", "--allowed-mcp-server-names", "duet", "--skip-trust", "--approval-mode", "default"];
+      if (session) args.push("--resume", session);
+    } else {
+      const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {
+        system: systemPrompt(),
+        mcp: JSON.stringify({ mcpServers: { duet: { type: "http", url, headers } } }),
+      });
+      args = [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--mcp-config",
+        files.mcp,
+        "--allowedTools",
+        "mcp__duet",
+        "--append-system-prompt-file",
+        files.system,
+      ];
+      if (session) args.push("--resume", session);
+    }
+    await invoke("agent_run", { program: agent, args, input: prompt, cwd: `${home}/agent-workspace` });
   } catch (e) {
     removeWorking();
     setRunning(false);

@@ -68,7 +68,11 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
           dnd.onDropOn({ id, zone: zoneFor(e) });
         }}
         onClick={(e) => {
-          if (e.shiftKey) select(selected ? selection.filter((i) => i !== id) : [...selection, id]);
+          if (e.metaKey || e.ctrlKey) {
+            // jump to it, so you can always find where something is
+            select([id]);
+            window.dispatchEvent(new CustomEvent("duet:fit-selection", { detail: [id] }));
+          } else if (e.shiftKey) select(selected ? selection.filter((i) => i !== id) : [...selection, id]);
           else select([id]);
         }}
         onDoubleClick={() => setRenaming(true)}
@@ -179,6 +183,7 @@ export default function LayersPanel() {
         </div>
       </div>
       {tab === "skills" && <SkillsPanel />}
+      {tab === "layers" && <div className="tip-line">Cmd or Ctrl click a layer to jump to it.</div>}
       <div
         className="layers"
         hidden={tab !== "layers"}

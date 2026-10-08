@@ -828,3 +828,87 @@ button {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* navigation helpers */
+.find {
+  position: absolute;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.find:hover {
+  background: var(--accent);
+}
+.tip-line {
+  padding: 6px 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.zoomwrap {
+  position: relative;
+}
+.zmenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  z-index: 20;
+}
+.zmenu div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.zmenu div:hover {
+  background: var(--panel-2);
+}
+.zmenu kbd {
+  color: var(--muted);
+  font: 11px ui-monospace, Menlo, monospace;
+}
+
+.skills .pad {
+  margin-left: 6px;
+  margin-right: 6px;
+}
+.skills .row2 {
+  gap: 0;
+}
+.skills .grow {
+  flex: 1;
+  margin: 8px 3px;
+}
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.tool-row select {
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+}

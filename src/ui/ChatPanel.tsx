@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { sendToAgent, stopAgent } from "../ai/agent";
-import { answerApproval, newConversation, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import { AGENTS, answerApproval, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import type { AgentId } from "../ai/chat";
 import type { Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { useStore } from "../state/store";
@@ -19,6 +20,8 @@ export default function ChatPanel() {
   const running = useChat((s) => s.running);
   const minimized = useChat((s) => s.minimized);
   const found = useChat((s) => s.agentFound);
+  const agent = useChat((s) => s.agent);
+  const installed = useChat((s) => s.installed);
   const cursor = useStore((s) => s.cursor);
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -49,12 +52,27 @@ export default function ChatPanel() {
 
       {!minimized && (
         <>
+          <div className="tool-row">
+            <span>AI tool</span>
+            <select value={agent} disabled={running} onChange={(e) => setAgent(e.target.value as AgentId)}>
+              {AGENTS.map((a) => {
+                const here = installed[a.id];
+                const label = !here ? `${a.name} (not found)` : !a.runnable ? `${a.name} (coming soon)` : a.name;
+                return (
+                  <option key={a.id} value={a.id} disabled={!a.runnable}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
           <div className="mode-hint">{MODES.find((m) => m.mode === mode)?.hint}</div>
           <div className="cbody">
             {found === false && (
               <div className="m">
-                Duet works with the AI tool you already use, so it costs nothing extra. I could not find Claude Code on this computer.
-                Install it from https://claude.com/claude-code, sign in once, then reopen Duet. Gemini and Antigravity are coming.
+                Duet works with the AI tool you already use, so it costs nothing extra. I could not find{" "}
+                {AGENTS.find((a) => a.id === agent)?.name} on this computer. Install it from {AGENTS.find((a) => a.id === agent)?.install},
+                sign in once, then reopen Duet. Or pick another tool above.
               </div>
             )}
             {messages.length === 0 && found !== false && (
@@ -129,7 +147,7 @@ export default function ChatPanel() {
             <textarea
               value={text}
               rows={1}
-              placeholder={found === false ? "Install Claude Code to chat" : "Describe a change"}
+              placeholder={found === false ? "Pick an AI tool that is installed" : "Describe a change"}
               disabled={found === false}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {

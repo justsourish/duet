@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { newId, runCommand } from "../commands";
 import {
   descendants,
@@ -53,20 +53,42 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   text: { w: 40, h: 21 },
 };
 
-export function zoomToFit(width: number, height: number) {
-  const doc = currentDoc();
-  const box = unionRect(doc.rootIds.map((id) => worldRect(doc, id)));
-  if (!box) {
-    setViewport({ x: 160, y: 100, zoom: 1 });
-    return;
-  }
+export const MIN_ZOOM = 0.02;
+export const MAX_ZOOM = 64;
+
+function fitBox(box: Rect, width: number, height: number, maxZoom: number) {
   const pad = 120;
-  const zoom = Math.max(0.05, Math.min(2, (width - pad * 2) / box.width, (height - pad * 2) / box.height));
+  const zoom = Math.max(MIN_ZOOM, Math.min(maxZoom, (width - pad * 2) / box.width, (height - pad * 2) / box.height));
   setViewport({
     zoom,
     x: width / 2 - (box.x + box.width / 2) * zoom,
     y: height / 2 - (box.y + box.height / 2) * zoom,
   });
+}
+
+/** Show everything on the page. */
+export function zoomToFit(width: number, height: number) {
+  const doc = currentDoc();
+  const box = unionRect(doc.rootIds.map((id) => worldRect(doc, id)));
+  if (!box) return setViewport({ x: 160, y: 100, zoom: 1 });
+  fitBox(box, width, height, 2);
+}
+
+/** Jump to whatever is selected, or to the given elements. */
+export function zoomToElements(ids: string[], width: number, height: number) {
+  const doc = currentDoc();
+  const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldRect(doc, id)));
+  if (!box) return;
+  fitBox(box, width, height, 4);
+}
+
+/** Set the zoom level, keeping the middle of the screen where it is. */
+export function zoomTo(level: number, width: number, height: number) {
+  const vp = getState().viewport;
+  const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level));
+  const wx = (width / 2 - vp.x) / vp.zoom;
+  const wy = (height / 2 - vp.y) / vp.zoom;
+  setViewport({ zoom, x: width / 2 - wx * zoom, y: height / 2 - wy * zoom });
 }
 
 export default function CanvasView() {
@@ -127,12 +149,11 @@ export default function CanvasView() {
     return { sx, sy, x: (sx - vp.x) / vp.zoom, y: (sy - vp.y) / vp.zoom };
   };
 
-  const zoomAt = (sx: number, sy: number, factor: number, from?: number) => {
+  const zoomAt = (sx: number, sy: number, factor: number) => {
     const vp = getState().viewport;
-    const zoom = Math.max(0.05, Math.min(64, (from ?? vp.zoom) * factor));
-    const ref = from ? { x: vp.x, y: vp.y, zoom: from } : vp;
-    const wx = (sx - ref.x) / ref.zoom;
-    const wy = (sy - ref.y) / ref.zoom;
+    const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, vp.zoom * factor));
+    const wx = (sx - vp.x) / vp.zoom;
+    const wy = (sy - vp.y) / vp.zoom;
     setViewport({ zoom, x: sx - wx * zoom, y: sy - wy * zoom });
   };
 
@@ -367,37 +388,51 @@ export default function CanvasView() {
   // ---------- wheel, pinch ----------
   useEffect(() => {
     const canvas = canvasRef.current!;
+    // A pinch on a Mac trackpad arrives as gesture events. While one is running, ignore wheel zoom,
+    // so the same pinch is never counted twice.
+    let pinch: { zoom: number; wx: number; wy: number } | null = null;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (getState().editingId) return;
       const p = point(e);
       if (e.ctrlKey || e.metaKey) {
-        zoomAt(p.sx, p.sy, Math.exp(-e.deltaY * 0.01));
+        if (pinch) return;
+        const step = Math.max(-40, Math.min(40, e.deltaY));
+        zoomAt(p.sx, p.sy, Math.exp(-step * 0.01));
       } else {
         const vp = getState().viewport;
         setViewport({ ...vp, x: vp.x - e.deltaX, y: vp.y - e.deltaY });
       }
     };
-    // Safari / WebKit pinch gestures (the Mac webview)
-    let gestureStart = 1;
     type GestureEvent = Event & { scale: number; clientX: number; clientY: number };
     const onGestureStart = (e: Event) => {
       e.preventDefault();
-      gestureStart = getState().viewport.zoom;
+      const vp = getState().viewport;
+      const p = point(e as GestureEvent);
+      // remember which point of the design sits under the fingers, and keep it there
+      pinch = { zoom: vp.zoom, wx: (p.sx - vp.x) / vp.zoom, wy: (p.sy - vp.y) / vp.zoom };
     };
     const onGestureChange = (e: Event) => {
       e.preventDefault();
+      if (!pinch) return;
       const g = e as GestureEvent;
       const p = point(g);
-      zoomAt(p.sx, p.sy, g.scale, gestureStart);
+      const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinch.zoom * g.scale));
+      setViewport({ zoom, x: p.sx - pinch.wx * zoom, y: p.sy - pinch.wy * zoom });
+    };
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault();
+      pinch = null;
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("gesturestart", onGestureStart);
     canvas.addEventListener("gesturechange", onGestureChange);
+    canvas.addEventListener("gestureend", onGestureEnd);
     return () => {
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("gesturestart", onGestureStart);
       canvas.removeEventListener("gesturechange", onGestureChange);
+      canvas.removeEventListener("gestureend", onGestureEnd);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -442,6 +477,10 @@ export default function CanvasView() {
 
       if (e.shiftKey && e.key === "!") {
         zoomToFit(sizeRef.current.w, sizeRef.current.h);
+        return;
+      }
+      if (e.shiftKey && e.key === "@") {
+        zoomToElements(getState().selection, sizeRef.current.w, sizeRef.current.h);
         return;
       }
       const tools: Record<string, Tool> = { v: "move", f: "frame", r: "rect", o: "ellipse", t: "text", h: "hand" };
@@ -491,12 +530,33 @@ export default function CanvasView() {
     };
   }, []);
 
-  // anything outside this component can ask for zoom-to-fit
+  // the top bar and the layers panel can ask the canvas to move
   useEffect(() => {
     const fit = () => zoomToFit(sizeRef.current.w, sizeRef.current.h);
+    const fitSelection = (e: Event) => {
+      const ids = (e as CustomEvent<string[] | undefined>).detail ?? getState().selection;
+      zoomToElements(ids, sizeRef.current.w, sizeRef.current.h);
+    };
+    const level = (e: Event) => zoomTo((e as CustomEvent<number>).detail, sizeRef.current.w, sizeRef.current.h);
     window.addEventListener("duet:fit", fit);
-    return () => window.removeEventListener("duet:fit", fit);
+    window.addEventListener("duet:fit-selection", fitSelection);
+    window.addEventListener("duet:zoom", level);
+    return () => {
+      window.removeEventListener("duet:fit", fit);
+      window.removeEventListener("duet:fit-selection", fitSelection);
+      window.removeEventListener("duet:zoom", level);
+    };
   }, []);
+
+  // If the design has scrolled completely out of view, offer a way back.
+  const docNow = useStore((s) => s.timeline[s.cursor].doc);
+  const [lost, setLost] = useState(false);
+  useEffect(() => {
+    const { w, h } = sizeRef.current;
+    if (docNow.rootIds.length === 0 || w === 0) return setLost(false);
+    const view = { x: -viewport.x / viewport.zoom, y: -viewport.y / viewport.zoom, width: w / viewport.zoom, height: h / viewport.zoom };
+    setLost(!docNow.rootIds.some((id) => rectsIntersect(view, worldRect(docNow, id))));
+  }, [viewport, docNow]);
 
   return (
     <div className="canvas-wrap" ref={wrapRef}>
@@ -508,6 +568,11 @@ export default function CanvasView() {
         onDoubleClick={onDoubleClick}
         onPointerLeave={() => !dragRef.current && getState().overlay.hoverId && setOverlay({ hoverId: null })}
       />
+      {lost && (
+        <button className="find" onClick={() => zoomToFit(sizeRef.current.w, sizeRef.current.h)}>
+          Find your design
+        </button>
+      )}
       {editingId && <TextEditor id={editingId} zoom={viewport.zoom} vx={viewport.x} vy={viewport.y} />}
     </div>
   );

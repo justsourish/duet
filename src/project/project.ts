@@ -13,7 +13,9 @@ const HISTORY_LIMIT = 300;
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const join = (dir: string, name: string) => (dir.endsWith("/") || dir.endsWith("\\") ? dir + name : `${dir}/${name}`);
-const baseName = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+const baseName = (p: string) => (p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p).replace(/\.duet$/i, "");
+/** A project is a folder whose name ends in .duet. Add the ending if it was left off. */
+const withExt = (p: string) => (/\.duet$/i.test(p) ? p : `${p}.duet`);
 
 let lastSaved: Doc | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -98,8 +100,9 @@ export function saveNow(): Promise<void> {
 /** Pick a folder for the current, unsaved work. */
 export async function saveAs() {
   if (!inTauri()) return;
-  const picked = await save({ title: "Save your project", defaultPath: "My design" });
-  if (!picked) return;
+  const choice = await save({ title: "Save your project", defaultPath: "My design.duet" });
+  if (!choice) return;
+  const picked = withExt(choice);
   const doc = committed();
   try {
     if ((await invoke<boolean>("path_exists", { path: join(picked, FILE) })) === true) {
@@ -130,8 +133,9 @@ export async function newProject() {
     });
     if (!go) return;
   }
-  const picked = await save({ title: "Name your new project", defaultPath: "My design" });
-  if (!picked) return;
+  const choice = await save({ title: "Name your new project", defaultPath: "My design.duet" });
+  if (!choice) return;
+  const picked = withExt(choice);
   try {
     if ((await invoke<boolean>("path_exists", { path: join(picked, FILE) })) === true) {
       await oops("That folder already has a design in it. Pick a new name, or use Open.");
@@ -217,7 +221,7 @@ async function loadFrom(path: string, quiet = false): Promise<boolean> {
 /** Choose a project folder and open it. */
 export async function openProject() {
   if (!inTauri()) return;
-  const picked = await open({ directory: true, multiple: false, title: "Open a Duet project folder" });
+  const picked = await open({ directory: true, multiple: false, title: "Open a Duet project (a folder ending in .duet)" });
   if (typeof picked === "string") await loadFrom(picked);
 }
 

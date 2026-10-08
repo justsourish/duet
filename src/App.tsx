@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { detectAgent, startAgentListeners } from "./ai/agent";
 import { startMcp } from "./ai/mcp";
 import { loadSkills } from "./ai/skills";
@@ -22,6 +22,7 @@ const STATUS: Record<string, string> = {
 export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);
   const project = useStore((s) => s.project);
+  const [zoomMenu, setZoomMenu] = useState(false);
 
   useEffect(() => {
     const stop = startAutosave();
@@ -37,7 +38,10 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
-      if (k === "s") {
+      if (k === "s" && e.shiftKey) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("duet:versions"));
+      } else if (k === "s") {
         e.preventDefault();
         saveNow();
       } else if (k === "o") {
@@ -79,9 +83,26 @@ export default function App() {
             Save
           </button>
         )}
-        <button className="pill" onClick={() => window.dispatchEvent(new Event("duet:fit"))} title="Zoom to fit (Shift 1)">
-          {Math.round(zoom * 100)}%
-        </button>
+        <div className="zoomwrap">
+          <button className="pill" onClick={() => setZoomMenu(!zoomMenu)} title="Zoom">
+            {Math.round(zoom * 100)}%
+          </button>
+          {zoomMenu && (
+            <div className="zmenu" onClick={() => setZoomMenu(false)}>
+              <div onClick={() => window.dispatchEvent(new Event("duet:fit"))}>
+                Fit everything <kbd>Shift 1</kbd>
+              </div>
+              <div onClick={() => window.dispatchEvent(new CustomEvent("duet:fit-selection"))}>
+                Zoom to selection <kbd>Shift 2</kbd>
+              </div>
+              {[0.5, 1, 2].map((z) => (
+                <div key={z} onClick={() => window.dispatchEvent(new CustomEvent("duet:zoom", { detail: z }))}>
+                  {z * 100}%
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </header>
       <LayersPanel />
       <main className="canvas">

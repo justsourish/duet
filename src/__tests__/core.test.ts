@@ -297,3 +297,26 @@ describe("reparent_elements", () => {
     expect(doc.elements.f1.childIds).toEqual([]);
   });
 });
+
+import { describeSkill, toDuetSkill } from "../ai/skills";
+
+describe("skill files", () => {
+  it("reads the heading and summary of a Duet skill", () => {
+    const d = describeSkill("# Spacing\nA steady rhythm.\n\n- Use 8 px.", "x");
+    expect(d.name).toBe("Spacing");
+    expect(d.summary).toBe("A steady rhythm.");
+  });
+
+  it("converts a skill with front matter into Duet's shape", () => {
+    const text = "---\nname: diagnostic-sales-architect\ndescription: Find one leak. Then ask one question.\n---\n\n# Ignored title\n\nRule one.\nRule two.\n";
+    const s = toDuetSkill(text, "fallback");
+    expect(s.name).toBe("diagnostic-sales-architect");
+    expect(s.body.startsWith("# diagnostic-sales-architect\nFind one leak.")).toBe(true);
+    expect(s.body).toContain("Rule one.");
+    expect(s.body).not.toContain("Ignored title");
+  });
+
+  it("falls back to the file name when there is no title", () => {
+    expect(toDuetSkill("Just some rules.", "my-rules").name).toBe("my-rules");
+  });
+});

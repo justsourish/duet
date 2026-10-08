@@ -25,7 +25,20 @@ export interface Msg {
   undone?: boolean;
 }
 
+export type AgentId = "claude" | "gemini" | "agy" | "codex" | "opencode";
+
+/** Every tool Duet looks for. Only some can be driven so far. */
+export const AGENTS: { id: AgentId; name: string; runnable: boolean; install: string }[] = [
+  { id: "claude", name: "Claude Code", runnable: true, install: "https://claude.com/claude-code" },
+  { id: "gemini", name: "Gemini CLI", runnable: true, install: "https://github.com/google-gemini/gemini-cli" },
+  { id: "agy", name: "Antigravity", runnable: false, install: "" },
+  { id: "codex", name: "Codex", runnable: false, install: "" },
+  { id: "opencode", name: "OpenCode", runnable: false, install: "" },
+];
+
 export interface ChatState {
+  agent: AgentId;
+  installed: Partial<Record<AgentId, boolean>>;
   messages: Msg[];
   mode: Mode;
   running: boolean;
@@ -36,6 +49,17 @@ export interface ChatState {
 }
 
 const MODE_KEY = "duet:ai-mode";
+const AGENT_KEY = "duet:ai-tool";
+
+function savedAgent(): AgentId {
+  try {
+    const a = localStorage.getItem(AGENT_KEY);
+    if (AGENTS.some((x) => x.id === a && x.runnable)) return a as AgentId;
+  } catch {
+    /* ignore */
+  }
+  return "claude";
+}
 
 function savedMode(): Mode {
   try {
@@ -48,6 +72,8 @@ function savedMode(): Mode {
 }
 
 let state: ChatState = {
+  agent: savedAgent(),
+  installed: {},
   messages: [],
   mode: savedMode(),
   running: false,
@@ -101,6 +127,21 @@ export function setMode(mode: Mode) {
 export const setRunning = (running: boolean) => set({ running });
 export const setMinimized = (minimized: boolean) => set({ minimized });
 export const setAgentFound = (agentFound: boolean) => set({ agentFound });
+
+/** Remember which tools are installed, and whether the chosen one is ready. */
+export function setInstalled(installed: Partial<Record<AgentId, boolean>>) {
+  set({ installed, agentFound: installed[state.agent] ?? false });
+}
+
+/** Switch to another AI tool. The conversation starts fresh, since tools cannot share one. */
+export function setAgent(agent: AgentId) {
+  try {
+    localStorage.setItem(AGENT_KEY, agent);
+  } catch {
+    /* ignore */
+  }
+  set({ agent, agentFound: state.installed[agent] ?? false, messages: [], sessionId: null });
+}
 export const setSessionId = (sessionId: string | null) => set({ sessionId });
 
 export function newConversation() {

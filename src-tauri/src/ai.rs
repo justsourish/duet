@@ -174,14 +174,20 @@ fn shell_command(program: &str, args: &[String]) -> Command {
     c
 }
 
+/// Tools Duet can look for.
+fn known(program: &str) -> bool {
+    matches!(program, "claude" | "gemini" | "agy" | "codex" | "opencode")
+}
+
+/// Tools Duet knows how to drive.
 fn supported(program: &str) -> bool {
-    matches!(program, "claude")
+    matches!(program, "claude" | "gemini")
 }
 
 /// Is this agent tool installed on this computer?
 #[tauri::command]
 pub fn agent_available(program: String) -> bool {
-    if !supported(&program) {
+    if !known(&program) {
         return false;
     }
     #[cfg(unix)]
@@ -229,6 +235,33 @@ pub fn write_agent_files(system: String, mcp: String) -> Result<Value, String> {
         Ok(file.to_string_lossy().to_string())
     };
     Ok(json!({"system": write("system.md", &system)?, "mcp": write("mcp.json", &mcp)?}))
+}
+
+/// Write one file inside Duet's agent workspace (for tools that read their settings from the
+/// folder they run in). Only plain relative paths are accepted, so nothing can escape the workspace.
+#[tauri::command]
+pub fn write_agent_file(name: String, body: String) -> Result<String, String> {
+    let rel = std::path::Path::new(&name);
+    let plain = !name.is_empty()
+        && rel.is_relative()
+        && rel.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !plain {
+        return Err("That file name is not allowed.".to_string());
+    }
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "Could not find your home folder.".to_string())?;
+    let file = std::path::Path::new(&home).join(".duet").join("agent-workspace").join(rel);
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&file, body).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(file.to_string_lossy().to_string())
 }
 
 /// Start the agent. Its output arrives as `agent-line` events, and `agent-exit` ends the run.

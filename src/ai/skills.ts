@@ -23,6 +23,28 @@ const SHIPPED: Record<string, string> = {
 
 const KEY = "duet:skills-off";
 
+/** Split off a "---" front matter block, as used by skill files elsewhere. */
+export function splitFrontMatter(text: string): { meta: Record<string, string>; body: string } {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!m) return { meta: {}, body: text };
+  const meta: Record<string, string> = {};
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (kv) meta[kv[1].toLowerCase()] = kv[2].replace(/^["']|["']$/g, "").trim();
+  }
+  return { meta, body: m[2] };
+}
+
+/** Turn any skill file into Duet's shape: a heading, a one-line summary, then the rules. */
+export function toDuetSkill(text: string, fallbackName: string): { name: string; body: string } {
+  const { meta, body } = splitFrontMatter(text.replace(/\r\n/g, "\n"));
+  const named = describeSkill(body, fallbackName);
+  const name = (meta.name || named.name || fallbackName).trim();
+  const summary = (meta.description || named.summary).split(/(?<=[.!?])\s/)[0].trim();
+  const rest = /^\s*# /.test(body) ? body.replace(/^\s*# .*\n?/, "") : body;
+  return { name, body: `# ${name}\n${summary}\n\n${rest.trim()}\n` };
+}
+
 /** First heading is the name, the first line after it is the summary. */
 export function describeSkill(body: string, fallback: string): { name: string; summary: string } {
   const lines = body.split("\n").map((l) => l.trim());
@@ -127,6 +149,51 @@ export async function createSkill(name: string, rules: string): Promise<string |
   }
   await loadSkills();
   return null;
+}
+
+/** Save a skill that was written elsewhere. Returns a message if it could not be saved. */
+export async function importSkillText(text: string, fallbackName: string): Promise<string | null> {
+  const { name, body } = toDuetSkill(text, fallbackName);
+  const id = slug(name);
+  if (!id) return "That skill has no usable name.";
+  if (skills.some((s) => s.id === `mine-${id}`)) return `You already have a skill called "${name}".`;
+  try {
+    await invoke("write_user_skill", { id, body });
+  } catch (e) {
+    return String(e);
+  }
+  await loadSkills();
+  return null;
+}
+
+const MAX_SKILL_CHARS = 30000;
+
+/** Import a skill from a file, or from a folder that holds a SKILL.md and optional reference notes. */
+export async function importSkillPath(path: string): Promise<string | null> {
+  const base = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "skill";
+  const stem = base.replace(/\.(md|markdown|txt)$/i, "");
+  try {
+    if (/\.(md|markdown|txt)$/i.test(base)) {
+      return importSkillText(await invoke<string>("read_text_file", { path }), stem);
+    }
+    const entries = await invoke<{ name: string; is_dir: boolean }[]>("list_dir", { path });
+    const main = entries.find((e) => !e.is_dir && e.name.toLowerCase() === "skill.md") ?? entries.find((e) => !e.is_dir && /\.md$/i.test(e.name));
+    if (!main) return "I could not find a SKILL.md or any .md file in that folder.";
+    let text = await invoke<string>("read_text_file", { path: `${path}/${main.name}` });
+    // reference notes beside the main file give the skill its detail
+    const refs = entries.find((e) => e.is_dir && e.name.toLowerCase() === "references");
+    if (refs) {
+      const notes = await invoke<{ name: string; is_dir: boolean }[]>("list_dir", { path: `${path}/${refs.name}` });
+      for (const n of notes.filter((n) => !n.is_dir && /\.md$/i.test(n.name))) {
+        if (text.length > MAX_SKILL_CHARS) break;
+        const t = await invoke<string>("read_text_file", { path: `${path}/${refs.name}/${n.name}` });
+        text += `\n\n## Reference: ${n.name.replace(/\.md$/i, "")}\n${t.trim()}\n`;
+      }
+    }
+    return importSkillText(text.slice(0, MAX_SKILL_CHARS), stem);
+  } catch (e) {
+    return String(e);
+  }
 }
 
 export async function deleteSkill(skillId: string) {

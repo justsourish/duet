@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { createSkill, deleteSkill, toggleSkill, useSkills } from "../ai/skills";
+import { open } from "@tauri-apps/plugin-dialog";
+import { createSkill, deleteSkill, importSkillPath, toggleSkill, useSkills } from "../ai/skills";
+import { inTauri } from "../project/project";
 
 export default function SkillsPanel() {
   const skills = useSkills();
@@ -33,6 +35,23 @@ export default function SkillsPanel() {
     }
   };
 
+  const bring = async (directory: boolean) => {
+    if (!inTauri()) return;
+    const picked = await open({
+      directory,
+      multiple: !directory,
+      title: directory ? "Pick a skill folder" : "Pick skill files",
+      filters: directory ? undefined : [{ name: "Skill files", extensions: ["md", "markdown", "txt"] }],
+    });
+    const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+    const problems: string[] = [];
+    for (const p of paths) {
+      const result = await importSkillPath(p);
+      if (result) problems.push(result);
+    }
+    setNote(problems.length ? problems.join(" ") : null);
+  };
+
   const mine = skills.filter((s) => s.source === "mine");
   return (
     <div className="skills">
@@ -62,9 +81,20 @@ export default function SkillsPanel() {
           </div>
         </div>
       ) : (
-        <div className="add" onClick={() => setAdding(true)}>
-          + New skill
-        </div>
+        <>
+          <div className="add" onClick={() => setAdding(true)}>
+            + Write a skill
+          </div>
+          <div className="row2 pad">
+            <div className="add grow" onClick={() => bring(false)}>
+              Import files
+            </div>
+            <div className="add grow" onClick={() => bring(true)}>
+              Import folder
+            </div>
+          </div>
+          {note && <div className="pop-note pad">{note}</div>}
+        </>
       )}
       <div className="hint">Turned-on skills are given to Duet every time you chat.</div>
     </div>
