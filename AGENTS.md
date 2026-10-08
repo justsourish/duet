@@ -1,6 +1,6 @@
 # Duet
 
-An opinionated, free-to-use desktop design app (source available under PolyForm Shield) where a designer and an AI work on the same canvas. Read `README.md` for what exists, `docs/principles.md` for why.
+An opinionated, free-to-use desktop design app (source available under PolyForm Shield) where a designer and an AI work on the same canvas. Read `README.md` for what exists, `docs/principles.md` for why, and `docs/next-steps.md` for what to do next (including a decided but unfinished swap of Gemini CLI for Antigravity).
 
 ## Run it
 
