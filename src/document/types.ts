@@ -1,5 +1,19 @@
 export type ElementType = "frame" | "rect" | "ellipse" | "text";
 
+export interface Shadow {
+  x: number;
+  y: number;
+  blur: number;
+  color: string;
+}
+
+export interface Gradient {
+  from: string;
+  to: string;
+  /** Degrees. 0 runs left to right, 90 runs top to bottom. */
+  angle: number;
+}
+
 export interface El {
   id: string;
   type: ElementType;
@@ -17,6 +31,12 @@ export interface El {
   opacity: number;
   text: string;
   fontSize: number;
+  /** A drop shadow behind the shape, or null for none. */
+  shadow: Shadow | null;
+  /** A linear gradient used instead of the solid fill, or null. */
+  gradient: Gradient | null;
+  /** In Present mode, clicking this takes you to the frame with this id. */
+  link: string | null;
   childIds: string[];
 }
 

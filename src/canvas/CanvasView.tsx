@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { newId, runCommand } from "../commands";
+import { extractPayload, payloadToText, textToPayload } from "../document/clipboard";
+import type { ClipPayload } from "../document/clipboard";
 import {
   descendants,
   frameAt,
@@ -52,6 +54,31 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   ellipse: { w: 120, h: 120 },
   text: { w: 40, h: 21 },
 };
+
+/** Copy of what was last copied inside this window, in case the system clipboard is unavailable. */
+let inMemoryClip: ClipPayload | null = null;
+
+/** Paste a payload where it makes sense: inside a selected frame, otherwise next to the original. */
+export function pastePayload(payload: ClipPayload, duplicate = false) {
+  const s = getState();
+  const doc = currentDoc(s);
+  const sel = s.selection.filter((i) => doc.elements[i]);
+  let parentId: string | null = null;
+  if (sel.length === 1) {
+    const one = doc.elements[sel[0]];
+    parentId = one.type === "frame" && !duplicate ? one.id : one.parentId;
+  } else if (sel.length > 1) parentId = doc.elements[sel[0]].parentId;
+  const idMap: Record<string, string> = {};
+  for (const [oldId, el] of Object.entries(payload.elements)) idMap[oldId] = newId(el.type);
+  const first = payload.elements[payload.rootIds[0]];
+  const pageFrame = !first.parentId && first.type === "frame";
+  // Pasting on top of the original would hide it. Nudge, or put a copied screen beside its original.
+  const sameSpot = payload.rootIds.every((id) => doc.elements[id]?.parentId === parentId);
+  const dx = pageFrame && sameSpot ? first.width + 40 : sameSpot || duplicate ? 16 : 0;
+  const dy = pageFrame && sameSpot ? 0 : sameSpot || duplicate ? 16 : 0;
+  dispatch("paste_elements", { payload, parentId, dx, dy, idMap, label: duplicate ? "Duplicate" : "Paste" });
+  select(payload.rootIds.map((id) => idMap[id]));
+}
 
 export const MIN_ZOOM = 0.02;
 export const MAX_ZOOM = 64;
@@ -437,6 +464,45 @@ export default function CanvasView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---------- copy, cut, paste ----------
+  useEffect(() => {
+    const typing = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    };
+    const onCopy = (e: ClipboardEvent, cut: boolean) => {
+      if (typing(e.target)) return;
+      const s = getState();
+      const payload = extractPayload(currentDoc(s), s.selection);
+      if (!payload) return;
+      e.preventDefault();
+      inMemoryClip = payload;
+      e.clipboardData?.setData("text/plain", payloadToText(payload));
+      if (cut) {
+        dispatch("delete_elements", { ids: payload.rootIds });
+        select([]);
+      }
+    };
+    const copy = (e: ClipboardEvent) => onCopy(e, false);
+    const cut = (e: ClipboardEvent) => onCopy(e, true);
+    const paste = (e: ClipboardEvent) => {
+      if (typing(e.target)) return;
+      const fromSystem = textToPayload(e.clipboardData?.getData("text/plain") ?? "");
+      const payload = fromSystem ?? inMemoryClip;
+      if (!payload) return;
+      e.preventDefault();
+      pastePayload(payload);
+    };
+    window.addEventListener("copy", copy);
+    window.addEventListener("cut", cut);
+    window.addEventListener("paste", paste);
+    return () => {
+      window.removeEventListener("copy", copy);
+      window.removeEventListener("cut", cut);
+      window.removeEventListener("paste", paste);
+    };
+  }, []);
+
   // ---------- keyboard ----------
   useEffect(() => {
     const typing = (t: EventTarget | null) => {
@@ -471,6 +537,12 @@ export default function CanvasView() {
       if (mod && key === "a") {
         e.preventDefault();
         select([...currentDoc(s).rootIds]);
+        return;
+      }
+      if (mod && key === "d") {
+        e.preventDefault();
+        const payload = extractPayload(currentDoc(s), s.selection);
+        if (payload) pastePayload(payload, true);
         return;
       }
       if (mod) return;

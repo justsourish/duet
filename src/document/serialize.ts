@@ -17,6 +17,9 @@ const EL_KEYS: (keyof El)[] = [
   "opacity",
   "text",
   "fontSize",
+  "shadow",
+  "gradient",
+  "link",
   "childIds",
 ];
 
@@ -34,6 +37,9 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   opacity: 1,
   text: "",
   fontSize: 16,
+  shadow: null,
+  gradient: null,
+  link: null,
   childIds: [],
 };
 

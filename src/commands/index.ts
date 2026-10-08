@@ -1,3 +1,4 @@
+import type { ClipPayload } from "../document/clipboard";
 import { descendants, worldPos } from "../document/geometry";
 import type { Doc, El, ElementType } from "../document/types";
 
@@ -54,9 +55,11 @@ export interface CreateArgs {
 const createElement: CommandDef<CreateArgs> = {
   label: (a) => `Add ${typeName[a.type].toLowerCase()}`,
   run: (doc, a) => {
+    // only frames can hold things
+    if (a.parentId && doc.elements[a.parentId]?.type !== "frame") return doc;
     const next = clone(doc);
     const id = a.id ?? newId(a.type);
-    const parentId = a.parentId && next.elements[a.parentId] ? a.parentId : null;
+    const parentId = a.parentId ?? null;
     const el: El = {
       id,
       type: a.type,
@@ -73,6 +76,9 @@ const createElement: CommandDef<CreateArgs> = {
       opacity: 1,
       text: a.type === "text" ? "Text" : "",
       fontSize: 16,
+      shadow: null,
+      gradient: null,
+      link: null,
       childIds: [],
       ...defaults[a.type],
       ...a.props,
@@ -218,6 +224,49 @@ const reparentElements: CommandDef<ReparentArgs> = {
   },
 };
 
+// ---- paste_elements ----
+export interface PasteArgs {
+  payload: ClipPayload;
+  /** A frame to paste into, or null for the page. */
+  parentId: string | null;
+  /** Move the pasted pieces by this much from where they were copied. */
+  dx?: number;
+  dy?: number;
+  /** New ids for the pasted pieces, if the caller needs to know them. */
+  idMap?: Record<string, string>;
+  label?: string;
+}
+
+/** Make new copies of copied elements. Links between copied pieces are kept inside the copy. */
+const pasteElements: CommandDef<PasteArgs> = {
+  label: (a) => a.label ?? (a.payload.rootIds.length > 1 ? `Paste ${a.payload.rootIds.length} elements` : "Paste"),
+  run: (doc, a) => {
+    if (a.parentId && doc.elements[a.parentId]?.type !== "frame") return doc;
+    const next = clone(doc);
+    const idMap: Record<string, string> = { ...(a.idMap ?? {}) };
+    for (const [oldId, el] of Object.entries(a.payload.elements)) idMap[oldId] ??= newId(el.type);
+    const parentWorld = a.parentId ? worldPos(next, a.parentId) : { x: 0, y: 0 };
+    const list = a.parentId ? next.elements[a.parentId].childIds : next.rootIds;
+    for (const [oldId, el] of Object.entries(a.payload.elements)) {
+      const copy: El = structuredClone(el);
+      copy.id = idMap[oldId];
+      copy.childIds = el.childIds.map((c) => idMap[c]);
+      copy.link = el.link && idMap[el.link] ? idMap[el.link] : el.link && next.elements[el.link] ? el.link : null;
+      if (a.payload.rootIds.includes(oldId)) {
+        const o = a.payload.origins[oldId];
+        copy.parentId = a.parentId;
+        copy.x = o.x - parentWorld.x + (a.dx ?? 0);
+        copy.y = o.y - parentWorld.y + (a.dy ?? 0);
+        list.push(copy.id);
+      } else {
+        copy.parentId = el.parentId ? idMap[el.parentId] : null;
+      }
+      next.elements[copy.id] = copy;
+    }
+    return next;
+  },
+};
+
 // ---- registry ----
 export const commands = {
   create_element: createElement,
@@ -226,6 +275,7 @@ export const commands = {
   set_props: setProps,
   delete_elements: deleteElements,
   reparent_elements: reparentElements,
+  paste_elements: pasteElements,
 } as const;
 
 export type CommandName = keyof typeof commands;

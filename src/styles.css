@@ -912,3 +912,116 @@ button {
   font: inherit;
   outline: 0;
 }
+
+/* fill, shadow and prototype controls */
+.seg2 {
+  display: flex;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg2 span {
+  flex: 1;
+  text-align: center;
+  padding: 5px 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+.seg2 span.on {
+  background: var(--accent);
+  color: #fff;
+}
+.linkbtn {
+  color: #cbbdff;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.hint2 {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.f select {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font: inherit;
+}
+
+.zmenu.export {
+  width: 250px;
+  padding: 12px;
+}
+.zmenu.export .x-title {
+  display: block;
+  padding: 0;
+  margin-bottom: 10px;
+  font-weight: 600;
+  cursor: default;
+}
+.zmenu.export .x-title:hover {
+  background: none;
+}
+.mini.wide {
+  width: 100%;
+  margin-top: 4px;
+}
+.zmenu.export .hint2 {
+  display: block;
+  padding: 0;
+  cursor: default;
+}
+.zmenu.export .hint2:hover {
+  background: none;
+}
+
+.zmenu.export .seg2 {
+  padding: 0;
+  cursor: default;
+}
+.zmenu.export .seg2:hover {
+  background: none;
+}
+.pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* present mode */
+.present {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0b0b0d;
+}
+.present canvas {
+  display: block;
+}
+.present-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  z-index: 2;
+  pointer-events: auto;
+}
+.present-bar .muted {
+  color: var(--muted);
+}
+.present-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: var(--muted);
+}

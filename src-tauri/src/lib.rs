@@ -31,6 +31,22 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
     fs::rename(&tmp, target).map_err(|e| format!("Could not save {path}: {e}"))
 }
 
+/// Save a binary file (such as a PNG). The picture arrives as base64 text.
+#[tauri::command]
+fn write_binary_file(path: String, data_base64: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.trim())
+        .map_err(|e| format!("The picture data was not valid: {e}"))?;
+    let target = Path::new(&path);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Could not create folder: {e}"))?;
+    }
+    let tmp = format!("{path}.tmp");
+    fs::write(&tmp, bytes).map_err(|e| format!("Could not write {path}: {e}"))?;
+    fs::rename(&tmp, target).map_err(|e| format!("Could not save {path}: {e}"))
+}
+
 #[tauri::command]
 fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
@@ -286,6 +302,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_text_file,
             write_text_file,
+            write_binary_file,
             path_exists,
             make_dir,
             duet_home,

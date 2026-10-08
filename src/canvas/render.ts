@@ -38,7 +38,22 @@ function roundedPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   else ctx.rect(x, y, w, h);
 }
 
-function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox: number, oy: number) {
+/** Gradient between two colours across a box, at an angle in degrees. */
+export function makeGradient(ctx: CanvasRenderingContext2D, g: NonNullable<El["gradient"]>, x: number, y: number, w: number, h: number) {
+  const a = (g.angle * Math.PI) / 180;
+  const dx = Math.cos(a);
+  const dy = Math.sin(a);
+  const half = (Math.abs(w * dx) + Math.abs(h * dy)) / 2;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const grad = ctx.createLinearGradient(cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half);
+  grad.addColorStop(0, g.from);
+  grad.addColorStop(1, g.to);
+  return grad;
+}
+
+/** Draw an element and everything inside it. ox and oy are where its parent sits. */
+export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox: number, oy: number) {
   const x = ox + el.x;
   const y = oy + el.y;
   ctx.save();
@@ -59,8 +74,20 @@ function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox: number
   } else {
     roundedPath(ctx, x, y, el.width, el.height, el.radius);
   }
-  ctx.fillStyle = el.fill;
+  ctx.fillStyle = el.gradient ? makeGradient(ctx, el.gradient, x, y, el.width, el.height) : el.fill;
+  if (el.shadow) {
+    // shadow sizes are in screen pixels, so they have to be scaled by the current zoom
+    const k = ctx.getTransform().a;
+    ctx.shadowColor = el.shadow.color;
+    ctx.shadowBlur = el.shadow.blur * k;
+    ctx.shadowOffsetX = el.shadow.x * k;
+    ctx.shadowOffsetY = el.shadow.y * k;
+  }
   ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
   if (el.stroke && el.strokeWidth > 0) {
     ctx.strokeStyle = el.stroke;
     ctx.lineWidth = el.strokeWidth;

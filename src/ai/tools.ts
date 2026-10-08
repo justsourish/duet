@@ -29,7 +29,7 @@ const ids = { type: "array", items: str, description: "Element ids, from get_doc
 const props = {
   type: "object",
   description:
-    "Any of: name, x, y, width, height (numbers, in pixels), fill (hex colour like #1b1b1f), stroke (hex colour, or null for none), strokeWidth, radius (corner radius), opacity (0 to 1), text, fontSize.",
+    "Any of: name, x, y, width, height (numbers, in pixels), fill (hex colour like #1b1b1f), stroke (hex colour, or null for none), strokeWidth, radius (corner radius), opacity (0 to 1), text, fontSize, shadow ({x, y, blur, color} or null), gradient ({from, to, angle in degrees, 90 runs top to bottom} or null, replaces the fill), link (id of a frame to open when this is clicked in Present mode, or null).",
 };
 
 export const TOOLS: ToolDef[] = [

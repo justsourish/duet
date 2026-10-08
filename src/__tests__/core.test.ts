@@ -266,6 +266,11 @@ describe("reparent_elements", () => {
     expect(worldPos(doc, "r1")).toEqual({ x: 120, y: 120 });
   });
 
+  it("refuses to create something inside a shape that is not a frame", () => {
+    const d = runCommand(emptyDoc(), "create_element", { id: "r", type: "rect", x: 0, y: 0, width: 10, height: 10 });
+    expect(runCommand(d, "create_element", { id: "x", type: "rect", x: 0, y: 0, width: 5, height: 5, parentId: "r" })).toBe(d);
+  });
+
   it("refuses to put a frame inside itself or its own child", () => {
     const d = base();
     expect(runCommand(d, "reparent_elements", { ids: ["f1"], parentId: "f1" })).toBe(d);
@@ -318,5 +323,166 @@ describe("skill files", () => {
 
   it("falls back to the file name when there is no title", () => {
     expect(toDuetSkill("Just some rules.", "my-rules").name).toBe("my-rules");
+  });
+});
+
+import { extractPayload, payloadToText, textToPayload } from "../document/clipboard";
+
+describe("copy and paste", () => {
+  const base = () => {
+    let d = emptyDoc();
+    d = runCommand(d, "create_element", { id: "f1", type: "frame", x: 100, y: 100, width: 300, height: 300 });
+    d = runCommand(d, "create_element", { id: "f2", type: "frame", x: 600, y: 100, width: 300, height: 300 });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", x: 20, y: 20, width: 50, height: 50, parentId: "f1", props: { link: "f2", name: "Button" } });
+    d = runCommand(d, "create_element", { id: "t", type: "text", x: 5, y: 5, width: 40, height: 20, parentId: "f1" });
+    return d;
+  };
+
+  it("picks up an element with everything inside it", () => {
+    const d = runCommand(emptyDoc(), "create_element", { id: "f", type: "frame", x: 0, y: 0, width: 200, height: 200 });
+    const d2 = runCommand(d, "create_element", { id: "r", type: "rect", x: 1, y: 1, width: 10, height: 10, parentId: "f" });
+    const p = extractPayload(d2, ["f", "r"])!;
+    expect(p.rootIds).toEqual(["f"]);
+    expect(Object.keys(p.elements).sort()).toEqual(["f", "r"]);
+  });
+
+  it("pastes new copies with new ids and keeps the structure", () => {
+    const d = base();
+    const p = extractPayload(d, ["f1"])!;
+    const out = runCommand(d, "paste_elements", { payload: p, parentId: null, dx: 500, dy: 0, idMap: { f1: "new-f1", b: "new-b", t: "new-t" } });
+    expect(out.rootIds).toEqual(["f1", "f2", "new-f1"]);
+    expect(out.elements["new-f1"].childIds).toEqual(["new-b", "new-t"]);
+    expect(out.elements["new-b"].parentId).toBe("new-f1");
+    expect(out.elements["new-f1"].x).toBe(600);
+    expect(Object.keys(out.elements).length).toBe(Object.keys(d.elements).length + 3);
+  });
+
+  it("does not change the original", () => {
+    const d = base();
+    const p = extractPayload(d, ["b"])!;
+    const out = runCommand(d, "paste_elements", { payload: p, parentId: "f2", dx: 0, dy: 0 });
+    expect(out.elements.f1.childIds).toEqual(["b", "t"]);
+    expect(out.elements.f2.childIds.length).toBe(1);
+  });
+
+  it("keeps a pasted piece where it looked, even inside another frame", () => {
+    const d = base();
+    const p = extractPayload(d, ["b"])!; // sits at world 120,120
+    const out = runCommand(d, "paste_elements", { payload: p, parentId: "f2", dx: 0, dy: 0, idMap: { b: "nb" } });
+    expect(worldPos(out, "nb")).toEqual({ x: 120, y: 120 });
+  });
+
+  it("points a link at the copy when both were copied together", () => {
+    const d = base();
+    const p = extractPayload(d, ["f1", "f2"])!;
+    const out = runCommand(d, "paste_elements", { payload: p, parentId: null, dx: 0, dy: 700, idMap: { f1: "n1", f2: "n2", b: "nb" } });
+    expect(out.elements.nb.link).toBe("n2");
+  });
+
+  it("keeps a link to a screen that was not copied", () => {
+    const d = base();
+    const p = extractPayload(d, ["b"])!;
+    const out = runCommand(d, "paste_elements", { payload: p, parentId: "f1", dx: 16, dy: 16, idMap: { b: "nb" } });
+    expect(out.elements.nb.link).toBe("f2");
+  });
+
+  it("refuses to paste into something that is not a frame", () => {
+    const d = base();
+    const p = extractPayload(d, ["b"])!;
+    expect(runCommand(d, "paste_elements", { payload: p, parentId: "b" })).toBe(d);
+  });
+
+  it("travels as text and rejects anything else", () => {
+    const d = base();
+    const p = extractPayload(d, ["b"])!;
+    expect(textToPayload(payloadToText(p))).toEqual(p);
+    expect(textToPayload("hello")).toBeNull();
+    expect(textToPayload('{"duet":2}')).toBeNull();
+  });
+});
+
+import { toSvg } from "../document/svg";
+
+describe("SVG export", () => {
+  const sample = () => {
+    let d = emptyDoc();
+    d = runCommand(d, "create_element", { id: "f", type: "frame", x: 50, y: 50, width: 200, height: 100, props: { fill: "#ffffff", radius: 12 } });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", x: 10, y: 10, width: 80, height: 30, parentId: "f", props: { fill: "#e8743b", radius: 8, shadow: { x: 0, y: 4, blur: 12, color: "#00000040" } } });
+    d = runCommand(d, "create_element", { id: "g", type: "ellipse", x: 120, y: 10, width: 40, height: 40, parentId: "f", props: { gradient: { from: "#ff0000", to: "#0000ff", angle: 90 } } });
+    d = runCommand(d, "create_element", { id: "t", type: "text", x: 10, y: 60, width: 100, height: 20, parentId: "f", props: { text: "Tom & <Jerry>", fontSize: 14 } });
+    return d;
+  };
+
+  it("draws the element at the corner of its own picture", () => {
+    const svg = toSvg(sample(), "f");
+    expect(svg).toContain('width="200" height="100" viewBox="0 0 200 100"');
+    expect(svg).toContain('<rect x="0" y="0" width="200" height="100" rx="12"');
+  });
+
+  it("puts children inside, clipped to the frame", () => {
+    const svg = toSvg(sample(), "f");
+    expect(svg).toContain("<clipPath");
+    expect(svg).toContain('<rect x="10" y="10" width="80" height="30" rx="8"');
+  });
+
+  it("includes gradients and shadows", () => {
+    const svg = toSvg(sample(), "f");
+    expect(svg).toContain("<linearGradient");
+    expect(svg).toContain("feDropShadow");
+    expect(svg).toContain('flood-opacity="0.251"');
+  });
+
+  it("escapes text", () => {
+    const svg = toSvg(sample(), "f");
+    expect(svg).toContain("Tom &amp; &lt;Jerry&gt;");
+    expect(svg).not.toContain("<Jerry>");
+  });
+
+  it("is well formed", () => {
+    const svg = toSvg(sample(), "f");
+    expect(svg.startsWith("<svg")).toBe(true);
+    expect((svg.match(/<g[ >]/g) ?? []).length).toBe((svg.match(/<\/g>/g) ?? []).length);
+  });
+});
+
+import { linkAt, startFrame } from "../ui/PresentView";
+
+describe("present mode", () => {
+  const flow = () => {
+    let d = emptyDoc();
+    d = runCommand(d, "create_element", { id: "home", type: "frame", x: 0, y: 0, width: 300, height: 600 });
+    d = runCommand(d, "create_element", { id: "order", type: "frame", x: 400, y: 0, width: 300, height: 600 });
+    d = runCommand(d, "create_element", { id: "btn", type: "rect", x: 20, y: 500, width: 260, height: 50, parentId: "home", props: { link: "order" } });
+    d = runCommand(d, "create_element", { id: "label", type: "text", x: 10, y: 10, width: 60, height: 20, parentId: "btn" as never });
+    return d;
+  };
+
+  it("follows a link when the linked thing is clicked", () => {
+    expect(linkAt(flow(), "home", 100, 520)).toBe("order");
+  });
+
+  it("ignores clicks on things with no link", () => {
+    expect(linkAt(flow(), "home", 100, 100)).toBeNull();
+  });
+
+  it("uses the link of something that holds what was clicked", () => {
+    let d = runCommand(emptyDoc(), "create_element", { id: "a", type: "frame", x: 0, y: 0, width: 300, height: 300 });
+    d = runCommand(d, "create_element", { id: "b", type: "frame", x: 400, y: 0, width: 300, height: 300 });
+    d = runCommand(d, "create_element", { id: "card", type: "frame", x: 10, y: 10, width: 200, height: 100, parentId: "a", props: { link: "b" } });
+    d = runCommand(d, "create_element", { id: "inner", type: "text", x: 5, y: 5, width: 50, height: 20, parentId: "card" });
+    expect(linkAt(d, "a", 20, 20)).toBe("b");
+  });
+
+  it("starts on the selected screen, or the screen holding the selection", () => {
+    const d = flow();
+    expect(startFrame(d, ["order"])).toBe("order");
+    expect(startFrame(d, ["btn"])).toBe("home");
+    expect(startFrame(d, [])).toBe("home");
+  });
+
+  it("ignores a link to something that is not a screen", () => {
+    let d = flow();
+    d = runCommand(d, "set_props", { ids: ["btn"], props: { link: "label" } });
+    expect(linkAt(d, "home", 100, 520)).toBeNull();
   });
 });

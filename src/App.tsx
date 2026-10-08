@@ -5,7 +5,9 @@ import { loadSkills } from "./ai/skills";
 import CanvasView from "./canvas/CanvasView";
 import { inTauri, newProject, openProject, restoreLast, saveNow, startAutosave } from "./project/project";
 import ChatPanel from "./ui/ChatPanel";
+import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
+import PresentView from "./ui/PresentView";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
 import Toolbar from "./ui/Toolbar";
@@ -23,6 +25,8 @@ export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);
   const project = useStore((s) => s.project);
   const [zoomMenu, setZoomMenu] = useState(false);
+  const [presenting, setPresenting] = useState(false);
+  const hasFrames = useStore((s) => Object.values(s.timeline[s.cursor].doc.elements).some((e) => e.type === "frame"));
 
   useEffect(() => {
     const stop = startAutosave();
@@ -38,7 +42,10 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
-      if (k === "s" && e.shiftKey) {
+      if (k === "enter") {
+        e.preventDefault();
+        setPresenting(true);
+      } else if (k === "s" && e.shiftKey) {
         e.preventDefault();
         window.dispatchEvent(new Event("duet:versions"));
       } else if (k === "s") {
@@ -83,6 +90,10 @@ export default function App() {
             Save
           </button>
         )}
+        <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
+          Present
+        </button>
+        <ExportMenu />
         <div className="zoomwrap">
           <button className="pill" onClick={() => setZoomMenu(!zoomMenu)} title="Zoom">
             {Math.round(zoom * 100)}%
@@ -112,6 +123,7 @@ export default function App() {
       </main>
       <PropertiesPanel />
       <HistoryStrip />
+      {presenting && <PresentView onClose={() => setPresenting(false)} />}
     </div>
   );
 }
