@@ -1,6 +1,10 @@
 import { useEffect } from "react";
+import { detectAgent, startAgentListeners } from "./ai/agent";
+import { startMcp } from "./ai/mcp";
+import { loadSkills } from "./ai/skills";
 import CanvasView from "./canvas/CanvasView";
-import { newProject, openProject, restoreLast, saveNow, startAutosave } from "./project/project";
+import { inTauri, newProject, openProject, restoreLast, saveNow, startAutosave } from "./project/project";
+import ChatPanel from "./ui/ChatPanel";
 import HistoryStrip from "./ui/HistoryStrip";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
@@ -22,6 +26,14 @@ export default function App() {
   useEffect(() => {
     const stop = startAutosave();
     restoreLast();
+    const stops: (() => void)[] = [];
+    let alive = true;
+    if (inTauri()) {
+      loadSkills();
+      detectAgent();
+      startMcp().then((f) => (alive ? stops.push(f) : f()));
+      startAgentListeners().then((f) => (alive ? stops.push(f) : f()));
+    }
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
@@ -38,6 +50,8 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => {
+      alive = false;
+      stops.forEach((f) => f());
       stop();
       window.removeEventListener("keydown", onKey);
     };
@@ -73,6 +87,7 @@ export default function App() {
       <main className="canvas">
         <CanvasView />
         <Toolbar />
+        <ChatPanel />
       </main>
       <PropertiesPanel />
       <HistoryStrip />

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { descendants, topLevelOnly } from "../document/geometry";
 import type { Doc, El } from "../document/types";
 import { currentDoc, dispatch, getState, select, useStore } from "../state/store";
+import SkillsPanel from "./SkillsPanel";
 
 type Zone = "before" | "after" | "inside";
 interface Drop {
@@ -102,6 +103,7 @@ export default function LayersPanel() {
   useStore((s) => s.transientDoc);
   const doc = currentDoc();
   const [drop, setDrop] = useState<Drop | null>(null);
+  const [tab, setTab] = useState<"layers" | "skills">("layers");
   const dragging = useRef<string[]>([]);
 
   const end = () => {
@@ -168,9 +170,18 @@ export default function LayersPanel() {
 
   return (
     <aside className="left">
-      <div className="panel-title">Layers</div>
+      <div className="tabs">
+        <div className={`tab ${tab === "layers" ? "on" : ""}`} onClick={() => setTab("layers")}>
+          Layers
+        </div>
+        <div className={`tab ${tab === "skills" ? "on" : ""}`} onClick={() => setTab("skills")}>
+          Skills
+        </div>
+      </div>
+      {tab === "skills" && <SkillsPanel />}
       <div
         className="layers"
+        hidden={tab !== "layers"}
         onDragLeave={(e) => {
           if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrop(null);
         }}

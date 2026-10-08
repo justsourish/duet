@@ -1,3 +1,5 @@
+mod ai;
+
 use git2::{Repository, Signature};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -37,6 +39,77 @@ fn path_exists(path: String) -> bool {
 #[tauri::command]
 fn make_dir(path: String) -> Result<(), String> {
     fs::create_dir_all(&path).map_err(|e| format!("Could not create {path}: {e}"))
+}
+
+// ---------- Duet's own folder: ~/.duet ----------
+// Skills the designer writes live here, so they travel across projects.
+
+fn duet_home_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "Could not find your home folder.".to_string())?;
+    let dir = Path::new(&home).join(".duet");
+    fs::create_dir_all(&dir).map_err(err)?;
+    Ok(dir)
+}
+
+#[tauri::command]
+fn duet_home() -> Result<String, String> {
+    Ok(duet_home_dir()?.to_string_lossy().to_string())
+}
+
+#[derive(Serialize)]
+struct UserSkill {
+    id: String,
+    body: String,
+}
+
+fn skill_file(id: &str) -> Result<std::path::PathBuf, String> {
+    let ok = !id.is_empty()
+        && id.len() <= 60
+        && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !ok {
+        return Err("A skill name can use lowercase letters, numbers and dashes.".to_string());
+    }
+    let dir = duet_home_dir()?.join("skills");
+    fs::create_dir_all(&dir).map_err(err)?;
+    Ok(dir.join(format!("{id}.md")))
+}
+
+#[tauri::command]
+fn list_user_skills() -> Result<Vec<UserSkill>, String> {
+    let dir = duet_home_dir()?.join("skills");
+    let mut out = Vec::new();
+    if let Ok(read) = fs::read_dir(&dir) {
+        for entry in read.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            let Some(id) = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string()) else {
+                continue;
+            };
+            if let Ok(body) = fs::read_to_string(&path) {
+                out.push(UserSkill { id, body });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
+}
+
+#[tauri::command]
+fn write_user_skill(id: String, body: String) -> Result<(), String> {
+    fs::write(skill_file(&id)?, body).map_err(err)
+}
+
+#[tauri::command]
+fn delete_user_skill(id: String) -> Result<(), String> {
+    let f = skill_file(&id)?;
+    if f.exists() {
+        fs::remove_file(f).map_err(err)?;
+    }
+    Ok(())
 }
 
 // ---------- history ----------
@@ -194,11 +267,24 @@ pub fn run() {
             write_text_file,
             path_exists,
             make_dir,
+            duet_home,
+            list_user_skills,
+            write_user_skill,
+            delete_user_skill,
             git_prepare,
             git_commit,
             git_history,
-            git_name_version
+            git_name_version,
+            ai::mcp_info,
+            ai::mcp_reply,
+            ai::agent_available,
+            ai::agent_run,
+            ai::agent_cancel
         ])
+        .setup(|app| {
+            ai::start(app.handle()).map_err(|e| format!("Could not start the agent bridge: {e}"))?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running Duet");
 }
