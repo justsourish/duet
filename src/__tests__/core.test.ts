@@ -142,6 +142,28 @@ describe("resize handles", () => {
   it("flips past the opposite edge", () => {
     expect(resizeRect(r, "e", -150, 0)).toEqual({ x: 50, y: 100, width: 50, height: 50 });
   });
+  it("keeps the proportions with Shift, following the bigger change", () => {
+    // 100 by 50, pulled 40 wide and 0 tall: the height follows, so it stays 2 to 1
+    expect(resizeRect(r, "se", 40, 0, { keepRatio: true })).toEqual({ x: 100, y: 100, width: 140, height: 70 });
+    // pulled mostly tall: the width follows
+    expect(resizeRect(r, "se", 0, 50, { keepRatio: true })).toEqual({ x: 100, y: 100, width: 200, height: 100 });
+  });
+  it("keeps the proportions from an edge handle too, around the middle of the other side", () => {
+    expect(resizeRect(r, "e", 100, 0, { keepRatio: true })).toEqual({ x: 100, y: 75, width: 200, height: 100 });
+    expect(resizeRect(r, "s", 0, 50, { keepRatio: true })).toEqual({ x: 75 - 25 + 0, y: 100, width: 200, height: 100 });
+  });
+  it("grows from the centre with Option", () => {
+    expect(resizeRect(r, "e", 20, 0, { fromCenter: true })).toEqual({ x: 80, y: 100, width: 140, height: 50 });
+    expect(resizeRect(r, "nw", -10, -10, { fromCenter: true })).toEqual({ x: 90, y: 90, width: 120, height: 70 });
+  });
+  it("does both with Shift and Option: even scaling around the centre", () => {
+    expect(resizeRect(r, "se", 50, 0, { keepRatio: true, fromCenter: true })).toEqual({ x: 50, y: 75, width: 200, height: 100 });
+  });
+  it("still flips and stays proportional when pulled past the other side", () => {
+    const f = resizeRect(r, "se", -200, -100, { keepRatio: true });
+    expect(f.width / f.height).toBeCloseTo(2);
+    expect(f.x).toBeLessThan(100);
+  });
 });
 
 describe("store and history", () => {

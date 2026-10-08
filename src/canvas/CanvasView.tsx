@@ -412,7 +412,7 @@ export default function CanvasView() {
     }
 
     if (d.kind === "resize") {
-      const rect = resizeRect(d.orig, d.handle, p.x - d.start.x, p.y - d.start.y);
+      const rect = resizeRect(d.orig, d.handle, p.x - d.start.x, p.y - d.start.y, { keepRatio: e.shiftKey, fromCenter: e.altKey });
       const doc = dragBase();
       const el = doc.elements[d.id];
       const parent = el.parentId ? worldPos(doc, el.parentId) : { x: 0, y: 0 };
