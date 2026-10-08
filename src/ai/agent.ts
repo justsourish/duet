@@ -175,6 +175,10 @@ export async function sendToAgent(text: string) {
         },
       },
     };
+    const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {
+      system: systemPrompt(),
+      mcp: JSON.stringify(config),
+    });
     const args = [
       "-p",
       "--output-format",
@@ -184,11 +188,11 @@ export async function sendToAgent(text: string) {
       "",
       "--strict-mcp-config",
       "--mcp-config",
-      JSON.stringify(config),
+      files.mcp,
       "--allowedTools",
       "mcp__duet",
-      "--append-system-prompt",
-      systemPrompt(),
+      "--append-system-prompt-file",
+      files.system,
     ];
     const session = getChat().sessionId;
     if (session) args.push("--resume", session);

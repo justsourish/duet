@@ -1,8 +1,10 @@
 [package]
 name = "duet-app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A free, open source design app where you and an AI work on the same canvas"
+authors = ["Sourish Mazumdar"]
+license = "MIT"
+repository = "https://github.com/justsourish/duet"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -208,6 +208,29 @@ pub fn agent_available(program: String) -> bool {
     }
 }
 
+/// Put the agent's instructions and connection details in files, so nothing tricky has to be
+/// squeezed through a command line (quotes and line breaks break differently on every system).
+/// The connection file holds the secret token, so only this user may read it.
+#[tauri::command]
+pub fn write_agent_files(system: String, mcp: String) -> Result<Value, String> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "Could not find your home folder.".to_string())?;
+    let dir = std::path::Path::new(&home).join(".duet").join("agent-workspace");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let write = |name: &str, body: &str| -> Result<String, String> {
+        let file = dir.join(name);
+        std::fs::write(&file, body).map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600));
+        }
+        Ok(file.to_string_lossy().to_string())
+    };
+    Ok(json!({"system": write("system.md", &system)?, "mcp": write("mcp.json", &mcp)?}))
+}
+
 /// Start the agent. Its output arrives as `agent-line` events, and `agent-exit` ends the run.
 #[tauri::command]
 pub fn agent_run(

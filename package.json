@@ -25,5 +25,11 @@
     "typescript": "~6.0.3",
     "vite": "^8.0.16",
     "vitest": "^4.1.11"
+  },
+  "description": "A free, open source design app where you and an AI work on the same canvas",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justsourish/duet.git"
   }
 }

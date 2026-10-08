@@ -277,6 +277,7 @@ pub fn run() {
             git_name_version,
             ai::mcp_info,
             ai::mcp_reply,
+            ai::write_agent_files,
             ai::agent_available,
             ai::agent_run,
             ai::agent_cancel

@@ -1,29 +1,69 @@
 # Duet
 
-A free, open source desktop app where a designer and an AI work on the same canvas.
+A free, open source design app where you and an AI work on the same canvas.
 
-You draw by hand. The AI suggests options that pop up beside your work. Git keeps the history quietly in the background.
+You draw by hand. When you want help, you ask Duet in plain words, and it changes the design with the very same controls you use. Every change it makes is marked as its own in your history, and you can undo any of it.
 
-Working name. It may change.
+Duet is early. It is built in the open, and it is being shaped by the designers who try it.
 
-## Why
+## What works today
 
-- Old design tools are too heavy.
-- Designing with code is not possible for most designers.
-- Designers still need to work with AI, and no tool is built around that yet.
+- An infinite canvas with frames, rectangles, ellipses and text. Pan, zoom, select, move, resize, snapping guides.
+- Layers panel with drag and drop in and out of frames. Properties for position, size, corners, fill, stroke, opacity and text.
+- Projects are plain folders. Your design is a readable `design.json` that saves itself as you work.
+- A history that survives closing the app, drawn as two lanes: **You** and **Duet**. Save a named version ("Client round 1") and go back to it any time. Nothing is ever lost when you go back.
+- A chat with an AI that works on your canvas, with three permission levels: Suggest, Ask first, Auto.
+- Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens). Turn them on and off, or write your own.
 
-## Idea in short
+## What does not exist yet
 
-- Desktop app, free forever, open source.
-- Hands-on design first. The AI works beside you, not instead of you.
-- Elements pop up as options. You pick, tweak, or ignore.
-- Git runs underneath for history and undo. The designer never has to think about it.
-- Bring your own AI. The app connects to an AI tool the user already has, so it costs nothing to run.
+Be honest with yourself before you try it for real work.
 
-## Status
+- No gradients, shadows, auto layout, components, images, boolean operations or pen tool yet. Export is not built yet.
+- The AI chat works with **Claude Code** today. Gemini CLI and Antigravity are planned.
+- Windows builds are new and less tested than Mac. The AI chat on Windows is untested.
+- The app is not signed, so your computer will warn you the first time. See the install guide.
 
-Concept stage. Next: UI mockups and a short video presentation.
+## Bring your own AI
 
-## Audience signal
+Duet has no AI of its own and no servers. It uses the AI tool you already have on your computer, so it costs nothing extra to run and your design stays with you.
 
-First video: about 1,200 views, 12 comments, 3 saves, one person offered to contribute.
+To use the chat today: install [Claude Code](https://claude.com/claude-code), sign in once in a terminal, then open Duet.
+
+## Install
+
+Download the latest build from the [Releases page](https://github.com/justsourish/duet/releases). Step-by-step help, including the first-launch warning, is in [docs/install.md](docs/install.md).
+
+## Build it yourself
+
+You need Node 22 or newer and Rust.
+
+```sh
+git clone https://github.com/justsourish/duet.git
+cd duet
+npm install
+npm run tauri dev
+```
+
+Run the checks:
+
+```sh
+npm test                                  # front end
+cargo test --manifest-path src-tauri/Cargo.toml   # history and files
+```
+
+## How it is put together
+
+- **Tauri** shell, **React** panels, and a plain **Canvas 2D** renderer.
+- Every change to a design is a named command. The interface and the AI use the same ones. See [docs/principles.md](docs/principles.md).
+- The AI talks to Duet over a small local MCP server. See [docs/ai-bridge.md](docs/ai-bridge.md).
+- History is Git, bundled inside the app, so designers never need to install it or learn it.
+- The plan for the first version is in [docs/v1-scope.md](docs/v1-scope.md).
+
+## Contributing
+
+Designers, developers, and people who just have opinions are all welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). The most useful thing you can do right now is use Duet for something real and tell us what got in your way.
+
+## Licence
+
+[MIT](LICENSE).

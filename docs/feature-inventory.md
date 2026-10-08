@@ -1,3 +1,5 @@
+> **Read this first.** This report was written by an AI research tool and has not been fact-checked. Library links, licences, patent numbers and legal statements in it may be wrong. Do not rely on it for legal decisions. It was used as a starting point, and `v1-scope.md` is what the project actually follows.
+
 # Duet: Design Tool Feature Inventory & Technical Architecture Report
 
 Written for the Duet project, 8 October 2026.
