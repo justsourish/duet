@@ -29,6 +29,7 @@ const defaults: Record<ElementType, Partial<El>> = {
   text: { fill: "#1b1b1f", radius: 0 },
   image: { fill: "#d9d9de", radius: 0 },
   path: { fill: "#d9d9de", stroke: "#1b1b1f", strokeWidth: 2, radius: 0 },
+  group: { fill: "#00000000", radius: 0 },
 };
 
 const typeName: Record<ElementType, string> = {
@@ -38,6 +39,7 @@ const typeName: Record<ElementType, string> = {
   text: "Text",
   image: "Image",
   path: "Path",
+  group: "Group",
 };
 
 function nextName(doc: Doc, type: ElementType): string {
@@ -85,6 +87,7 @@ const createElement: CommandDef<CreateArgs> = {
       gradient: null,
       link: null,
       src: "",
+      locked: false,
       layout: null,
       grow: 0,
       nodes: [],
@@ -139,6 +142,21 @@ const resizeElement: CommandDef<ResizeArgs> = {
     const next = clone(doc);
     const el = next.elements[a.id];
     if (!el) return next;
+    if (el.type === "group") {
+      // a group has no size of its own: resizing it scales everything inside it
+      const sx = Math.max(1, a.width) / Math.max(1, el.width);
+      const sy = Math.max(1, a.height) / Math.max(1, el.height);
+      for (const id of descendants(next, a.id)) {
+        const d = next.elements[id];
+        d.width = Math.max(1, d.width * sx);
+        d.height = Math.max(1, d.height * sy);
+        d.x *= sx;
+        d.y *= sy;
+      }
+      el.x = a.x;
+      el.y = a.y;
+      return next;
+    }
     el.x = a.x;
     el.y = a.y;
     el.width = Math.max(1, a.width);
@@ -340,6 +358,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       gradient: null,
       link: null,
       src: "",
+      locked: false,
       layout: { dir: w >= h ? "row" : "column", gap: 12, padX: 0, padY: 0, align: "start", justify: "start", hug: true },
       grow: 0,
       nodes: [],
@@ -362,6 +381,100 @@ const wrapInLayout: CommandDef<WrapArgs> = {
   },
 };
 
+// ---- group_elements ----
+export interface GroupArgs {
+  ids: string[];
+  groupId: string;
+}
+
+const groupElements: CommandDef<GroupArgs> = {
+  label: () => "Group",
+  run: (doc, a) => {
+    const els = a.ids.map((id) => doc.elements[id]).filter(Boolean);
+    if (els.length === 0) return doc;
+    const parentId = els[0].parentId;
+    if (!els.every((e) => e.parentId === parentId)) return doc;
+    const next = clone(doc);
+    const list = parentId ? next.elements[parentId].childIds : next.rootIds;
+    const x = Math.min(...els.map((e) => e.x));
+    const y = Math.min(...els.map((e) => e.y));
+    const w = Math.max(...els.map((e) => e.x + e.width)) - x;
+    const h = Math.max(...els.map((e) => e.y + e.height)) - y;
+    const at = Math.max(...els.map((e) => list.indexOf(e.id)));
+    const group: El = {
+      id: a.groupId,
+      type: "group",
+      name: nextName(doc, "group"),
+      parentId,
+      x,
+      y,
+      width: w,
+      height: h,
+      fill: "#00000000",
+      stroke: null,
+      strokeWidth: 1,
+      radius: 0,
+      opacity: 1,
+      text: "",
+      fontSize: 16,
+      shadow: null,
+      gradient: null,
+      link: null,
+      src: "",
+      locked: false,
+      layout: null,
+      grow: 0,
+      nodes: [],
+      closed: false,
+      childIds: [],
+    };
+    next.elements[group.id] = group;
+    // keep the stacking order they already had
+    const ordered = list.filter((id) => a.ids.includes(id));
+    for (const id of ordered) {
+      const i = list.indexOf(id);
+      if (i >= 0) list.splice(i, 1);
+      const el = next.elements[id];
+      el.parentId = group.id;
+      el.x -= x;
+      el.y -= y;
+      group.childIds.push(id);
+    }
+    const insertAt = Math.min(list.length, Math.max(0, at - ordered.length + 1));
+    list.splice(insertAt, 0, group.id);
+    return next;
+  },
+};
+
+// ---- ungroup ----
+export interface UngroupArgs {
+  ids: string[];
+}
+
+const ungroup: CommandDef<UngroupArgs> = {
+  label: () => "Ungroup",
+  run: (doc, a) => {
+    const groups = a.ids.filter((id) => doc.elements[id]?.type === "group");
+    if (groups.length === 0) return doc;
+    const next = clone(doc);
+    for (const gid of groups) {
+      const g = next.elements[gid];
+      if (!g) continue;
+      const list = g.parentId ? next.elements[g.parentId].childIds : next.rootIds;
+      const at = list.indexOf(gid);
+      for (const cid of g.childIds) {
+        const c = next.elements[cid];
+        c.parentId = g.parentId;
+        c.x += g.x;
+        c.y += g.y;
+      }
+      list.splice(at, 1, ...g.childIds);
+      delete next.elements[gid];
+    }
+    return next;
+  },
+};
+
 // ---- registry ----
 export const commands = {
   create_element: createElement,
@@ -373,6 +486,8 @@ export const commands = {
   paste_elements: pasteElements,
   set_layout: setLayout,
   wrap_in_layout: wrapInLayout,
+  group_elements: groupElements,
+  ungroup,
 } as const;
 
 export type CommandName = keyof typeof commands;

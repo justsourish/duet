@@ -65,7 +65,7 @@ export function unionRect(rects: Rect[]): Rect | null {
 }
 
 /** Deepest element under a world point. Children are clipped by their frame. */
-export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = new Set()): string | null {
+export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = new Set(), deep = false): string | null {
   const visit = (ids: string[], ox: number, oy: number): string | null => {
     for (let i = ids.length - 1; i >= 0; i--) {
       const el = doc.elements[ids[i]];
@@ -74,7 +74,7 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
       if (el.type === "path" && !el.closed) {
         // a thin line: hit it when the pointer is close to the line itself
         const reach = Math.max(6, el.strokeWidth / 2 + 4);
-        if (distanceToLine(wx, wy, flatten(toAbs(el, r.x, r.y), false)) > reach) continue;
+        if (distanceToLine(wx, wy, flatten(toAbs(el, r.x, r.y), false)) > reach || el.locked) continue;
         return el.id;
       }
       if (!pointInRect(wx, wy, r)) continue;
@@ -87,8 +87,11 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
       }
       if (el.childIds.length) {
         const child = visit(el.childIds, r.x, r.y);
-        if (child) return child;
+        // a click anywhere inside a group picks the whole group, unless you dig in on purpose
+        if (child) return el.type === "group" && !deep && !el.locked ? el.id : child;
       }
+      // a group has no body of its own, and a locked thing cannot be picked: clicks go through
+      if (el.type === "group" || el.locked) continue;
       return el.id;
     }
     return null;

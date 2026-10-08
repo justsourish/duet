@@ -148,6 +148,15 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
     return;
   }
 
+  if (el.type === "group") {
+    for (const id of el.childIds) {
+      const child = doc.elements[id];
+      if (child) drawElement(ctx, doc, child, x, y);
+    }
+    ctx.restore();
+    return;
+  }
+
   if (el.type === "path") {
     drawLine(ctx, el, x, y);
     ctx.restore();

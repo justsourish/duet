@@ -12,7 +12,7 @@ interface Drop {
 }
 
 function LayerIcon({ type }: { type: El["type"] }) {
-  const name = type === "text" ? "text" : type === "image" ? "image" : type === "path" ? "pen" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
+  const name = type === "text" ? "text" : type === "group" ? "group" : type === "image" ? "image" : type === "path" ? "pen" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
   return <Icon name={name} size={14} className="ico" />;
 }
 
@@ -98,6 +98,16 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
         ) : (
           <span className="name">{el.name}</span>
         )}
+        <span
+          className={`lockbtn ${el.locked ? "on" : ""}`}
+          title={el.locked ? "Unlock" : "Lock, so it cannot be picked on the canvas (Shift Cmd L)"}
+          onClick={(e) => {
+            e.stopPropagation();
+            dispatch("set_props", { ids: [id], props: { locked: !el.locked }, label: el.locked ? "Unlock" : "Lock" });
+          }}
+        >
+          <Icon name={el.locked ? "lock" : "unlock"} size={13} />
+        </span>
       </div>
       {[...el.childIds].reverse().map((c) => (
         <Row key={c} doc={doc} id={c} depth={depth + 1} dnd={dnd} />

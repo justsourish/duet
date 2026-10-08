@@ -120,6 +120,25 @@ button {
   background: var(--accent-soft);
   outline: 1px solid var(--accent);
 }
+.lockbtn {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: var(--muted);
+  opacity: 0;
+  flex: none;
+}
+.row:hover .lockbtn,
+.lockbtn.on {
+  opacity: 1;
+}
+.lockbtn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
 .row .name {
   white-space: nowrap;
   overflow: hidden;

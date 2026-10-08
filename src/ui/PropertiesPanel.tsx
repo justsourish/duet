@@ -134,7 +134,8 @@ export default function PropertiesPanel() {
   const first = els[0];
   const allText = els.every((e) => e.type === "text");
   const allImages = els.every((e) => e.type === "image");
-  const noFill = allImages || els.every((e) => e.type === "path" && !e.closed);
+  const allGroups = els.every((e) => e.type === "group");
+  const noFill = allImages || allGroups || els.every((e) => e.type === "path" && !e.closed);
   const hasRadius = els.every((e) => e.type === "frame" || e.type === "rect" || e.type === "image");
 
   return (
@@ -209,7 +210,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {!allText && (
+      {!allText && !allGroups && (
         <div className="sec">
           <h4>Stroke</h4>
           <ColorField none value={first.stroke} onCommit={(c) => set({ stroke: c }, "Change stroke")} />
@@ -235,7 +236,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {!allText && (
+      {!allText && !allGroups && (
         <div className="sec">
           <h4>Shadow</h4>
           {first.shadow ? (

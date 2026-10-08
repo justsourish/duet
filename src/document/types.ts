@@ -1,4 +1,4 @@
-export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path";
+export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path" | "group";
 
 /** One point on a drawn line. All numbers are fractions of the element's box, so resizing just works. */
 export interface PathNode {
@@ -63,6 +63,8 @@ export interface El {
   gradient: Gradient | null;
   /** For images: where the picture file lives inside the project, like assets/3fa9c1.png. */
   src: string;
+  /** Locked things cannot be picked on the canvas, so you can select what is behind or inside them. */
+  locked: boolean;
   /** For frames: auto layout, or null to place children by hand. */
   layout: Layout | null;
   /** Inside an auto layout frame: 1 to grow and fill the free space along the direction, 0 to keep its size. */

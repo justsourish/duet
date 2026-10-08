@@ -44,6 +44,15 @@ export function toSvg(doc: Doc, id: string): string {
       return `<g${op}><image href="${esc(url)}" x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${cid})"/></g>`;
     }
 
+    if (el.type === "group") {
+      const kids = el.childIds
+        .map((c) => doc.elements[c])
+        .filter(Boolean)
+        .map((c) => draw(c, x, y))
+        .join("");
+      return `<g${op}>${kids}</g>`;
+    }
+
     if (el.type === "path") {
       const nodes = toAbs(el, x, y);
       if (nodes.length < 2) return "";

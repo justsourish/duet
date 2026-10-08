@@ -727,3 +727,81 @@ describe("wrapping in auto layout", () => {
     expect(same.elements.wrap).toBeUndefined();
   });
 });
+
+describe("groups and locking", () => {
+  const scene = () => {
+    let d = frame("box"); // 300 by 400 at 100,50
+    d = runCommand(d, "create_element", { id: "a", type: "rect", parentId: "box", x: 20, y: 30, width: 50, height: 50 });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", parentId: "box", x: 120, y: 40, width: 60, height: 40 });
+    return d;
+  };
+
+  it("groups siblings into one thing that is exactly as big as they are", () => {
+    const d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
+    expect(d.elements.box.childIds).toEqual(["g"]);
+    expect(d.elements.g.type).toBe("group");
+    expect([d.elements.g.x, d.elements.g.y, d.elements.g.width, d.elements.g.height]).toEqual([20, 30, 160, 50]);
+    expect([d.elements.a.x, d.elements.a.y]).toEqual([0, 0]);
+    expect([d.elements.b.x, d.elements.b.y]).toEqual([100, 10]);
+  });
+
+  it("keeps the same picture on the page after grouping and ungrouping", () => {
+    let d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
+    d = runCommand(d, "ungroup", { ids: ["g"] });
+    expect(d.elements.g).toBeUndefined();
+    expect(d.elements.box.childIds).toEqual(["a", "b"]);
+    expect([d.elements.a.x, d.elements.a.y]).toEqual([20, 30]);
+    expect([d.elements.b.x, d.elements.b.y]).toEqual([120, 40]);
+  });
+
+  it("moves everything inside when the group moves, and refits when a child moves", () => {
+    let d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
+    d = runCommand(d, "move_elements", { ids: ["g"], dx: 10, dy: 0 });
+    expect(worldRect(d, "a").x).toBe(100 + 30);
+    d = runCommand(d, "move_elements", { ids: ["b"], dx: 50, dy: 0 });
+    expect(d.elements.g.width).toBe(210);
+  });
+
+  it("scales what is inside when the group is resized", () => {
+    let d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
+    d = runCommand(d, "resize_element", { id: "g", x: 20, y: 30, width: 320, height: 100 });
+    expect([d.elements.a.width, d.elements.a.height]).toEqual([100, 100]);
+    expect(d.elements.b.x).toBe(200);
+    expect(d.elements.g.width).toBe(320);
+  });
+
+  it("picks the whole group when you click inside it, and a single child when you dig in", () => {
+    const d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
+    // a sits at 120,80 on the page (box 100,50 + 20,30)
+    expect(hitTest(d, 130, 90)).toBe("g");
+    expect(hitTest(d, 130, 90, new Set(), true)).toBe("a");
+  });
+
+  it("clicks go through a locked frame to what is inside it, and to what is behind it", () => {
+    let d = scene();
+    d = runCommand(d, "set_props", { ids: ["box"], props: { locked: true } });
+    expect(hitTest(d, 130, 90)).toBe("a"); // the picture inside is still pickable
+    expect(hitTest(d, 380, 400)).toBeNull(); // empty frame area: nothing to pick
+  });
+
+  it("will not group things that live in different frames", () => {
+    let d = runCommand(scene(), "create_element", { id: "two", type: "frame", x: 600, y: 0, width: 100, height: 100 });
+    d = runCommand(d, "create_element", { id: "c", type: "rect", parentId: "two", x: 0, y: 0, width: 10, height: 10 });
+    const same = runCommand(d, "group_elements", { ids: ["a", "c"], groupId: "g" });
+    expect(same.elements.g).toBeUndefined();
+  });
+
+  it("saves groups and locks, and leaves other files unchanged", () => {
+    let d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
+    d = runCommand(d, "set_props", { ids: ["a"], props: { locked: true } });
+    const back = parseDoc(serializeDoc(d));
+    expect(back.elements.g.type).toBe("group");
+    expect(back.elements.a.locked).toBe(true);
+    expect(serializeDoc(frame())).not.toContain('"locked"');
+  });
+
+  it("draws a group into the SVG export", () => {
+    const d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
+    expect(toSvg(d, "box")).toContain("<g>");
+  });
+});

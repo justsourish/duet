@@ -112,11 +112,35 @@ function layoutFrame(doc: Doc, frame: El, sizeChildren: boolean) {
   }
 }
 
-/** Line up the children of every auto layout frame. Returns the same document when nothing uses it. */
+/** A group is exactly as big as what is inside it. Inner groups first. */
+function fitGroups(doc: Doc) {
+  const groups = Object.values(doc.elements).filter((e) => e.type === "group");
+  groups.sort((a, b) => depthOf(doc, b) - depthOf(doc, a));
+  for (const g of groups) {
+    const kids = g.childIds.map((id) => doc.elements[id]).filter(Boolean);
+    if (kids.length === 0) continue;
+    const minX = Math.min(...kids.map((k) => k.x));
+    const minY = Math.min(...kids.map((k) => k.y));
+    if (minX !== 0 || minY !== 0) {
+      g.x += minX;
+      g.y += minY;
+      for (const k of kids) {
+        k.x -= minX;
+        k.y -= minY;
+      }
+    }
+    g.width = Math.max(1, round(Math.max(...kids.map((k) => k.x + k.width))));
+    g.height = Math.max(1, round(Math.max(...kids.map((k) => k.y + k.height))));
+  }
+}
+
+/** Line up the children of every auto layout frame, and fit groups around their contents. */
 export function relayout(doc: Doc): Doc {
   const frames = Object.values(doc.elements).filter((e) => e.layout);
-  if (frames.length === 0) return doc;
+  const hasGroups = Object.values(doc.elements).some((e) => e.type === "group");
+  if (frames.length === 0 && !hasGroups) return doc;
   const next = structuredClone(doc);
+  fitGroups(next);
   const mine = frames.map((f) => next.elements[f.id]);
   // inner frames first, so a frame that hugs its content knows its size before its parent uses it
   const byDepth = [...mine].sort((a, b) => depthOf(next, b) - depthOf(next, a));
@@ -125,5 +149,6 @@ export function relayout(doc: Doc): Doc {
   for (const f of [...byDepth].reverse()) layoutFrame(next, f, true);
   // and once more inside out, now that the sizes have settled
   for (const f of byDepth) layoutFrame(next, f, false);
+  fitGroups(next);
   return next;
 }

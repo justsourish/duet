@@ -21,6 +21,7 @@ const EL_KEYS: (keyof El)[] = [
   "gradient",
   "link",
   "src",
+  "locked",
   "layout",
   "grow",
   "nodes",
@@ -46,6 +47,7 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   gradient: null,
   link: null,
   src: "",
+  locked: false,
   layout: null,
   grow: 0,
   nodes: [],
@@ -59,7 +61,7 @@ export function serializeDoc(doc: Doc): string {
   for (const id of Object.keys(doc.elements).sort()) {
     const el = doc.elements[id];
     const ordered: Record<string, unknown> = {};
-    for (const k of EL_KEYS) if ((k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
+    for (const k of EL_KEYS) if ((k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
   return JSON.stringify({ version: doc.version, rootIds: doc.rootIds, elements }, null, 2) + "\n";
@@ -67,7 +69,7 @@ export function serializeDoc(doc: Doc): string {
 
 export class DesignFileError extends Error {}
 
-const TYPES = new Set(["frame", "rect", "ellipse", "text", "image", "path"]);
+const TYPES = new Set(["frame", "rect", "ellipse", "text", "image", "path", "group"]);
 
 /** Parse and check a design file. Fills in missing properties so older files still open. */
 export function parseDoc(text: string): Doc {

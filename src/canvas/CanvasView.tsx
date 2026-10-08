@@ -54,7 +54,7 @@ type Drag =
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number }
   | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; sx: number; sy: number; start: { x: number; y: number } }
-  | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean };
+  | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
 
 const CREATE_TOOLS: Tool[] = ["frame", "rect", "ellipse", "text"];
 const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
@@ -64,6 +64,7 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   text: { w: 40, h: 21 },
   image: { w: 240, h: 160 },
   path: { w: 100, h: 100 },
+  group: { w: 100, h: 100 },
 };
 
 /** Copy of what was last copied inside this window, in case the system clipboard is unavailable. */
@@ -313,7 +314,8 @@ export default function CanvasView() {
       return;
     }
 
-    const hit = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y);
+    // Cmd or Ctrl click digs into groups
+    const hit = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y, new Set(), e.metaKey || e.ctrlKey);
     if (hit) {
       if (e.shiftKey) {
         const has = s.selection.includes(hit);
@@ -328,7 +330,10 @@ export default function CanvasView() {
     }
 
     if (!e.shiftKey) select([]);
-    dragRef.current = { kind: "marquee", start: { x: p.x, y: p.y }, prev: e.shiftKey ? s.selection : [], additive: e.shiftKey };
+    // A marquee that starts inside a frame picks that frame's contents, not the frame itself.
+    const home = frameAt(doc, p.x, p.y);
+    const scope = home ? doc.elements[home].childIds : doc.rootIds;
+    dragRef.current = { kind: "marquee", start: { x: p.x, y: p.y }, prev: e.shiftKey ? s.selection : [], additive: e.shiftKey, scope };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -418,7 +423,7 @@ export default function CanvasView() {
     if (d.kind === "marquee") {
       const rect = normalize(d.start.x, d.start.y, p.x, p.y);
       const doc = currentDoc(s);
-      const inside = doc.rootIds.filter((id) => rectsIntersect(rect, worldRect(doc, id)));
+      const inside = d.scope.filter((id) => doc.elements[id] && !doc.elements[id].locked && rectsIntersect(rect, worldRect(doc, id)));
       setOverlay({ marquee: rect });
       select(d.additive ? Array.from(new Set([...d.prev, ...inside])) : inside);
     }
@@ -510,6 +515,17 @@ export default function CanvasView() {
     const hit = hitTest(doc, p.x, p.y);
     if (hit && doc.elements[hit].type === "path") {
       enterNodeEdit(hit);
+      return;
+    }
+    // double-click a group to pick what is under the pointer inside it
+    if (hit && doc.elements[hit].type === "group") {
+      const inner = hitTest(doc, p.x, p.y, new Set(), true);
+      if (inner && inner !== hit) select([inner]);
+      return;
+    }
+    // double-click a frame to pick everything inside it
+    if (hit && doc.elements[hit].type === "frame" && doc.elements[hit].childIds.length) {
+      select(doc.elements[hit].childIds.filter((c) => !doc.elements[c].locked));
       return;
     }
     if (hit && doc.elements[hit].type === "text") {
@@ -679,7 +695,38 @@ export default function CanvasView() {
       }
       if (mod && key === "a") {
         e.preventDefault();
-        select([...currentDoc(s).rootIds]);
+        const doc = currentDoc(s);
+        const only = s.selection.length === 1 ? doc.elements[s.selection[0]] : undefined;
+        const parents = new Set(s.selection.map((i) => doc.elements[i]?.parentId ?? null));
+        let pool: string[];
+        if (only && (only.type === "frame" || only.type === "group") && only.childIds.length) pool = only.childIds;
+        else if (s.selection.length && parents.size === 1 && [...parents][0]) pool = doc.elements[[...parents][0]!].childIds;
+        else pool = doc.rootIds;
+        select(pool.filter((i) => doc.elements[i] && !doc.elements[i].locked));
+        return;
+      }
+      if (mod && key === "g") {
+        e.preventDefault();
+        const doc = currentDoc(s);
+        if (e.shiftKey) {
+          const kids = s.selection.flatMap((i) => (doc.elements[i]?.type === "group" ? doc.elements[i].childIds : []));
+          dispatch("ungroup", { ids: s.selection });
+          if (kids.length) select(kids);
+        } else if (s.selection.length) {
+          const id = newId("group");
+          dispatch("group_elements", { ids: s.selection, groupId: id });
+          if (currentDoc().elements[id]) select([id]);
+        }
+        return;
+      }
+      if (mod && e.shiftKey && key === "l") {
+        e.preventDefault();
+        const doc = currentDoc(s);
+        const els = s.selection.map((i) => doc.elements[i]).filter(Boolean);
+        if (els.length) {
+          const lock = !els.every((x) => x.locked);
+          dispatch("set_props", { ids: els.map((x) => x.id), props: { locked: lock }, label: lock ? "Lock" : "Unlock" });
+        }
         return;
       }
       if (e.shiftKey && !mod && key === "a") {
@@ -736,6 +783,24 @@ export default function CanvasView() {
         select([]);
         setTool("move");
         return;
+      }
+      if (e.key === "Enter" && s.selection.length === 1 && ["frame", "group"].includes(currentDoc(s).elements[s.selection[0]]?.type ?? "") && !e.shiftKey) {
+        const doc = currentDoc(s);
+        const kids = doc.elements[s.selection[0]].childIds.filter((c) => !doc.elements[c].locked);
+        if (kids.length) {
+          e.preventDefault();
+          select(kids);
+          return;
+        }
+      }
+      if (e.key === "Enter" && e.shiftKey && s.selection.length) {
+        const doc = currentDoc(s);
+        const parent = doc.elements[s.selection[0]]?.parentId;
+        if (parent) {
+          e.preventDefault();
+          select([parent]);
+          return;
+        }
       }
       if (e.key === "Enter" && s.selection.length === 1 && currentDoc(s).elements[s.selection[0]]?.type === "text") {
         e.preventDefault();
