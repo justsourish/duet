@@ -100,6 +100,7 @@ export const currentDoc = (s: State = state): Doc => s.transientDoc ?? s.timelin
 /** Test helper: reset everything. */
 export function resetStore() {
   state = initial();
+  lastNudge = null;
   listeners.forEach((l) => l());
 }
 
@@ -130,6 +131,27 @@ type ArgsOf<N extends CommandName> = Parameters<typeof runCommand<N>>[2];
 export function dispatch<N extends CommandName>(name: N, args: ArgsOf<N>, actor: Actor = "you") {
   const doc = runCommand(currentDoc(), name, args);
   commit(doc, commandLabel(name, args), actor);
+}
+
+/** Arrow presses closer together than this count as one step. Shorter than the wait before saving. */
+const NUDGE_GAP = 600;
+let lastNudge: { entry: HistoryEntry; ids: string } | null = null;
+
+/** Move with the arrow keys. Holding a key, or tapping quickly, is one step in history, not one per press. */
+export function nudge(ids: string[], dx: number, dy: number) {
+  const args = { ids, dx, dy };
+  const doc = runCommand(currentDoc(), "move_elements", args);
+  const here = state.timeline[state.cursor];
+  const key = ids.join(",");
+  const now = Date.now();
+  const going = lastNudge && lastNudge.entry === here && lastNudge.ids === key && now - here.time < NUDGE_GAP;
+  if (going && state.cursor > 0 && state.cursor === state.timeline.length - 1) {
+    const entry = { ...here, doc, time: now };
+    set({ timeline: state.timeline.slice(0, state.cursor).concat(entry), transientDoc: null });
+  } else {
+    commit(doc, commandLabel("move_elements", args), "you");
+  }
+  lastNudge = { entry: state.timeline[state.cursor], ids: key };
 }
 
 // ---- drags: preview without history, commit once at the end ----

@@ -2,12 +2,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { sendToAgent, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
-import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import { attachFiles } from "../ai/pictures";
 import type { ModelChoice } from "../ai/chat";
 import type { AgentId } from "../ai/chat";
 import type { Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { useStore } from "../state/store";
+import ConnectAi from "./ConnectAi";
+import Icon from "./Icons";
 import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
 
@@ -29,6 +32,13 @@ export default function ChatPanel() {
   const installed = useChat((s) => s.installed);
   const models = useChat((s) => s.models);
   const effort = useChat((s) => s.effort);
+  const [connecting, setConnecting] = useState(false);
+  const pictures = useChat((s) => s.pictures);
+  const waiting = pictures.filter((p) => !p.sent);
+  const [pictureNote, setPictureNote] = useState<string | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  /** Pictures for the AI to look at with the next message. They never go on the canvas. */
+  const attach = (files: File[]) => void attachFiles(files).then(setPictureNote);
   const [agyModels, setAgyModels] = useState<ModelChoice[]>([]);
   useEffect(() => {
     if (agent !== "agy" || agyModels.length || !inTauri()) return;
@@ -142,13 +152,17 @@ export default function ChatPanel() {
 
   // Show the newest message. Only the message list is scrolled: asking the browser to bring a message
   // into view can also slide the whole panel, and then its title and background go missing.
+  // The setup steps for an outside AI sit above the messages, so they open at their first line.
   useEffect(() => {
-    if (list.current) list.current.scrollTop = list.current.scrollHeight;
-  }, [messages, minimized, room, h]);
+    if (list.current) list.current.scrollTop = connecting ? 0 : list.current.scrollHeight;
+  }, [messages, minimized, room, h, connecting]);
+  // a new message, such as an AI asking for a yes, matters more than the setup steps
+  useEffect(() => setConnecting(false), [messages.length]);
 
   const send = (t: string) => {
-    if (!t.trim() || running) return;
+    if ((!t.trim() && !waiting.length) || running) return;
     setText("");
+    setPictureNote(null);
     void sendToAgent(t);
   };
 
@@ -159,6 +173,17 @@ export default function ChatPanel() {
       style={{
         ...(moving ? { left: moving.x, top: moving.y } : "x" in place ? { left: place.x, top: place.y } : {}),
         width: w,
+      }}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        // a picture dropped on the chat is for the AI to look at; dropped on the canvas it joins the design
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setMinimized(false);
+        attach(Array.from(e.dataTransfer.files));
       }}
     >
       <div
@@ -214,8 +239,15 @@ export default function ChatPanel() {
             </select>
             )}
           </div>
+          <div
+            className="connect-link"
+            onClick={() => setConnecting(!connecting)}
+          >
+            {connecting ? "Hide this" : "Connect your own AI"}
+          </div>
           <div className="mode-hint">{MODES.find((m) => m.mode === mode)?.hint}</div>
           <div className="cbody" ref={list} style={{ maxHeight: room === null ? h : Math.min(h, room) }}>
+            {connecting && <ConnectAi />}
             {found === false && (
               <div className="m">
                 Duet works with the AI tool you already use, so it costs nothing extra. I could not find{" "}
@@ -228,7 +260,20 @@ export default function ChatPanel() {
             )}
             {messages.map((m) => {
               if (m.role === "working") return <div key={m.id} className="m working">{m.text}</div>;
-              if (m.role === "you") return <div key={m.id} className="m you">{m.text}</div>;
+              if (m.role === "you")
+                return (
+                  <div key={m.id} className="m you">
+                    {m.pictures && (
+                      <div className="pics">
+                        {m.pictures.map((n) => {
+                          const p = pictures.find((x) => x.n === n);
+                          return p ? <img key={n} src={p.thumb} alt={p.name} title={p.name} /> : <span key={n} className="pic-gone" title="This picture is no longer kept" />;
+                        })}
+                      </div>
+                    )}
+                    {m.text}
+                  </div>
+                );
               if (m.role === "error") return <div key={m.id} className="m err">{m.text}</div>;
               if (m.proposal)
                 return (
@@ -290,13 +335,46 @@ export default function ChatPanel() {
             </div>
           )}
 
+          {(waiting.length > 0 || pictureNote) && (
+            <div className="waiting">
+              {waiting.map((p) => (
+                <span key={p.n} className="pic" title={p.name}>
+                  <img src={p.thumb} alt={p.name} />
+                  <b onClick={() => removePicture(p.n)} title="Take this picture out">
+                    ×
+                  </b>
+                </span>
+              ))}
+              {pictureNote && <em>{pictureNote}</em>}
+            </div>
+          )}
           <div className="cfoot">
+            <input
+              ref={picker}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                attach(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+            <button className="mini attach" disabled={found === false} title="Add pictures for the AI to look at. You can also paste or drop them here." onClick={() => picker.current?.click()}>
+              <Icon name="image" size={16} />
+            </button>
             <textarea
               value={text}
               rows={1}
               placeholder={found === false ? "Pick an AI tool that is installed" : "What do you want to change?"}
               disabled={found === false}
               onChange={(e) => setText(e.target.value)}
+              onPaste={(e) => {
+                const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+                if (!files.length) return;
+                e.preventDefault();
+                attach(files);
+              }}
               onKeyDown={(e) => {
                 e.stopPropagation();
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -310,7 +388,7 @@ export default function ChatPanel() {
                 Stop
               </button>
             ) : (
-              <button className="mini primary" disabled={!text.trim() || found === false} onClick={() => send(text)}>
+              <button className="mini primary" disabled={(!text.trim() && !waiting.length) || found === false} onClick={() => send(text)}>
                 Send
               </button>
             )}

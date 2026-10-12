@@ -20,9 +20,27 @@ export interface Msg {
   text: string;
   proposal?: Proposal;
   approval?: Approval;
+  /** The numbers of the pictures that went with this message. */
+  pictures?: number[];
   /** History step this change created, so Undo can take it back. */
   undoStep?: number;
   undone?: boolean;
+}
+
+/** A picture the designer gave the AI with a message. It is never part of the design. */
+export interface Picture {
+  /** The number the AI asks for it by. Counts up through the conversation. */
+  n: number;
+  name: string;
+  /** Shrunk, as base64. */
+  data: string;
+  mime: string;
+  width: number;
+  height: number;
+  /** A tiny copy to show in the chat. */
+  thumb: string;
+  /** False while it waits in the message box. */
+  sent: boolean;
 }
 
 export type AgentId = "claude" | "agy" | "codex" | "opencode";
@@ -39,6 +57,7 @@ export interface ChatState {
   agent: AgentId;
   installed: Partial<Record<AgentId, boolean>>;
   messages: Msg[];
+  pictures: Picture[];
   mode: Mode;
   running: boolean;
   minimized: boolean;
@@ -99,6 +118,7 @@ let state: ChatState = {
   agent: savedAgent(),
   installed: {},
   messages: [],
+  pictures: [],
   mode: savedMode(),
   running: false,
   minimized: false,
@@ -108,6 +128,9 @@ let state: ChatState = {
   effort: pick("duet:effort"),
 };
 let nextId = 1;
+let nextPicture = 1;
+/** Older pictures are let go, so a long conversation does not fill the memory. */
+const PICTURES_KEPT = 30;
 const listeners = new Set<() => void>();
 const pendingApprovals = new Map<number, (allowed: boolean) => void>();
 
@@ -135,6 +158,25 @@ export function addMsg(m: Omit<Msg, "id">): number {
 
 export function updateMsg(id: number, patch: Partial<Msg>) {
   set({ messages: state.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+}
+
+/** Keep pictures waiting in the message box, to go with the next message. */
+export function addPictures(list: Omit<Picture, "n" | "sent">[]) {
+  if (!list.length) return;
+  const all = [...state.pictures, ...list.map((p) => ({ ...p, n: nextPicture++, sent: false }))];
+  set({ pictures: all.slice(-PICTURES_KEPT) });
+}
+
+/** Take a waiting picture out again, before it is sent. */
+export function removePicture(n: number) {
+  set({ pictures: state.pictures.filter((p) => p.n !== n || p.sent) });
+}
+
+/** The waiting pictures go with the message being sent. Returns them. */
+export function sendPictures(): Picture[] {
+  const going = state.pictures.filter((p) => !p.sent);
+  if (going.length) set({ pictures: state.pictures.map((p) => (p.sent ? p : { ...p, sent: true })) });
+  return going;
 }
 
 export function removeWorking() {
@@ -166,7 +208,8 @@ export function setAgent(agent: AgentId) {
   } catch {
     /* ignore */
   }
-  set({ agent, agentFound: state.installed[agent] ?? false, messages: [], sessionId: null });
+  declineAllWaiting();
+  set({ agent, agentFound: state.installed[agent] ?? false, messages: [], pictures: state.pictures.filter((p) => !p.sent), sessionId: null });
 }
 export function setModel(agent: AgentId, model: string) {
   try {
@@ -189,13 +232,16 @@ export function setEffort(effort: string) {
 export const setSessionId = (sessionId: string | null) => set({ sessionId });
 
 export function newConversation() {
-  set({ messages: [], sessionId: null });
+  declineAllWaiting();
+  set({ messages: [], pictures: state.pictures.filter((p) => !p.sent), sessionId: null });
 }
 
 /** Ask the designer a yes or no question and wait for the answer. */
 export function askDesigner(summary: string): Promise<boolean> {
   return new Promise((resolve) => {
     const id = addMsg({ role: "note", text: "", approval: { summary, status: "waiting" } });
+    // an AI working from outside may ask while the chat is folded away
+    set({ minimized: false });
     pendingApprovals.set(id, (allowed) => {
       updateMsg(id, { approval: { summary, status: allowed ? "allowed" : "declined" } });
       resolve(allowed);

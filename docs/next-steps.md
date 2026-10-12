@@ -44,6 +44,10 @@ Done on 12 October 2026, not yet in a version: rotation for everything except fr
 
 Also done on 12 October 2026, not yet in a version: a zoom tool on Z, the AI can bring in a picture file (`place_image`, asked first), the chat can no longer slide out of its own box, the "working" line in the chat clears when a tool finishes, and the AI tool runs in its own session so its helpers are stopped with it (a leftover Antigravity helper was found spinning a whole core). The installed app in `/Applications` was rebuilt from this code without a version bump.
 
+Also done on 12 October 2026, not yet in a version: an AI can work on the open design from outside Duet (Claude Code in a terminal, Codex, the Claude desktop app, Cursor) through the bridge, set up from **Connect your own AI** in the chat. See `docs/ai-bridge.md`. Arrow keys held down or tapped quickly count as one step in the history (`nudge` in `src/state/store.ts`). The close button on the window closes Duet (the window needed the `core:window:allow-destroy` permission).
+
+Pictures in the chat (issue 7) are done too, 12 October 2026, not yet in a version: drop, paste or pick pictures into a message, up to six, each shrunk. Still open from that issue: a link to a picture is not fetched. Checked in the browser preview and by tests, not yet by pasting into the installed app with a real AI tool.
+
 How rotation is built, so the next change does not fight it: only things with no children are drawn turned (`turnOf` in `src/document/geometry.ts`). A group has no turn of its own. Setting its `rotation` swings what is inside it and remembers the angle. So positions up the tree are still plain sums, and frames clip and lay out as before.
 
 ### Waiting for the next version: the website docs

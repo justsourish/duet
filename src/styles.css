@@ -904,6 +904,68 @@ button {
 .cfoot textarea:focus {
   border-color: var(--accent);
 }
+.cfoot .attach {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 4px 6px;
+  color: var(--muted);
+}
+.waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+  border-top: 1px solid var(--line);
+}
+.waiting + .cfoot {
+  border-top: 0;
+}
+.waiting .pic {
+  position: relative;
+  display: block;
+}
+.waiting img,
+.m.you .pics img,
+.pic-gone {
+  display: block;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.waiting .pic b {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.waiting em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+.m.you .pics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.m.you .pics:last-child {
+  margin-bottom: 0;
+}
 .newchat {
   padding: 0 12px 10px;
   color: var(--muted);
@@ -994,6 +1056,45 @@ button {
   color: var(--text);
   font: inherit;
   outline: 0;
+}
+
+.connect-link {
+  padding: 8px 12px 0;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.connect {
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 11px;
+}
+.connect-lead {
+  color: var(--muted);
+  line-height: 1.45;
+}
+.connect-way {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+.connect-way b,
+.connect-way span {
+  display: block;
+}
+.connect-way span {
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.connect-way button {
+  flex: none;
 }
 
 /* fill, shadow and prototype controls */

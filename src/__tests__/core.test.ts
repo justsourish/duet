@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../commands";
 import { descendants, frameAt, hitTest, snapRect, topLevelOnly, worldPos, worldRect } from "../document/geometry";
 import { emptyDoc } from "../document/types";
@@ -15,6 +15,7 @@ import {
   dragPreview,
   getState,
   goTo,
+  nudge,
   redo,
   resetStore,
   undo,
@@ -175,6 +176,35 @@ describe("store and history", () => {
     dispatch("create_element", { id: "a", type: "rect", x: 0, y: 0, width: 10, height: 10 });
     dispatch("move_elements", { ids: ["a"], dx: 5, dy: 5 });
     expect(getState().timeline.map((t) => t.label)).toEqual(["New file", "Add rectangle", "Move element"]);
+  });
+
+  it("counts quick arrow presses as one step, and a press after a pause as a new one", () => {
+    const clock = vi.spyOn(Date, "now");
+    clock.mockReturnValue(1000);
+    dispatch("create_element", { id: "a", type: "rect", x: 0, y: 0, width: 10, height: 10 });
+    dispatch("create_element", { id: "b", type: "rect", x: 50, y: 0, width: 10, height: 10 });
+    for (let i = 1; i <= 5; i++) {
+      clock.mockReturnValue(1000 + i * 100);
+      nudge(["a"], 1, 0);
+    }
+    expect(getState().timeline.map((t) => t.label)).toEqual(["New file", "Add rectangle", "Add rectangle", "Move element"]);
+    expect(currentDoc().elements.a.x).toBe(5);
+    undo();
+    expect(currentDoc().elements.a.x).toBe(0);
+    redo();
+    clock.mockReturnValue(3000);
+    nudge(["a"], 0, 10);
+    expect(getState().timeline).toHaveLength(5);
+    clock.mockReturnValue(3100);
+    nudge(["b"], 1, 0);
+    expect(getState().timeline).toHaveLength(6);
+    clock.mockReturnValue(3200);
+    dispatch("set_props", { ids: ["b"], props: { name: "Box" } });
+    clock.mockReturnValue(3300);
+    nudge(["b"], 1, 0);
+    expect(getState().timeline).toHaveLength(8);
+    expect(currentDoc().elements).toMatchObject({ a: { x: 5, y: 10 }, b: { x: 52 } });
+    clock.mockRestore();
   });
 
   it("undoes, redoes and jumps", () => {
@@ -1352,12 +1382,75 @@ describe("outlines written as path text", () => {
 });
 
 import { TOOLS, callTool } from "../ai/tools";
-import { getChat, setMode } from "../ai/chat";
+import { addPictures, answerApproval, getChat, newConversation, removePicture, sendPictures, setMinimized, setMode } from "../ai/chat";
+import { WAYS } from "../ui/ConnectAi";
 
 describe("what the AI can ask for", () => {
   beforeEach(() => {
     resetStore();
     setMode("auto");
+  });
+
+  it("gives an AI from outside the working rules and the skills that are turned on", async () => {
+    expect(TOOLS.map((t) => t.name)).toContain("get_working_rules");
+    const rules = (await callTool("get_working_rules", {})).text;
+    expect(rules).toContain("Start with get_context");
+    expect(rules).toContain("Respect the permission level");
+    expect(rules).toContain("The designer has loaded these skills");
+    // an AI from outside keeps its own tools, so it is not told to use no other tool
+    expect(rules).not.toContain("Use no other tool");
+    expect(WAYS.map((w) => w.text("/Applications/Duet.app/Contents/MacOS/duet-app"))).toEqual([
+      'claude mcp add --scope user duet -- "/Applications/Duet.app/Contents/MacOS/duet-app" --mcp-bridge',
+      'codex mcp add duet -- "/Applications/Duet.app/Contents/MacOS/duet-app" --mcp-bridge',
+      '"duet": {"command":"/Applications/Duet.app/Contents/MacOS/duet-app","args":["--mcp-bridge"]}',
+      '"duet": {"command":"/Applications/Duet.app/Contents/MacOS/duet-app","args":["--mcp-bridge"]}',
+    ]);
+  });
+
+  it("shows the AI a picture the designer attached to a message, without putting it on the canvas", async () => {
+    newConversation();
+    addPictures([{ name: "feedback.png", data: "QUJD", mime: "image/jpeg", width: 800, height: 600, thumb: "data:image/jpeg;base64,QQ==" }]);
+    const waiting = getChat().pictures[0];
+    expect(waiting.sent).toBe(false);
+    expect(JSON.parse((await callTool("get_context", {})).text).attachedPictures).toEqual([{ number: waiting.n, name: "feedback.png", waiting: true }]);
+    const sent = sendPictures();
+    expect(sent.map((p) => p.n)).toEqual([waiting.n]);
+    expect(sendPictures()).toEqual([]);
+    const seen = await callTool("look_at_attachment", { number: waiting.n });
+    expect(seen.image).toEqual({ data: "QUJD", mime: "image/jpeg" });
+    expect(seen.text).toContain("not on the canvas");
+    expect((await callTool("look_at_attachment", { number: 999 })).isError).toBe(true);
+    expect(Object.keys(currentDoc().elements)).toHaveLength(0);
+    expect(getState().timeline).toHaveLength(1);
+    // a waiting picture can be taken out, a sent one stays with its message until the conversation is cleared
+    addPictures([{ name: "b.png", data: "QQ==", mime: "image/jpeg", width: 1, height: 1, thumb: "" }]);
+    removePicture(getChat().pictures[1].n);
+    removePicture(waiting.n);
+    expect(getChat().pictures.map((p) => p.name)).toEqual(["feedback.png"]);
+    newConversation();
+    expect(getChat().pictures).toEqual([]);
+  });
+
+  it("holds every AI to the designer's setting, and marks what it changes as Duet's step", async () => {
+    await callTool("create_element", { type: "rect", x: 0, y: 0, width: 10, height: 10 });
+    const a = Object.keys(currentDoc().elements)[0];
+    expect(getState().timeline[getState().cursor].actor).toBe("ai");
+    setMode("suggest");
+    const steps = getState().timeline.length;
+    expect((await callTool("move_elements", { ids: [a], dx: 5, dy: 0 })).text).toContain("Nothing has been changed");
+    expect(getState().timeline).toHaveLength(steps);
+    expect(getChat().messages.slice(-1)[0].proposal?.status).toBe("open");
+    setMode("ask");
+    setMinimized(true);
+    const asked = callTool("delete_elements", { ids: [a] });
+    await Promise.resolve();
+    // the question is put in front of the designer, even if the chat was folded away
+    expect(getChat().minimized).toBe(false);
+    const question = getChat().messages.slice(-1)[0];
+    expect(question.approval?.status).toBe("waiting");
+    answerApproval(question.id, false);
+    expect((await asked).isError).toBe(true);
+    expect(currentDoc().elements[a]).toBeTruthy();
   });
 
   it("draws a path from an outline, measured from x and y, and can turn it", async () => {

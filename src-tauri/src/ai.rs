@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -26,6 +26,8 @@ pub struct McpState {
     token: String,
     next_id: AtomicU64,
     pending: Mutex<HashMap<u64, Sender<String>>>,
+    /// Set once the interface is listening. A request that arrives earlier would be lost.
+    ready: AtomicBool,
 }
 
 #[derive(Default)]
@@ -78,6 +80,17 @@ fn handle(mut req: tiny_http::Request, state: Arc<McpState>, app: AppHandle) {
         return;
     };
 
+    // An outside AI tool can ask in the moment Duet is still opening. Give the interface time.
+    for _ in 0..150 {
+        if state.ready.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if !state.ready.load(Ordering::SeqCst) {
+        return respond(req, 200, &rpc_error(&rpc_id, -32603, "Duet is still opening. Try again in a moment."));
+    }
+
     let id = state.next_id.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = mpsc::channel::<String>();
     state.pending.lock().unwrap().insert(id, tx);
@@ -128,6 +141,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
         token,
         next_id: AtomicU64::new(1),
         pending: Mutex::new(HashMap::new()),
+        ready: AtomicBool::new(false),
     });
     write_session_file(port, &state.token);
     app.manage(state.clone());
@@ -147,6 +161,19 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn mcp_info(state: State<Arc<McpState>>) -> Value {
     json!({"port": state.port, "token": state.token})
+}
+
+/// The interface says it is listening for requests from agents.
+#[tauri::command]
+pub fn mcp_ready(state: State<Arc<McpState>>) {
+    state.ready.store(true, Ordering::SeqCst);
+}
+
+/// The command an outside AI tool runs to reach Duet: this app itself, started as a small bridge.
+#[tauri::command]
+pub fn bridge_command() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    Ok(exe.to_string_lossy().to_string())
 }
 
 /// The interface answers a request that an agent made.
@@ -429,18 +456,58 @@ pub fn agent_cancel(state: State<AgentState>) {
     }
 }
 
-/// Runs as `duet --mcp-bridge`: speaks MCP over stdin and stdout for tools that can only be told
-/// about a command, not a changing address (Antigravity). Each request is passed on to the Duet
-/// that is running right now, found through ~/.duet/session.json, so the bridge is set up once.
+const CLOSED: &str = "Duet is not open. Ask the designer to open Duet, then try again.";
+
+/// What the bridge says by itself while Duet is closed. An AI tool that starts before Duet still
+/// connects and learns what Duet can do (from what Duet left behind the last time it ran), and is
+/// told to open Duet when it tries to use it.
+fn offline_answer(request: &Value, left_behind: Option<&Value>) -> Option<String> {
+    let id = request.get("id")?;
+    let result = match request["method"].as_str()? {
+        "initialize" => json!({
+            "protocolVersion": request["params"]["protocolVersion"].as_str().unwrap_or("2025-03-26"),
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "duet", "version": left_behind.and_then(|c| c["version"].as_str()).unwrap_or("")},
+            "instructions": left_behind.and_then(|c| c["instructions"].as_str()).unwrap_or(CLOSED),
+        }),
+        "ping" => json!({}),
+        "tools/list" => json!({"tools": left_behind?.get("tools")?}),
+        "tools/call" => json!({"content": [{"type": "text", "text": CLOSED}], "isError": true}),
+        _ => return None,
+    };
+    Some(json!({"jsonrpc": "2.0", "id": id, "result": result}).to_string())
+}
+
+/// Runs as `duet --mcp-bridge`: speaks MCP over stdin and stdout for AI tools that are told about a
+/// command, not a changing address (Claude Code in a terminal, Claude desktop, Cursor, Codex,
+/// Antigravity). Each request is passed on to the Duet that is running right now, found through
+/// ~/.duet/session.json, so the bridge is set up once and keeps working when Duet is restarted.
 pub fn bridge() {
     use std::io::Read;
     use std::net::TcpStream;
 
-    let session = || -> Option<(u16, String)> {
+    let duet_dir = || -> Option<std::path::PathBuf> {
         let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
-        let raw = std::fs::read_to_string(std::path::Path::new(&home).join(".duet").join("session.json")).ok()?;
-        let v: Value = serde_json::from_str(&raw).ok()?;
-        Some((v["port"].as_u64()? as u16, v["token"].as_str()?.to_string()))
+        Some(std::path::Path::new(&home).join(".duet"))
+    };
+    let read_json = |file: std::path::PathBuf| -> Option<Value> {
+        serde_json::from_str(&std::fs::read_to_string(file).ok()?).ok()
+    };
+    // The answer from the running Duet, or nothing if it is closed or something else took its place.
+    let forward = |line: &str| -> Option<String> {
+        let session = read_json(duet_dir()?.join("session.json"))?;
+        let (port, token) = (session["port"].as_u64()? as u16, session["token"].as_str()?.to_string());
+        let mut conn = TcpStream::connect(("127.0.0.1", port)).ok()?;
+        let req = format!(
+            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{line}",
+            line.len()
+        );
+        conn.write_all(req.as_bytes()).ok()?;
+        let mut raw = Vec::new();
+        let _ = conn.read_to_end(&mut raw);
+        let body = http_body(&raw).trim().replace('\n', " ");
+        let answer: Value = serde_json::from_str(&body).ok()?;
+        answer.get("jsonrpc").map(|_| body)
     };
 
     let stdin = std::io::stdin();
@@ -449,36 +516,16 @@ pub fn bridge() {
         if line.trim().is_empty() {
             continue;
         }
-        let id = serde_json::from_str::<Value>(&line).ok().and_then(|v| v.get("id").cloned());
-        let fail = |msg: &str| {
-            if let Some(id) = &id {
-                let _ = writeln!(std::io::stdout(), "{}", rpc_error(id, -32603, msg));
-            }
-        };
-        let Some((port, token)) = session() else {
-            fail("Duet is not running. Open Duet first.");
-            continue;
-        };
-        let Ok(mut conn) = TcpStream::connect(("127.0.0.1", port)) else {
-            fail("Duet is not running. Open Duet first.");
-            continue;
-        };
-        let req = format!(
-            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{line}",
-            line.len()
-        );
-        if conn.write_all(req.as_bytes()).is_err() {
-            fail("Could not reach Duet.");
-            continue;
-        }
-        let mut raw = Vec::new();
-        let _ = conn.read_to_end(&mut raw);
-        let body = http_body(&raw);
-        let body = body.trim();
-        if id.is_some() && !body.is_empty() {
-            let _ = writeln!(out, "{}", body.replace('\n', " "));
-            let _ = out.flush();
-        }
+        let request: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
+        let answer = forward(&line).or_else(|| {
+            let left_behind = duet_dir().and_then(|d| read_json(d.join("agent-workspace").join("bridge.json")));
+            offline_answer(&request, left_behind.as_ref())
+        });
+        // Notifications carry no id and expect no answer.
+        let Some(id) = request.get("id") else { continue };
+        let body = answer.unwrap_or_else(|| rpc_error(id, -32603, "Duet is not open. Open Duet first."));
+        let _ = writeln!(out, "{body}");
+        let _ = out.flush();
     }
 }
 
@@ -541,7 +588,30 @@ fn http_body(raw: &[u8]) -> String {
 
 #[cfg(test)]
 mod bridge_tests {
-    use super::http_body;
+    use super::{http_body, offline_answer};
+    use serde_json::{json, Value};
+
+    #[test]
+    fn answers_for_duet_while_it_is_closed() {
+        let left = json!({"version": "9", "instructions": "how to work", "tools": [{"name": "get_context"}]});
+        let ask = |method: &str| json!({"jsonrpc": "2.0", "id": 7, "method": method, "params": {"protocolVersion": "2025-06-18"}});
+        let reply = |method: &str, left: Option<&Value>| -> Value {
+            serde_json::from_str(&offline_answer(&ask(method), left).unwrap()).unwrap()
+        };
+        let hello = reply("initialize", Some(&left));
+        assert_eq!(hello["id"], 7);
+        assert_eq!(hello["result"]["protocolVersion"], "2025-06-18");
+        assert_eq!(hello["result"]["instructions"], "how to work");
+        assert_eq!(reply("tools/list", Some(&left))["result"]["tools"][0]["name"], "get_context");
+        let call = reply("tools/call", Some(&left));
+        assert_eq!(call["result"]["isError"], true);
+        assert!(call["result"]["content"][0]["text"].as_str().unwrap().contains("open Duet"));
+        // Duet has never run here: it can still say hello, but has no list of tools to give.
+        assert_eq!(reply("initialize", None)["result"]["serverInfo"]["name"], "duet");
+        assert!(offline_answer(&ask("tools/list"), None).is_none());
+        // a notification expects no answer
+        assert!(offline_answer(&json!({"jsonrpc": "2.0", "method": "notifications/initialized"}), Some(&left)).is_none());
+    }
 
     #[test]
     fn plain_body() {

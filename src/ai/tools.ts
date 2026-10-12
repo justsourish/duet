@@ -1,6 +1,7 @@
 import { outline } from "./outline";
 import { componentsIn } from "../document/components";
 import { lookAtDesign, lookAtImage } from "./vision";
+import { lookAtAttachment } from "./pictures";
 import { commandLabel, newId } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
@@ -12,7 +13,8 @@ import { addPicture, mimeFor } from "../project/assets";
 import { saveNow } from "../project/project";
 import { tracePicture } from "../project/trace";
 import { currentDoc, dispatch, getState, goTo, select } from "../state/store";
-import { addMsg, askDesigner, getChat, updateMsg } from "./chat";
+import { addMsg, askDesigner, getChat, setMinimized, updateMsg } from "./chat";
+import { outsideRules, skillsText } from "./rules";
 import { getSkills } from "./skills";
 
 /**
@@ -50,6 +52,12 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "get_working_rules",
+    description:
+      "How to work in Duet, and the skills the designer has turned on, in full. For an AI connected from outside Duet's own chat: call it once before your first change in a job. Duet's own chat already gives you this, so do not call it from there.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
     name: "get_outline",
     description:
       "A short outline of the design: every thing with its id, position, size, and the few properties that matter, indented to show what is inside what. Much cheaper to read than get_document, so use this first. Pass ids to outline only those things and what is inside them.",
@@ -66,6 +74,12 @@ export const TOOLS: ToolDef[] = [
     description:
       "See a picture the designer placed on the canvas (type image in get_document). You cannot see pictures unless you call this, and you must not guess what is in one. The picture is shrunk first, so call it once per picture and then work from what you saw. maxSize is the longest side in pixels (default 768).",
     inputSchema: { type: "object", properties: { id: str, maxSize: num }, required: ["id"] },
+  },
+  {
+    name: "look_at_attachment",
+    description:
+      "See a picture the designer attached to a chat message, such as a screenshot of feedback or a reference. get_context lists them as attachedPictures, each with a number. They are not on the canvas. Look at each new one once, before you act on the message it came with.",
+    inputSchema: { type: "object", properties: { number: { type: "number", description: "The picture's number from attachedPictures." } }, required: ["number"] },
   },
   {
     name: "look_at_design",
@@ -504,6 +518,8 @@ function context(): string {
       elementCount: Object.keys(doc.elements).length,
       units: "pixels. x and y are relative to the parent frame, or to the page for top-level things.",
       skillsLoaded: getSkills().filter((k) => k.enabled).map((k) => k.name),
+      // pictures given with chat messages; "waiting" ones sit in the message box and have not been sent yet
+      attachedPictures: getChat().pictures.map((p) => ({ number: p.n, name: p.name, waiting: !p.sent })),
     },
     null,
     2,
@@ -516,6 +532,7 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
   const mode = getChat().mode;
 
   if (name === "get_context") return { text: context() };
+  if (name === "get_working_rules") return { text: `${outsideRules()}\n\n${skillsText()}` };
   if (name === "get_outline") return { text: outline(currentDoc(), Array.isArray(a.ids) ? (a.ids as unknown[]).map(String) : undefined) };
   if (name === "get_document") {
     const d = currentDoc();
@@ -523,6 +540,7 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
   }
   if (name === "look_at_image") return lookAtImage(a.id, a.maxSize);
   if (name === "look_at_design") return lookAtDesign(a.ids, a.maxSize);
+  if (name === "look_at_attachment") return lookAtAttachment(a.number);
   if (name === "select_elements") {
     const bad = missing(a.ids);
     if (bad.length) return fail(`No element with id: ${bad.join(", ")}.`);
@@ -537,6 +555,7 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
 
   if (mode === "suggest") {
     addMsg({ role: "note", text: "", proposal: { tool: name, args: check.args, summary, status: "open" } });
+    setMinimized(false);
     return { text: "Suggestion shown to the designer. Nothing has been changed yet. Do not repeat it. Tell the designer in plain words what you suggested." };
   }
   if (RISKY.has(name) && mode === "ask") {

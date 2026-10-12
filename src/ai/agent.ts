@@ -7,13 +7,14 @@ import {
   declineAllWaiting,
   getChat,
   removeWorking,
+  sendPictures,
   setInstalled,
   setRunning,
   setSessionId,
   updateMsg,
 } from "./chat";
 import type { AgentId } from "./chat";
-import { getSkills } from "./skills";
+import { chatRules } from "./rules";
 
 /** Runs the AI tool the designer already has, and shows what it says as chat. */
 
@@ -23,6 +24,7 @@ const WORKING: Record<string, string> = {
   get_document: "Looking at your design",
   look_at_image: "Looking at a picture",
   look_at_design: "Checking how it looks",
+  look_at_attachment: "Looking at your picture",
   create_instance: "Placing a copy",
   place_image: "Bringing in a picture",
   make_mask: "Cutting something to a shape",
@@ -53,37 +55,6 @@ export async function detectAgent() {
     }),
   );
   setInstalled(found);
-}
-
-function systemPrompt(): string {
-  const skills = getSkills()
-    .filter((s) => s.enabled)
-    .map((s) => `<skill name="${s.name}">\n${s.body.trim()}\n</skill>`)
-    .join("\n\n");
-  return `You are Duet, a design partner working next to a designer inside the Duet design app. You and the designer share one canvas and the same controls.
-
-How you work:
-- You can see and change the design only through the Duet tools. Use no other tool, and never read or write files or run commands.
-- Start with get_context, then get_outline to read the design cheaply. Use get_document only when you need a property the outline does not show. Look before you change anything.
-- How Duet is built: a page holds frames (screens). Frames hold rectangles, ellipses, text, pictures, paths (any shape drawn as an outline), groups, and copies of components. A mask is a group that shows its things only inside its bottom shape. x and y are relative to the parent frame. A frame with auto layout places its children by itself, so change its layout instead of moving things by hand. A component is the original, and copies follow it: change the original to change them all, or change a thing inside one copy to change only that copy.
-- For organic shapes like leaves, petals, waves and arches, draw a path with curves instead of stacking rectangles and ellipses. Turn things with rotation: use the same outline again at other angles. A thing turns around the middle of its box, so to fan leaves out from one point, move each one as well as turning it. Frames cannot be turned.
-- Work in batches: plan the whole change, then make it with few calls. Do not call a tool just to check what you already know.
-- You can bring a picture file from the designer's computer onto the canvas when they point you to one. Only bring in files they asked for.
-- You cannot see pictures or the design unless you ask. When the designer mentions a photo or an image, or one is selected, call look_at_image before you draw or describe anything from it, and never guess what is in it. After you change a design, call look_at_design once to check your work. Each look costs tokens, so look once, then work from what you saw.
-- Make small, clear changes. Prefer one good result over many options, unless asked for options.
-- Everything you change is saved as a step in the designer's history, marked as yours, and they can undo it.
-- Respect the permission level shown in get_context. If a tool says your change is only a suggestion, do not try to work around it. Say what you suggested.
-- Coordinates are pixels. x and y are relative to the parent frame, or to the page for top-level things. Put things inside a frame by giving parentId.
-- Names: give new things clear names with set_props, like "Primary button" or "Card title".
-
-How you talk:
-- Plain, warm, short. You are talking to a designer, not a programmer.
-- Never mention tools, ids, JSON, commands or technical words. Say "I made the button rounder", not "I called set_props".
-- After you finish, say in one or two sentences what you did and, if useful, what you would try next.
-
-The designer has loaded these skills. Follow them when they apply:
-
-${skills || "(no skills loaded)"}`;
 }
 
 function onClaudeLine(line: string) {
@@ -264,10 +235,18 @@ export async function startAgentListeners(): Promise<() => void> {
 }
 
 export async function sendToAgent(text: string) {
-  const prompt = text.trim();
-  if (!prompt || getChat().running) return;
+  const said = text.trim();
+  if (getChat().running) return;
+  if (!said && !getChat().pictures.some((p) => !p.sent)) return;
   const agent = getChat().agent;
-  addMsg({ role: "you", text: prompt });
+  const pictures = sendPictures();
+  addMsg({ role: "you", text: said, pictures: pictures.length ? pictures.map((p) => p.n) : undefined });
+  // The pictures do not travel inside the message. The AI is told they are there and asks to see each one,
+  // the same way it looks at the canvas, so every AI tool gets them the same way.
+  const attached = pictures.length
+    ? `\n\n(The designer attached ${pictures.length === 1 ? "a picture" : `${pictures.length} pictures`} to this message: ${pictures.map((p) => `number ${p.n}`).join(", ")}. Look at ${pictures.length === 1 ? "it" : "each one"} with look_at_attachment before you do anything else.)`
+    : "";
+  const prompt = `${said || "Look at what I attached."}${attached}`;
   setRunning(true);
   sawText = false;
   streamId = null;
@@ -286,14 +265,14 @@ export async function sendToAgent(text: string) {
       // Antigravity has no flag for instructions or per-run connections. Duet joins its list once
       // (a small bridge that finds the running Duet), and the instructions go in with the message.
       await invoke("agy_connect");
-      const brief = `${systemPrompt()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\nThe designer says:\n${prompt}`;
+      const brief = `${chatRules()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\nThe designer says:\n${prompt}`;
       args = ["--print", brief, "--output-format", "stream-json"];
       if (getChat().models.agy) args.push("--model", getChat().models.agy as string);
       // The Antigravity model names already carry their level, e.g. "(High)", so no --effort here.
       if (session) args.push("--conversation", session);
     } else {
       const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {
-        system: systemPrompt(),
+        system: chatRules(),
         mcp: JSON.stringify({ mcpServers: { duet: { type: "http", url, headers } } }),
       });
       args = [

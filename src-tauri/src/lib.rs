@@ -440,6 +440,8 @@ pub fn run() {
             git_name_version,
             ai::mcp_info,
             ai::mcp_reply,
+            ai::mcp_ready,
+            ai::bridge_command,
             ai::write_agent_files,
             ai::write_agent_file,
             ai::agent_available,

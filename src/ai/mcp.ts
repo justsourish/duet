@@ -1,5 +1,7 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { outsideRules } from "./rules";
 import { TOOLS, callTool } from "./tools";
 
 /** Answers the questions agents ask over MCP. Duet owns the design, so the answers come from here. */
@@ -11,13 +13,17 @@ interface Rpc {
   params?: Record<string, unknown>;
 }
 
+let version = "";
+
 async function answer(rpc: Rpc): Promise<unknown> {
   switch (rpc.method) {
     case "initialize":
       return {
         protocolVersion: (rpc.params?.protocolVersion as string) ?? "2025-03-26",
         capabilities: { tools: {} },
-        serverInfo: { name: "duet", version: "0.3.0" },
+        serverInfo: { name: "duet", version },
+        // an AI that connects from outside reads how to work here; Duet's own chat is told the same
+        instructions: outsideRules(),
       };
     case "ping":
       return {};
@@ -36,6 +42,10 @@ async function answer(rpc: Rpc): Promise<unknown> {
 }
 
 export async function startMcp(): Promise<() => void> {
+  version = await getVersion().catch(() => "");
+  // The bridge answers from this while Duet is closed, so an outside AI tool that starts first
+  // still learns what Duet can do, and only has to be told to open Duet.
+  void invoke("write_agent_file", { name: "bridge.json", body: JSON.stringify({ version, instructions: outsideRules(), tools: TOOLS }) }).catch(() => undefined);
   const stop = await listen<{ id: number; body: Rpc }>("mcp-request", async (e) => {
     const { id, body } = e.payload;
     let response: unknown;
@@ -47,5 +57,6 @@ export async function startMcp(): Promise<() => void> {
     }
     await invoke("mcp_reply", { id, response: JSON.stringify(response) });
   });
+  await invoke("mcp_ready");
   return stop;
 }

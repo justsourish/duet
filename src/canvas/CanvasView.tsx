@@ -31,6 +31,7 @@ import {
   dragPreview,
   dragPreviewDoc,
   getState,
+  nudge,
   redo,
   select,
   setEditing,
@@ -901,7 +902,7 @@ export default function CanvasView() {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
         const [ax, ay] = arrows[e.key];
-        dispatch("move_elements", { ids: topLevelOnly(currentDoc(s), s.selection), dx: ax * step, dy: ay * step });
+        nudge(topLevelOnly(currentDoc(s), s.selection), ax * step, ay * step);
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
