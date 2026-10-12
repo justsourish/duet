@@ -46,6 +46,12 @@ Also done on 12 October 2026, not yet in a version: a zoom tool on Z, the AI can
 
 How rotation is built, so the next change does not fight it: only things with no children are drawn turned (`turnOf` in `src/document/geometry.ts`). A group has no turn of its own. Setting its `rotation` swings what is inside it and remembers the angle. So positions up the tree are still plain sums, and frames clip and lay out as before.
 
+### Waiting for the next version: the website docs
+
+Written 12 Oct 2026. The website repo has a `docs` branch (one commit on top of `main`, not pushed, not deployed) with a Docs section: eleven Markdown pages in `src/content/docs/`, built the same way as Updates. They describe the build on `main` here, which is ahead of the 0.3.1 download (rotation, the zoom tool, masks, trace, see-through pictures, anything as a component). So they must go live together with the version bump, not before. At the bump: merge `docs` into `main` in the site repo, check each page against the app, update `src/content/status.ts`, run `npm run release:sync`, write the update post, then deploy. The creator decides when.
+
+Ideas from a call with a motion designer on 12 Oct 2026 are issues #12 to #23. The largest is animation and a timeline (#12), which is the bridge to motion graphics and video.
+
 ## 3. Known gaps
 - The Windows build has never been run by anyone. The agent is launched through `cmd` and is untested.
 - The app is unsigned (the creator cannot afford certificates yet). The download page explains the first-launch warning.
