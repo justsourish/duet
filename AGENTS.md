@@ -30,6 +30,7 @@ Restart `tauri dev` after installing a new npm package. Vite re-bundles dependen
 ## Project links
 
 - Website (private repo `justsourish/duet-site`, folder `~/Desktop/DEV/duet-site`): https://duet.noisyarchitects.org. Deploy with `npm run deploy` there. Update what works in `src/content/status.ts` after each version.
+- The private part (private repo `justsourish/duet-private`, folder `~/Desktop/DEV/duet-private`): research, plans and technology that are not released. Public issues say what a designer gets; how it works is written there. Never copy from it into this repo, its issues or its commits without the creator saying so.
 - Feedback form: https://forms.gle/Zs6s7bX6CpJigCCf6. Creator booking: https://cal.com/rish-lc/coffee.
 - Release: push a tag like `v0.2.0`. GitHub Actions builds Mac and Windows installers into a draft release. Publish with `gh release edit <tag> --draft=false --prerelease`.
 - Licence: PolyForm Shield 1.0.0 (source available, not open source). v0.1.0 was MIT.
