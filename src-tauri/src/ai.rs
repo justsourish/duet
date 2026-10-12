@@ -174,6 +174,30 @@ fn shell_command(program: &str, args: &[String]) -> Command {
     c
 }
 
+/// On Mac and Linux the agent runs in a session of its own. Everything it starts, such as the MCP
+/// servers from its own settings, then belongs to that session and can be stopped with it. Without
+/// this, a helper left behind when the agent ends can spin at full speed for hours.
+#[cfg(unix)]
+fn own_session(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+}
+
+/// Stop the agent and everything it started. `pid` is the agent, which leads its own session.
+#[cfg(unix)]
+fn stop_session(pid: u32, signal: libc::c_int) {
+    if pid > 1 {
+        unsafe {
+            libc::kill(-(pid as libc::pid_t), signal);
+        }
+    }
+}
+
 /// Tools Duet can look for.
 fn known(program: &str) -> bool {
     matches!(program, "claude" | "agy" | "codex" | "opencode")
@@ -351,6 +375,8 @@ pub fn agent_run(
         cmd.current_dir(dir);
     }
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    own_session(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| format!("Could not start {program}: {e}"))?;
 
     if let Some(mut stdin) = child.stdin.take() {
@@ -378,7 +404,13 @@ pub fn agent_run(
             let state = app.state::<AgentState>();
             let child = state.child.lock().unwrap().take();
             match child {
-                Some(mut c) => c.wait().ok().and_then(|s| s.code()),
+                Some(mut c) => {
+                    let code = c.wait().ok().and_then(|s| s.code());
+                    // the agent is done: clear away any helper it left running
+                    #[cfg(unix)]
+                    stop_session(c.id(), libc::SIGTERM);
+                    code
+                }
                 None => None,
             }
         };
@@ -391,6 +423,8 @@ pub fn agent_run(
 #[tauri::command]
 pub fn agent_cancel(state: State<AgentState>) {
     if let Some(child) = state.child.lock().unwrap().as_mut() {
+        #[cfg(unix)]
+        stop_session(child.id(), libc::SIGKILL);
         let _ = child.kill();
     }
 }
@@ -518,5 +552,39 @@ mod bridge_tests {
     fn chunked_body() {
         let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n";
         assert_eq!(http_body(raw), "hello world");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod session_tests {
+    use super::{own_session, stop_session};
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
+    fn alive(pid: i32) -> bool {
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    /// The agent starts helpers of its own. Stopping the agent must stop them too.
+    #[test]
+    fn stopping_the_agent_stops_what_it_started() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("sleep 60 & echo $!; wait").stdout(Stdio::piped());
+        own_session(&mut cmd);
+        let mut child = cmd.spawn().unwrap();
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+        let helper: i32 = line.trim().parse().unwrap();
+        assert!(alive(helper));
+
+        stop_session(child.id(), libc::SIGKILL);
+        let _ = child.wait();
+        for _ in 0..40 {
+            if !alive(helper) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        panic!("the helper was left running");
     }
 }
