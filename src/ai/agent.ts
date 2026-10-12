@@ -6,14 +6,17 @@ import {
   AGENTS,
   addMsg,
   declineAllWaiting,
+  dropSession,
   getChat,
   removeWorking,
   sendPictures,
+  sessionUsed,
   setInstalled,
   setRunning,
   setSessionId,
   updateMsg,
 } from "./chat";
+import { brief, carryOn, keepable } from "../memory/thread";
 import type { AgentId } from "./chat";
 import { chatRules } from "./rules";
 
@@ -227,6 +230,7 @@ export async function startAgentListeners(): Promise<() => void> {
     removeWorking();
     declineAllWaiting();
     setRunning(false);
+    sessionUsed();
     if (!sawText) {
       const detail = stderrLines.filter((l) => !/job control|no tty/i.test(l)).join(" ");
       addMsg({ role: "error", text: friendly(detail) });
@@ -246,6 +250,13 @@ export async function sendToAgent(text: string) {
   if (getChat().running) return;
   if (!said && !getChat().pictures.some((p) => !p.sent)) return;
   const agent = getChat().agent;
+  // Duet holds the conversation, not the AI tool. A quick back and forth carries the tool's own session on.
+  // Otherwise it starts fresh and light, with a short note from Duet of what was said and done.
+  const before = getChat();
+  const resume = carryOn({ sessionId: before.sessionId, used: before.sessionUsed, messages: before.sessionMessages });
+  if (!resume) dropSession();
+  const note = resume ? "" : brief(keepable(before.messages));
+  const past = note ? `${note}\n\nThe designer now says:\n` : "";
   const pictures = sendPictures();
   addMsg({ role: "you", text: said, pictures: pictures.length ? pictures.map((p) => p.n) : undefined });
   // The pictures do not travel inside the message. The AI is told they are there and asks to see each one,
@@ -254,6 +265,7 @@ export async function sendToAgent(text: string) {
     ? `\n\n(The designer attached ${pictures.length === 1 ? "a picture" : `${pictures.length} pictures`} to this message: ${pictures.map((p) => `number ${p.n}`).join(", ")}. Look at ${pictures.length === 1 ? "it" : "each one"} with look_at_attachment before you do anything else.)`
     : "";
   const prompt = `${said || "Look at what I attached."}${attached}`;
+  sessionUsed(true);
   setRunning(true);
   live = true;
   sawText = false;
@@ -273,8 +285,8 @@ export async function sendToAgent(text: string) {
       // Antigravity has no flag for instructions or per-run connections. Duet joins its list once
       // (a small bridge that finds the running Duet), and the instructions go in with the message.
       await invoke("agy_connect");
-      const brief = `${chatRules()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\nThe designer says:\n${prompt}`;
-      args = ["--print", brief, "--output-format", "stream-json"];
+      const whole = `${chatRules()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\n${past || "The designer says:\n"}${prompt}`;
+      args = ["--print", whole, "--output-format", "stream-json"];
       if (getChat().models.agy) args.push("--model", getChat().models.agy as string);
       // The Antigravity model names already carry their level, e.g. "(High)", so no --effort here.
       if (session) args.push("--conversation", session);
@@ -302,7 +314,7 @@ export async function sendToAgent(text: string) {
       if (getChat().effort) args.push("--effort", getChat().effort);
       if (session) args.push("--resume", session);
     }
-    await invoke("agent_run", { program: agent, args, input: prompt, cwd: `${home}/agent-workspace` });
+    await invoke("agent_run", { program: agent, args, input: agent === "agy" ? prompt : `${past}${prompt}`, cwd: `${home}/agent-workspace` });
   } catch (e) {
     live = false;
     removeWorking();

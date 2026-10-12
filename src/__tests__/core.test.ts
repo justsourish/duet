@@ -1831,3 +1831,121 @@ describe("a conversation for each project", () => {
     expect(texts()).toEqual([]);
   });
 });
+
+import { brief, carryOn, keepable, packThread, readThread, RESUME_MESSAGES, RESUME_WITHIN, THREAD_LIMIT } from "../memory/thread";
+import { dropSession, restoreConversation, sessionUsed } from "../ai/chat";
+
+describe("the thread a project keeps", () => {
+  it("keeps what was said and leaves passing things out", () => {
+    const kept = keepable(
+      [
+        { role: "you", text: "make it blue", time: 5, pictures: [2] },
+        { role: "working", text: "Thinking..." },
+        { role: "note", text: "", approval: { summary: "Delete the header", status: "waiting" } },
+        { role: "note", text: "Changed the fill", undone: true },
+      ],
+      9,
+    );
+    expect(kept.map((m) => m.role)).toEqual(["you", "note", "note"]);
+    expect(kept[0]).toEqual({ role: "you", text: "make it blue", time: 5, pictures: [2] });
+    // a question nobody answered counts as a no
+    expect(kept[1].approval?.status).toBe("declined");
+    expect(kept[1].time).toBe(9);
+    expect(kept[2].undone).toBe(true);
+  });
+
+  it("survives being written and read back", () => {
+    const now = keepable([{ role: "you", text: "hello", time: 1 }, { role: "duet", text: "hi", time: 2 }]);
+    const earlier = keepable([{ role: "you", text: "before", time: 0 }, { role: "break", text: "", time: 0 }]);
+    expect(readThread(packThread({ now, earlier }))).toEqual({ now, earlier });
+  });
+
+  it("treats a missing or damaged file as an empty thread", () => {
+    expect(readThread(null)).toEqual({ now: [], earlier: [] });
+    expect(readThread("not json")).toEqual({ now: [], earlier: [] });
+    expect(readThread(JSON.stringify({ now: [{ role: "you" }, 7, { role: "you", text: "ok" }] })).now.map((m) => m.text)).toEqual(["ok"]);
+  });
+
+  it("stays small: old things are let go, earlier conversations first", () => {
+    const many = (n: number, text: string) => keepable(Array.from({ length: n }, (_, i) => ({ role: "you", text: `${text} ${i}`, time: i })));
+    const back = readThread(packThread({ now: many(THREAD_LIMIT - 10, "now"), earlier: many(50, "old") }));
+    expect(back.now).toHaveLength(THREAD_LIMIT - 10);
+    expect(back.earlier.map((m) => m.text)).toEqual(Array.from({ length: 10 }, (_, i) => `old ${40 + i}`));
+    expect(keepable([{ role: "you", text: "x".repeat(9000) }])[0].text.length).toBe(4000);
+  });
+});
+
+describe("the note for an AI that starts fresh", () => {
+  it("says nothing when nothing was said", () => {
+    expect(brief([])).toBe("");
+    expect(brief(keepable([{ role: "error", text: "Something went wrong" }]))).toBe("");
+  });
+
+  it("tells what was asked, answered and changed, in order", () => {
+    const note = brief(
+      keepable([
+        { role: "you", text: "make the header blue", pictures: [3] },
+        { role: "note", text: "Changed the fill of Header" },
+        { role: "note", text: "Rounded the corners of Header", undone: true },
+        { role: "duet", text: "Done. The header is blue now." },
+        { role: "note", text: "", approval: { summary: "Delete the footer", status: "declined" } },
+        { role: "duet", text: "", proposal: { tool: "set_props", args: {}, summary: "Make the title bigger", status: "dismissed" } },
+      ]),
+    );
+    const lines = note.split("\n");
+    expect(lines[2]).toBe("- The designer said: make the header blue (with picture number 3, which may no longer be kept)");
+    expect(lines[3]).toBe("- You changed: Changed the fill of Header; Rounded the corners of Header (the designer took this back)");
+    expect(lines[4]).toBe("- You said: Done. The header is blue now.");
+    expect(lines[5]).toBe("- You asked to: Delete the footer (the designer said no)");
+    expect(lines[6]).toBe("- You suggested: Make the title bigger (the designer dismissed it)");
+  });
+
+  it("stays the same small size however long the conversation is", () => {
+    const long = keepable(Array.from({ length: 300 }, (_, i) => ({ role: i % 2 ? "duet" : "you", text: `${"word ".repeat(200)}${i}` })));
+    const note = brief(long);
+    expect(note.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(12);
+    expect(note.length).toBeLessThan(5000);
+    expect(note).toContain("The latest part of it:");
+  });
+
+  it("carries the AI tool's own session on only for a short, recent back and forth", () => {
+    const t = 1_000_000;
+    expect(carryOn({ sessionId: null, used: t, messages: 1 }, t)).toBe(false);
+    expect(carryOn({ sessionId: "s", used: t, messages: 1 }, t + 1000)).toBe(true);
+    expect(carryOn({ sessionId: "s", used: t, messages: 1 }, t + RESUME_WITHIN)).toBe(false);
+    expect(carryOn({ sessionId: "s", used: t, messages: RESUME_MESSAGES }, t + 1000)).toBe(false);
+  });
+});
+
+describe("a conversation that comes back with its project", () => {
+  it("is put back when Duet has nothing of its own, and the AI starts fresh", () => {
+    showConversationFor("/saved.duet", true);
+    restoreConversation([{ role: "you", text: "from yesterday", time: 1, pictures: [41] }], [{ role: "you", text: "older", time: 0 }]);
+    expect(getChat().messages.map((m) => m.text)).toEqual(["from yesterday"]);
+    expect(getChat().earlier.map((m) => m.text)).toEqual(["older"]);
+    expect(getChat().sessionId).toBeNull();
+    // a new picture never takes the number of one that is gone
+    addPictures([{ name: "new.png", data: "", mime: "image/png", width: 1, height: 1, thumb: "" }]);
+    expect(getChat().pictures[getChat().pictures.length - 1].n).toBeGreaterThan(41);
+  });
+
+  it("never replaces a conversation that is already there", () => {
+    showConversationFor("/busy.duet", true);
+    addMsg({ role: "you", text: "today" });
+    restoreConversation([{ role: "you", text: "from the file", time: 1 }], []);
+    expect(getChat().messages.map((m) => m.text)).toEqual(["today"]);
+  });
+
+  it("a fresh conversation puts the old one away instead of losing it", () => {
+    showConversationFor("/fresh.duet", true);
+    addMsg({ role: "you", text: "first idea" });
+    setSessionId("s1");
+    sessionUsed(true);
+    newConversation();
+    expect(getChat().messages).toEqual([]);
+    expect(getChat().earlier.map((m) => m.role)).toEqual(["you", "break"]);
+    expect(getChat().sessionId).toBeNull();
+    expect(getChat().sessionMessages).toBe(0);
+    dropSession();
+  });
+});

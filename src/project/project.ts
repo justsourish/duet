@@ -6,7 +6,9 @@ import { emptyDoc } from "../document/types";
 import type { Doc } from "../document/types";
 import { DesignFileError, parseDoc, serializeDoc } from "../document/serialize";
 import { readyToLeave } from "../ai/agent";
-import { moveConversationTo, showConversationFor } from "../ai/chat";
+import { conversationProject, getChat, moveConversationTo, restoreConversation, showConversationFor, subscribeChat } from "../ai/chat";
+import { loadThread, saveThread } from "../memory/files";
+import { keepable, packThread, readThread } from "../memory/thread";
 import { getState, loadDoc, loadTimeline, setEntryVersion, setProject, subscribe } from "../state/store";
 import type { HistoryEntry } from "../state/store";
 
@@ -159,7 +161,56 @@ function schedulePack() {
 
 /** Write the file right now if a write is waiting. Used when the window closes. */
 export async function flushPack() {
+  await flushThread();
   if (packTimer) await packNow().catch(() => undefined);
+}
+
+// ---- the conversation is kept with the project ----
+
+let threadTimer: ReturnType<typeof setTimeout> | undefined;
+/** The working folder a conversation is waiting to be written to. */
+let threadFor: string | null = null;
+/** What was last read from or written to a project's thread file, so nothing is written twice. */
+let threadKept: { dir: string; text: string } | null = null;
+
+/** The conversation changed. Write it into the project a moment later. */
+function threadChanged() {
+  const { path, file } = getState().project;
+  // while another project is being opened the chat and the project do not match yet
+  if (!path || file !== conversationProject()) return;
+  threadFor = path;
+  clearTimeout(threadTimer);
+  threadTimer = setTimeout(() => void flushThread(), 800);
+}
+
+/** Write the conversation now if a write is waiting. Always called before the chat moves to another project. */
+async function flushThread() {
+  clearTimeout(threadTimer);
+  threadTimer = undefined;
+  const dir = threadFor;
+  threadFor = null;
+  if (!dir || getState().project.path !== dir) return;
+  const chat = getChat();
+  // a project nobody has talked in gets no file
+  if (!chat.messages.length && !chat.earlier.length && threadKept?.dir !== dir) return;
+  const text = packThread({ now: keepable(chat.messages), earlier: keepable(chat.earlier) });
+  if (threadKept?.dir === dir && threadKept.text === text) return;
+  try {
+    await saveThread(dir, text);
+    threadKept = { dir, text };
+    schedulePack();
+  } catch (e) {
+    console.warn("The conversation could not be saved:", e);
+  }
+}
+
+/** A project has just been opened. If Duet has nothing of its conversation, bring back what was saved with it. */
+async function bringBackThread(dir: string) {
+  if (getChat().messages.length || getChat().earlier.length) return;
+  const text = await loadThread(dir);
+  const thread = readThread(text);
+  threadKept = text === null ? null : { dir, text: packThread(thread) };
+  restoreConversation(thread.now, thread.earlier);
 }
 
 async function writeDesign(path: string, doc: Doc) {
@@ -263,6 +314,8 @@ async function saveAsDialog() {
     lastSaved = doc;
     setProject({ path: work, file: picked, name: baseName(picked), status: "saved", error: null });
     moveConversationTo(picked);
+    threadChanged();
+    await flushThread();
     await packNow();
     remember(picked);
     void writePreview(work, doc);
@@ -293,6 +346,7 @@ async function newProjectDialog() {
   if (!(await readyToLeave())) return;
   try {
     const doc = emptyDoc();
+    await flushPack(); // what was said in the project being left goes into its file first
     const work = await createProject(picked, doc, "New file");
     showConversationFor(picked, true);
     loadDoc(doc, "New file");
@@ -348,7 +402,9 @@ async function loadFrom(path: string, quiet: boolean, file: string): Promise<boo
     }
     const doc = parseDoc(await invoke<string>("read_text_file", { path: design }));
     const entries = await readHistory(path);
+    await flushPack(); // what was said in the project being left goes into its file first
     showConversationFor(file);
+    await bringBackThread(path);
     if (entries.length === 0) {
       loadDoc(doc);
       await startHistory(path, "Start of project");
@@ -472,7 +528,8 @@ export async function saveVersion(name: string): Promise<string | null> {
 
 /** Save a moment after every change once the project has a home. */
 export function startAutosave() {
-  return subscribe(() => {
+  const stopThread = subscribeChat(threadChanged);
+  const stopDesign = subscribe(() => {
     const s = getState();
     if (!s.project.path) return;
     const doc = s.timeline[s.cursor].doc;
@@ -481,4 +538,8 @@ export function startAutosave() {
     clearTimeout(timer);
     timer = setTimeout(saveNow, 700);
   });
+  return () => {
+    stopThread();
+    stopDesign();
+  };
 }

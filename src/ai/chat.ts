@@ -16,8 +16,10 @@ export interface Approval {
 
 export interface Msg {
   id: number;
-  role: "you" | "duet" | "note" | "error" | "working";
+  role: "you" | "duet" | "note" | "error" | "working" | "break";
   text: string;
+  /** Milliseconds since 1970, when it was said. */
+  time?: number;
   proposal?: Proposal;
   approval?: Approval;
   /** The numbers of the pictures that went with this message. */
@@ -57,6 +59,8 @@ export interface ChatState {
   agent: AgentId;
   installed: Partial<Record<AgentId, boolean>>;
   messages: Msg[];
+  /** Conversations closed with "Start a fresh conversation". Not shown, but the project keeps them. */
+  earlier: Msg[];
   pictures: Picture[];
   mode: Mode;
   running: boolean;
@@ -64,6 +68,9 @@ export interface ChatState {
   /** null while we are still looking */
   agentFound: boolean | null;
   sessionId: string | null;
+  /** When the AI tool's own session was last used, and how many messages it has taken. */
+  sessionUsed: number;
+  sessionMessages: number;
   /** The model chosen for each tool. Empty means the tool's own default. */
   models: Partial<Record<AgentId, string>>;
   effort: string;
@@ -118,12 +125,15 @@ let state: ChatState = {
   agent: savedAgent(),
   installed: {},
   messages: [],
+  earlier: [],
   pictures: [],
   mode: savedMode(),
   running: false,
   minimized: false,
   agentFound: null,
   sessionId: null,
+  sessionUsed: 0,
+  sessionMessages: 0,
   models: { claude: pick("duet:model:claude"), agy: pick("duet:model:agy") },
   effort: pick("duet:effort"),
 };
@@ -152,7 +162,7 @@ export function useChat<T>(selector: (s: ChatState) => T): T {
 
 export function addMsg(m: Omit<Msg, "id">): number {
   const id = nextId++;
-  set({ messages: [...state.messages, { ...m, id }] });
+  set({ messages: [...state.messages, { time: Date.now(), ...m, id }] });
   return id;
 }
 
@@ -201,7 +211,7 @@ export function setInstalled(installed: Partial<Record<AgentId, boolean>>) {
   set({ installed, agentFound: installed[state.agent] ?? false });
 }
 
-/** Switch to another AI tool. The conversation starts fresh, since tools cannot share one. */
+/** Switch to another AI tool. The conversation stays: Duet holds it, and hands the new tool a note of it. */
 export function setAgent(agent: AgentId) {
   try {
     localStorage.setItem(AGENT_KEY, agent);
@@ -209,8 +219,8 @@ export function setAgent(agent: AgentId) {
     /* ignore */
   }
   declineAllWaiting();
-  kept.clear();
-  set({ agent, agentFound: state.installed[agent] ?? false, messages: [], pictures: state.pictures.filter((p) => !p.sent), sessionId: null });
+  for (const k of kept.values()) k.sessionId = null;
+  set({ agent, agentFound: state.installed[agent] ?? false, sessionId: null });
 }
 export function setModel(agent: AgentId, model: string) {
   try {
@@ -233,16 +243,27 @@ export function setEffort(effort: string) {
 
 export const setSessionId = (sessionId: string | null) => set({ sessionId });
 
+/** The AI tool starts fresh on the next message, instead of carrying its own session on. */
+export const dropSession = () => set({ sessionId: null, sessionMessages: 0 });
+/** A message went into the AI tool's session, or it has just finished answering. */
+export const sessionUsed = (message = false) => set({ sessionUsed: Date.now(), sessionMessages: state.sessionMessages + (message ? 1 : 0) });
+
+/** Start a fresh conversation. The one before is not shown any more, but the project keeps it. */
 export function newConversation() {
   declineAllWaiting();
-  set({ messages: [], pictures: state.pictures.filter((p) => !p.sent), sessionId: null });
+  const closed = state.messages.filter((m) => m.role !== "working");
+  const earlier = closed.length ? [...state.earlier, ...closed, { id: nextId++, role: "break" as const, text: "", time: Date.now() }] : state.earlier;
+  set({ messages: [], earlier, pictures: state.pictures.filter((p) => !p.sent), sessionId: null, sessionMessages: 0 });
 }
 
 /** A conversation put away while another project is open. */
 interface Kept {
   messages: Msg[];
+  earlier: Msg[];
   pictures: Picture[];
   sessionId: string | null;
+  sessionUsed: number;
+  sessionMessages: number;
 }
 
 /** Conversations of the projects opened earlier, by project file. Kept while Duet is open. */
@@ -264,14 +285,41 @@ export function showConversationFor(project: string, fresh = false) {
       // a step in the history is not the same step after the project is opened again, so Undo is not offered
       messages: state.messages.filter((m) => m.role !== "working").map((m) => (m.undoStep === undefined ? m : { ...m, undoStep: undefined })),
       // pictures still waiting in the message box do not come along
+      earlier: state.earlier,
       pictures: state.pictures.filter((p) => p.sent),
       sessionId: state.sessionId,
+      sessionUsed: state.sessionUsed,
+      sessionMessages: state.sessionMessages,
     });
   }
   const back = fresh ? undefined : kept.get(project);
   kept.delete(project);
   shownFor = project;
-  set({ messages: back?.messages ?? [], pictures: back?.pictures ?? [], sessionId: back?.sessionId ?? null, running: false });
+  set({
+    messages: back?.messages ?? [],
+    earlier: back?.earlier ?? [],
+    pictures: back?.pictures ?? [],
+    sessionId: back?.sessionId ?? null,
+    sessionUsed: back?.sessionUsed ?? 0,
+    sessionMessages: back?.sessionMessages ?? 0,
+    running: false,
+  });
+}
+
+/** The project file the conversation on show belongs to. Empty for work that has no file yet. */
+export const conversationProject = () => shownFor;
+
+/**
+ * Put back a conversation that was saved with its project, when Duet has just opened it and has
+ * nothing of its own to show. The AI tool's own session is long gone, so it starts fresh.
+ */
+export function restoreConversation(now: Omit<Msg, "id">[], earlier: Omit<Msg, "id">[]) {
+  if (state.messages.length || state.earlier.length) return;
+  if (!now.length && !earlier.length) return;
+  const number = (list: Omit<Msg, "id">[]) => list.map((m) => ({ ...m, id: nextId++ }));
+  // pictures are not kept, and a new one must not take the number of one that is gone
+  for (const m of [...now, ...earlier]) for (const n of m.pictures ?? []) nextPicture = Math.max(nextPicture, n + 1);
+  set({ messages: number(now), earlier: number(earlier), sessionId: null, sessionUsed: 0, sessionMessages: 0 });
 }
 
 /** Save As: the conversation stays with the work and goes to its new file. */
