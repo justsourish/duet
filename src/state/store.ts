@@ -33,6 +33,8 @@ export interface Overlay {
   pen: { nodes: AbsNode[]; cursor: { x: number; y: number } | null } | null;
   /** The line whose points are being edited, and which point is chosen. */
   nodeEdit: { id: string; selected: number | null } | null;
+  /** The angle being shown while something is turned by hand, or null. */
+  turning: number | null;
 }
 
 export interface Project {
@@ -58,7 +60,7 @@ export interface State {
   editingId: string | null;
 }
 
-const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null, pen: null, nodeEdit: null });
+const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null, pen: null, nodeEdit: null, turning: null });
 
 const initial = (): State => ({
   project: { path: null, file: null, name: "Untitled", status: "unsaved", error: null },

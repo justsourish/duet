@@ -17,6 +17,7 @@ const EL_KEYS: (keyof El)[] = [
   "strokeWidth",
   "radius",
   "opacity",
+  "rotation",
   "text",
   "fontSize",
   "fontFamily",
@@ -61,6 +62,7 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   strokeWidth: 1,
   radius: 0,
   opacity: 1,
+  rotation: 0,
   text: "",
   fontSize: 16,
   fontFamily: "",
@@ -98,7 +100,7 @@ export function serializeDoc(doc: Doc): string {
     const ordered: Record<string, unknown> = {};
     for (const k of EL_KEYS) if (TEXT_ONLY.has(k) && (el.type !== "text" || el[k] === (FALLBACK as Record<string, unknown>)[k])) continue;
     else if (k === "childIds" && el.type === "instance") ordered[k] = [];
-    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (!PROTOTYPE_ONLY.has(k) || el[k] !== (FALLBACK as Record<string, unknown>)[k]) && (k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
+    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (!PROTOTYPE_ONLY.has(k) || el[k] !== (FALLBACK as Record<string, unknown>)[k]) && (k !== "locked" || el.locked) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "rotation" || el.rotation) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
   const out: Record<string, unknown> = { version: doc.version, rootIds: doc.rootIds, elements };

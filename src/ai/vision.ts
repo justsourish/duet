@@ -1,3 +1,4 @@
+import { turnOf, turnedBox } from "../document/geometry";
 import { currentDoc, getState } from "../state/store";
 import { getPicture, preloadPictures } from "../project/assets";
 import { renderPng } from "../project/exporter";
@@ -43,10 +44,11 @@ export async function lookAtDesign(ids: unknown, max: unknown): Promise<ToolResu
   if (!id) return { text: "There is nothing to look at yet. Draw or ask for a frame first.", isError: true };
   const el = doc.elements[id];
   await preloadPictures(doc);
-  const k = Math.min(1, side(max) / Math.max(el.width, el.height));
+  const box = turnedBox({ x: 0, y: 0, width: el.width, height: el.height }, turnOf(el));
+  const k = Math.min(1, side(max) / Math.max(box.width, box.height));
   const data = renderPng(doc, id, k);
   return {
-    text: `A picture of "${el.name}" (${Math.round(el.width)} by ${Math.round(el.height)} pixels), shown at ${Math.round(el.width * k)} by ${Math.round(el.height * k)}.${list.length > 1 ? " Only the first one is shown. Ask again for the others." : ""}`,
+    text: `A picture of "${el.name}" (${Math.round(el.width)} by ${Math.round(el.height)} pixels${turnOf(el) ? `, turned ${turnOf(el)} degrees` : ""}), shown at ${Math.round(box.width * k)} by ${Math.round(box.height * k)}.${list.length > 1 ? " Only the first one is shown. Ask again for the others." : ""}`,
     image: { data, mime: "image/png" },
   };
 }

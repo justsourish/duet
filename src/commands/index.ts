@@ -1,6 +1,6 @@
 import { fitText } from "../canvas/text";
 import type { ClipPayload } from "../document/clipboard";
-import { descendants, worldPos } from "../document/geometry";
+import { canTurn, descendants, tidyAngle, turnCentre, turnPoint, worldPos } from "../document/geometry";
 import { captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
 import type { Doc, El, ElementType, Layout, TextStyle } from "../document/types";
@@ -85,6 +85,7 @@ const createElement: CommandDef<CreateArgs> = {
       strokeWidth: 1,
       radius: 0,
       opacity: 1,
+      rotation: 0,
       text: a.type === "text" ? "Text" : "",
       fontSize: 16,
       fontFamily: "",
@@ -119,6 +120,8 @@ const createElement: CommandDef<CreateArgs> = {
       el.width = m.width;
       el.height = m.height;
     }
+    // frames and copies of components stay upright
+    el.rotation = el.type === "frame" || el.type === "instance" ? 0 : tidyAngle(Number(el.rotation) || 0);
     next.elements[id] = el;
     if (parentId) next.elements[parentId].childIds.push(id);
     else next.rootIds.push(id);
@@ -204,6 +207,25 @@ export interface SetPropsArgs {
 
 const TEXT_LOOK = ["text", "fontSize", "fontFamily", "fontWeight", "lineHeight", "letterSpacing", "textFixed"];
 
+/**
+ * Turn a group. A group has no body of its own, so everything inside it is swung around the middle
+ * of the group and turned by the same amount.
+ */
+function turnGroup(doc: Doc, id: string, by: number) {
+  const pivot = turnCentre(doc, id);
+  for (const d of descendants(doc, id)) {
+    const el = doc.elements[d];
+    el.rotation = tidyAngle((el.rotation || 0) + by);
+    if (el.type === "group") continue;
+    const at = worldPos(doc, d);
+    const cx = at.x + el.width / 2;
+    const cy = at.y + el.height / 2;
+    const to = turnPoint(cx, cy, pivot.x, pivot.y, by);
+    el.x += to.x - cx;
+    el.y += to.y - cy;
+  }
+}
+
 const setProps: CommandDef<SetPropsArgs> = {
   label: (a) => a.label ?? "Change properties",
   run: (doc, a) => {
@@ -211,7 +233,12 @@ const setProps: CommandDef<SetPropsArgs> = {
     for (const id of a.ids) {
       const el = next.elements[id];
       if (!el) continue;
+      const was = el.rotation || 0;
       Object.assign(el, a.props);
+      if ("rotation" in a.props) {
+        el.rotation = canTurn(next, id) ? tidyAngle(Number(a.props.rotation) || 0) : was;
+        if (el.type === "group" && el.rotation !== was) turnGroup(next, id, el.rotation - was);
+      }
       // text that changes how it looks or what it says gets the size it needs, unless the size was given
       if (el.type === "text" && TEXT_LOOK.some((k) => k in a.props) && !("width" in a.props) && !("height" in a.props)) {
         const m = fitText(el);
@@ -563,6 +590,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       strokeWidth: 1,
       radius: 0,
       opacity: 1,
+      rotation: 0,
       text: "",
       fontSize: 16,
       fontFamily: "",
@@ -640,6 +668,7 @@ const groupElements: CommandDef<GroupArgs> = {
       strokeWidth: 1,
       radius: 0,
       opacity: 1,
+      rotation: 0,
       text: "",
       fontSize: 16,
       fontFamily: "",

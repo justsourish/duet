@@ -22,7 +22,7 @@ export function ownerOf(id: string): { owner: string; key: string } | null {
 /** What an instance takes from its main, unless you changed it on the copy. */
 const MIRRORED = ["fill", "stroke", "strokeWidth", "radius", "shadow", "gradient", "layout", "width", "height"] as const;
 /** What can be changed on a thing inside an instance. */
-const INSIDE = ["x", "y", "width", "height", "fill", "stroke", "strokeWidth", "radius", "opacity", "text", "fontSize", "shadow", "gradient", "src", "nodes", "closed"] as const;
+const INSIDE = ["x", "y", "width", "height", "fill", "stroke", "strokeWidth", "radius", "opacity", "rotation", "text", "fontSize", "shadow", "gradient", "src", "nodes", "closed"] as const;
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const copy = <T,>(v: T): T => (v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T));

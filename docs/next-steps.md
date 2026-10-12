@@ -40,6 +40,10 @@ After a batch of features: bump the version (`package.json`, `src-tauri/Cargo.to
 - `src/content/status.ts` and `npm run release:sync` in `duet-site`, then `npm run deploy`.
 - Add an update post in `duet-site/src/content/updates/`.
 
+Done on 12 October 2026, not yet in a version: rotation for everything except frames and copies of components, and the AI can draw paths from SVG path text. Still open from the same request, in this order: any shape as a mask for a picture, tracing a picture with a clean or transparent background into flat shapes (write our own tracer, Potrace is GPL), then boolean cuts, which need paths with holes first. Removing the background from a real photo needs a machine learning model, so do not promise it.
+
+How rotation is built, so the next change does not fight it: only things with no children are drawn turned (`turnOf` in `src/document/geometry.ts`). A group has no turn of its own. Setting its `rotation` swings what is inside it and remembers the angle. So positions up the tree are still plain sums, and frames clip and lay out as before.
+
 ## 3. Known gaps
 - The Windows build has never been run by anyone. The agent is launched through `cmd` and is untested.
 - The app is unsigned (the creator cannot afford certificates yet). The download page explains the first-launch warning.

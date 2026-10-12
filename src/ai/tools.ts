@@ -4,6 +4,8 @@ import { lookAtDesign, lookAtImage } from "./vision";
 import { commandLabel, newId } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
+import { canTurn } from "../document/geometry";
+import { outlineFromData } from "../document/path";
 import type { El } from "../document/types";
 import { saveNow } from "../project/project";
 import { currentDoc, dispatch, getState, goTo, select } from "../state/store";
@@ -34,7 +36,7 @@ const ids = { type: "array", items: str, description: "Element ids, from get_doc
 const props = {
   type: "object",
   description:
-    "Any of: name, x, y, width, height (numbers, in pixels), fill (hex colour like #1b1b1f), stroke (hex colour, or null for none), strokeWidth, radius (corner radius), opacity (0 to 1), text, fontSize, fontFamily (any installed font name, or empty for the system font), fontWeight (300 to 900, 400 is regular, 700 is bold), textAlign (left, center or right), lineHeight (a multiple of the size, like 1.4), letterSpacing (pixels), textFixed (true to keep the width and wrap words), shadow ({x, y, blur, color} or null), gradient ({from, to, angle in degrees, 90 runs top to bottom} or null, replaces the fill), link (id of a frame to open when this is clicked in Present mode, or null), linkKind (empty to go to that screen, overlay to open it on top, back to go back), transition (empty, dissolve, push-left, push-right, push-up or push-down), transitionMs (milliseconds, 300 if 0), scroll (on a screen: true so that what is below its bottom edge can be scrolled in Present mode), layout (frames only: auto layout that lines up the children, as {dir is row or column, gap, padX, padY, align is start, center, end or stretch, justify is start, center, end or between, hug true or false}, or null to turn it off; children are placed in their layer order), locked (true to stop it being picked on the canvas), grow (inside an auto layout frame: 1 to fill the free space along the direction, 0 to keep its size).",
+    "Any of: name, x, y, width, height (numbers, in pixels), fill (hex colour like #1b1b1f), stroke (hex colour, or null for none), strokeWidth, radius (corner radius), opacity (0 to 1), rotation (degrees, clockwise, around its own middle; on a group it turns everything inside together; frames and copies of components cannot be turned), d (a path only: redraw its outline, as SVG path text measured from the corner of its parent frame), text, fontSize, fontFamily (any installed font name, or empty for the system font), fontWeight (300 to 900, 400 is regular, 700 is bold), textAlign (left, center or right), lineHeight (a multiple of the size, like 1.4), letterSpacing (pixels), textFixed (true to keep the width and wrap words), shadow ({x, y, blur, color} or null), gradient ({from, to, angle in degrees, 90 runs top to bottom} or null, replaces the fill), link (id of a frame to open when this is clicked in Present mode, or null), linkKind (empty to go to that screen, overlay to open it on top, back to go back), transition (empty, dissolve, push-left, push-right, push-up or push-down), transitionMs (milliseconds, 300 if 0), scroll (on a screen: true so that what is below its bottom edge can be scrolled in Present mode), layout (frames only: auto layout that lines up the children, as {dir is row or column, gap, padX, padY, align is start, center, end or stretch, justify is start, center, end or between, hug true or false}, or null to turn it off; children are placed in their layer order), locked (true to stop it being picked on the canvas), grow (inside an auto layout frame: 1 to fill the free space along the direction, 0 to keep its size).",
 };
 
 export const TOOLS: ToolDef[] = [
@@ -86,15 +88,20 @@ export const TOOLS: ToolDef[] = [
   {
     name: "create_element",
     description:
-      "Add a frame, rectangle, ellipse or text. x and y are relative to parentId (a frame), or to the page when parentId is left out. For text, put the words in props.text and leave width and height out so they fit the words.",
+      "Add a frame, rectangle, ellipse, text or path. x and y are relative to parentId (a frame), or to the page when parentId is left out. For text, put the words in props.text and leave width and height out so they fit the words. A path is any shape you draw yourself, like a leaf, a petal, a wave or an arch: give its outline in d and leave width and height out. A closed outline (ending in Z) is filled with props.fill; set props.stroke to null for a flat shape with no line around it. A path is one unbroken outline with no holes, so use several paths for several pieces.",
     inputSchema: {
       type: "object",
       properties: {
-        type: { type: "string", enum: ["frame", "rect", "ellipse", "text"] },
+        type: { type: "string", enum: ["frame", "rect", "ellipse", "text", "path"] },
         x: num,
         y: num,
         width: num,
         height: num,
+        d: {
+          ...str,
+          description:
+            "For a path: the outline as SVG path text, like M 0 0 C 30 -40 70 -40 100 0 C 70 40 30 40 0 0 Z. M, L, H, V, C, S, Q, T, A and Z work, in capital or small letters. The numbers are pixels measured from x, y, so you can draw a shape once around 0 0 and place it anywhere.",
+        },
         parentId: { ...str, description: "A frame to put it in. Leave out for the page." },
         props,
       },
@@ -162,12 +169,15 @@ export function summarise(tool: string, a: Args): string {
   switch (tool) {
     case "create_element": {
       const p = (a.props ?? {}) as Partial<El>;
+      if (a.type === "path") return "Draw a shape";
       return `Add a ${a.type === "rect" ? "rectangle" : String(a.type)}${p.text ? ` that says "${p.text}"` : ""}`;
     }
     case "create_instance":
       return `Place a copy of ${nameOf(a.componentId)}`;
     case "set_props": {
       const p = (a.props ?? {}) as Record<string, unknown>;
+      // a new outline is a long list of points: say what it is instead of spelling it out
+      if ("nodes" in p || "d" in p) return `Redraw the shape of ${namesOf(a.ids)}`;
       return `Change ${namesOf(a.ids)}: ${Object.entries(p).map(([k, v]) => `${k} ${String(v)}`).join(", ")}`;
     }
     case "move_elements":
@@ -189,7 +199,7 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
   const doc = currentDoc();
   switch (tool) {
     case "create_element": {
-      if (!["frame", "rect", "ellipse", "text"].includes(String(a.type))) return { error: "type must be frame, rect, ellipse or text." };
+      if (!["frame", "rect", "ellipse", "text", "path"].includes(String(a.type))) return { error: "type must be frame, rect, ellipse, text or path." };
       if (typeof a.x !== "number" || typeof a.y !== "number") return { error: "x and y must be numbers." };
       if (a.parentId != null && doc.elements[String(a.parentId)]?.type !== "frame") return { error: `parentId ${String(a.parentId)} is not a frame.` };
       const p: Record<string, unknown> = { ...((a.props as Record<string, unknown>) ?? {}) };
@@ -201,11 +211,26 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
         p.fontSize = size;
         a.width = typeof a.width === "number" ? a.width : m.width + 2;
         a.height = typeof a.height === "number" ? a.height : m.height;
+      } else if (a.type === "path") {
+        try {
+          // the outline is measured from x, y; the path's own box is fitted around it
+          const shape = outlineFromData(a.d as string);
+          a.x = a.x + shape.x;
+          a.y = a.y + shape.y;
+          a.width = typeof a.width === "number" ? a.width : shape.width;
+          a.height = typeof a.height === "number" ? a.height : shape.height;
+          p.nodes = shape.nodes;
+          p.closed = shape.closed;
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : String(e) };
+        }
       } else {
         const fallback = a.type === "frame" ? { w: 360, h: 640 } : { w: 120, h: 120 };
         a.width = typeof a.width === "number" ? a.width : fallback.w;
         a.height = typeof a.height === "number" ? a.height : fallback.h;
       }
+      if ("rotation" in p && (typeof p.rotation !== "number" || a.type === "frame")) return { error: a.type === "frame" ? "A frame cannot be turned." : "rotation must be a number of degrees." };
+      delete a.d;
       a.props = p;
       a.id = newId(String(a.type));
       return { args: a };
@@ -225,8 +250,23 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       if (!a.props || typeof a.props !== "object") return { error: "props must be an object." };
       const p: Record<string, unknown> = { ...(a.props as Record<string, unknown>) };
       for (const forbidden of ["id", "type", "parentId", "childIds"]) delete p[forbidden];
-      // text that changes size should resize to fit, unless the agent said otherwise
       const list = a.ids as string[];
+      if ("rotation" in p) {
+        if (typeof p.rotation !== "number") return { error: "rotation must be a number of degrees." };
+        const fixed = list.filter((i) => !canTurn(doc, i));
+        if (fixed.length) return { error: `${namesOf(fixed)} cannot be turned. Frames and copies of components stay upright. Turn the things inside instead.` };
+      }
+      if ("d" in p) {
+        if (list.length !== 1 || doc.elements[list[0]].type !== "path") return { error: "d redraws one path at a time. Give the id of one path." };
+        try {
+          const { closed, ...shape } = outlineFromData(p.d as string);
+          delete p.d;
+          Object.assign(p, shape, { closed });
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : String(e) };
+        }
+      }
+      // text that changes size should resize to fit, unless the agent said otherwise
       if (list.length === 1 && doc.elements[list[0]].type === "text" && ("text" in p || "fontSize" in p) && !("width" in p)) {
         const el = doc.elements[list[0]];
         const m = measureText(String(p.text ?? el.text), Number(p.fontSize ?? el.fontSize));
@@ -280,7 +320,8 @@ async function apply(tool: string, args: Args): Promise<ToolResult> {
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
   if (tool === "create_element") {
     const el = currentDoc().elements[String(args.id)];
-    return { text: `Created ${String(args.id)} named "${el?.name}" (${label}).` };
+    const box = el?.type === "path" ? ` Its box sits at ${Math.round(el.x)},${Math.round(el.y)} and is ${Math.round(el.width)} by ${Math.round(el.height)}.` : "";
+    return { text: `Created ${String(args.id)} named "${el?.name}" (${label}).${box}` };
   }
   return { text: `Done: ${label}.` };
 }

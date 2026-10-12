@@ -1,4 +1,4 @@
-import { worldRect } from "../document/geometry";
+import { turnOf, turnPoint, turnVector, worldBounds, worldRect } from "../document/geometry";
 import { toAbs, trace } from "../document/path";
 import type { Doc, El, Rect } from "../document/types";
 import { currentDoc } from "../state/store";
@@ -61,6 +61,26 @@ export function makeGradient(ctx: CanvasRenderingContext2D, g: NonNullable<El["g
   return grad;
 }
 
+/** Shadow sizes are in screen pixels, so they follow the zoom, and the direction follows the turn of the shape. */
+function castShadow(ctx: CanvasRenderingContext2D, shadow: NonNullable<El["shadow"]>) {
+  const m = ctx.getTransform();
+  ctx.shadowColor = shadow.color;
+  ctx.shadowBlur = shadow.blur * Math.hypot(m.a, m.b);
+  ctx.shadowOffsetX = shadow.x * m.a + shadow.y * m.c;
+  ctx.shadowOffsetY = shadow.x * m.b + shadow.y * m.d;
+}
+
+/** Draw on the screen as if a box were upright, while it is really turned around its middle. */
+function turned(ctx: CanvasRenderingContext2D, r: Rect, deg: number, paint: () => void) {
+  if (!deg) return paint();
+  ctx.save();
+  ctx.translate(r.x + r.width / 2, r.y + r.height / 2);
+  ctx.rotate((deg * Math.PI) / 180);
+  ctx.translate(-(r.x + r.width / 2), -(r.y + r.height / 2));
+  paint();
+  ctx.restore();
+}
+
 /** A drawn line: filled if it is closed, stroked, with an optional shadow. */
 function drawLine(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
   const nodes = toAbs(el, x, y);
@@ -70,12 +90,7 @@ function drawLine(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   const shadow = () => {
-    if (!el.shadow) return;
-    const k = ctx.getTransform().a;
-    ctx.shadowColor = el.shadow.color;
-    ctx.shadowBlur = el.shadow.blur * k;
-    ctx.shadowOffsetX = el.shadow.x * k;
-    ctx.shadowOffsetY = el.shadow.y * k;
+    if (el.shadow) castShadow(ctx, el.shadow);
   };
   const noShadow = () => {
     ctx.shadowColor = "transparent";
@@ -102,13 +117,7 @@ function drawLine(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
 function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
   const pic = getPicture(el.src);
   roundedPath(ctx, x, y, el.width, el.height, el.radius);
-  if (el.shadow) {
-    const k = ctx.getTransform().a;
-    ctx.shadowColor = el.shadow.color;
-    ctx.shadowBlur = el.shadow.blur * k;
-    ctx.shadowOffsetX = el.shadow.x * k;
-    ctx.shadowOffsetY = el.shadow.y * k;
-  }
+  if (el.shadow) castShadow(ctx, el.shadow);
   ctx.fillStyle = pic ? "#ffffff" : "#2a2a31";
   ctx.fill();
   ctx.shadowColor = "transparent";
@@ -144,6 +153,12 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
   const y = oy + el.y;
   ctx.save();
   ctx.globalAlpha *= el.opacity;
+  const turn = turnOf(el);
+  if (turn) {
+    ctx.translate(x + el.width / 2, y + el.height / 2);
+    ctx.rotate((turn * Math.PI) / 180);
+    ctx.translate(-(x + el.width / 2), -(y + el.height / 2));
+  }
 
   if (el.type === "text") {
     ctx.fillStyle = el.fill;
@@ -197,14 +212,7 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
     roundedPath(ctx, x, y, el.width, el.height, el.radius);
   }
   ctx.fillStyle = el.gradient ? makeGradient(ctx, el.gradient, x, y, el.width, el.height) : el.fill;
-  if (el.shadow) {
-    // shadow sizes are in screen pixels, so they have to be scaled by the current zoom
-    const k = ctx.getTransform().a;
-    ctx.shadowColor = el.shadow.color;
-    ctx.shadowBlur = el.shadow.blur * k;
-    ctx.shadowOffsetX = el.shadow.x * k;
-    ctx.shadowOffsetY = el.shadow.y * k;
-  }
+  if (el.shadow) castShadow(ctx, el.shadow);
   ctx.fill();
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
@@ -300,7 +308,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     const r = screenRect(s, worldRect(doc, hover));
     ctx.strokeStyle = COLORS.accent;
     ctx.lineWidth = 1;
-    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.width, r.height);
+    turned(ctx, r, turnOf(doc.elements[hover]), () => ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.width, r.height));
   }
 
   // selection
@@ -309,31 +317,36 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   ctx.lineWidth = 1.5;
   for (const id of sel) {
     const r = screenRect(s, worldRect(doc, id));
-    ctx.strokeRect(r.x, r.y, r.width, r.height);
+    turned(ctx, r, turnOf(doc.elements[id]), () => ctx.strokeRect(r.x, r.y, r.width, r.height));
   }
   if (sel.length === 1 && !s.overlay.nodeEdit) {
     const r = screenRect(s, worldRect(doc, sel[0]));
-    for (const hd of HANDLES) {
-      const hx = r.x + r.width * hd.fx;
-      const hy = r.y + r.height * hd.fy;
-      ctx.fillStyle = COLORS.white;
-      ctx.strokeStyle = COLORS.accent;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.rect(hx - 4, hy - 4, 8, 8);
-      ctx.fill();
-      ctx.stroke();
-    }
+    turned(ctx, r, turnOf(doc.elements[sel[0]]), () => {
+      for (const hd of HANDLES) {
+        const hx = r.x + r.width * hd.fx;
+        const hy = r.y + r.height * hd.fy;
+        ctx.fillStyle = COLORS.white;
+        ctx.strokeStyle = COLORS.accent;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.rect(hx - 4, hy - 4, 8, 8);
+        ctx.fill();
+        ctx.stroke();
+      }
+    });
   }
   if (sel.length > 0) {
-    const rects = sel.map((id) => screenRect(s, worldRect(doc, id)));
+    const rects = sel.map((id) => screenRect(s, worldBounds(doc, id)));
     const x1 = Math.min(...rects.map((r) => r.x));
     const x2 = Math.max(...rects.map((r) => r.x + r.width));
     const y2 = Math.max(...rects.map((r) => r.y + r.height));
-    const wr = sel.map((id) => worldRect(doc, id));
+    // one thing shows its own size, however it is turned; several show the box around them all
+    const wr = sel.map((id) => (sel.length === 1 ? worldRect(doc, id) : worldBounds(doc, id)));
     const ww = Math.max(...wr.map((r) => r.x + r.width)) - Math.min(...wr.map((r) => r.x));
     const wh = Math.max(...wr.map((r) => r.y + r.height)) - Math.min(...wr.map((r) => r.y));
-    pill(ctx, `${Math.round(ww)} × ${Math.round(wh)}`, (x1 + x2) / 2, y2 + 10);
+    // while something is being turned, show the angle instead of the size
+    const turning = s.overlay.turning;
+    pill(ctx, turning !== null ? `${turning}°` : `${Math.round(ww)} × ${Math.round(wh)}`, (x1 + x2) / 2, y2 + 10);
   }
 
   // where the selected thing leads when presenting: an arrow to that screen
@@ -373,10 +386,15 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   if (ne && doc.elements[ne.id]?.type === "path") {
     const el = doc.elements[ne.id];
     const at = worldRect(doc, ne.id);
+    const turn = turnOf(el);
     const nodes = toAbs(el, at.x, at.y).map((n) => {
-      const a = toScreen(s, n.x, n.y);
+      // the points follow the turn of the shape
+      const p = turnPoint(n.x, n.y, at.x + at.width / 2, at.y + at.height / 2, turn);
+      const a = toScreen(s, p.x, p.y);
       const z = s.viewport.zoom;
-      return { x: a.x, y: a.y, ix: n.ix * z, iy: n.iy * z, ox: n.ox * z, oy: n.oy * z };
+      const i = turnVector(n.ix, n.iy, turn);
+      const o = turnVector(n.ox, n.oy, turn);
+      return { x: a.x, y: a.y, ix: i.x * z, iy: i.y * z, ox: o.x * z, oy: o.y * z };
     });
     nodes.forEach((n, i) => {
       const chosen = ne.selected === i;

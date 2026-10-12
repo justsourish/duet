@@ -55,6 +55,8 @@ export interface El {
   strokeWidth: number;
   radius: number;
   opacity: number;
+  /** How far it is turned, in degrees, clockwise, around its own centre. Frames and copies of components stay upright. A group turns what is inside it and only remembers the angle. */
+  rotation: number;
   text: string;
   fontSize: number;
   /** Text only. Empty means the system font. Any font installed on the computer works. */

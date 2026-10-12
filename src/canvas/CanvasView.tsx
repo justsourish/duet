@@ -3,13 +3,19 @@ import { newId, runCommand } from "../commands";
 import { extractPayload, payloadToText, textToPayload } from "../document/clipboard";
 import type { ClipPayload } from "../document/clipboard";
 import {
+  canTurn,
   descendants,
   frameAt,
   hitTest,
   rectsIntersect,
   snapRect,
+  tidyAngle,
   topLevelOnly,
+  turnCentre,
+  turnOf,
+  turnPoint,
   unionRect,
+  worldBounds,
   worldPos,
   worldRect,
 } from "../document/geometry";
@@ -35,7 +41,7 @@ import {
   useStore,
 } from "../state/store";
 import type { Tool } from "../state/store";
-import { HANDLES, resizeRect } from "./handles";
+import { HANDLES, TURN_CURSOR, TURN_REACH, handleCursor, resizeTurned } from "./handles";
 import type { HandleKey } from "./handles";
 import { pickImages, placeFiles } from "../project/imageImport";
 import { deleteSelectedNode, doubleClickNode, dragNode, editing, enterNodeEdit, exitNodeEdit, hitNode, nodesOf, selectNode } from "./nodes";
@@ -53,7 +59,8 @@ type Drag =
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number }
-  | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; sx: number; sy: number; start: { x: number; y: number } }
+  | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number } }
+  | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean }
   | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
 
 const CREATE_TOOLS: Tool[] = ["frame", "rect", "ellipse", "text"];
@@ -109,7 +116,7 @@ function fitBox(box: Rect, width: number, height: number, maxZoom: number) {
 /** Show everything on the page. */
 export function zoomToFit(width: number, height: number) {
   const doc = currentDoc();
-  const box = unionRect(doc.rootIds.map((id) => worldRect(doc, id)));
+  const box = unionRect(doc.rootIds.map((id) => worldBounds(doc, id)));
   if (!box) return setViewport({ x: 160, y: 100, zoom: 1 });
   fitBox(box, width, height, 2);
 }
@@ -117,7 +124,7 @@ export function zoomToFit(width: number, height: number) {
 /** Jump to whatever is selected, or to the given elements. */
 export function zoomToElements(ids: string[], width: number, height: number) {
   const doc = currentDoc();
-  const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldRect(doc, id)));
+  const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldBounds(doc, id)));
   if (!box) return;
   fitBox(box, width, height, 4);
 }
@@ -125,7 +132,7 @@ export function zoomToElements(ids: string[], width: number, height: number) {
 /** Bring things into view only if they are off screen, keeping the zoom when they fit. */
 export function revealElements(ids: string[], width: number, height: number) {
   const doc = currentDoc();
-  const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldRect(doc, id)));
+  const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldBounds(doc, id)));
   if (!box) return;
   const vp = getState().viewport;
   const left = box.x * vp.zoom + vp.x;
@@ -243,10 +250,27 @@ export default function CanvasView() {
     const doc = currentDoc(s);
     if (editing() || s.selection.length !== 1 || !doc.elements[s.selection[0]]) return null;
     const r = screenRect(s, worldRect(doc, s.selection[0]));
+    // the handles of a turned shape are turned with it, so turn the pointer back to meet them
+    const p = turnPoint(sx, sy, r.x + r.width / 2, r.y + r.height / 2, -turnOf(doc.elements[s.selection[0]]));
     for (const hd of HANDLES) {
       const hx = r.x + r.width * hd.fx;
       const hy = r.y + r.height * hd.fy;
-      if (Math.abs(sx - hx) <= 6 && Math.abs(sy - hy) <= 6) return hd.key;
+      if (Math.abs(p.x - hx) <= 6 && Math.abs(p.y - hy) <= 6) return hd.key;
+    }
+    return null;
+  };
+
+  /** Just outside a corner of the selected thing, dragging turns it. */
+  const turnAt = (sx: number, sy: number): string | null => {
+    const s = getState();
+    const doc = currentDoc(s);
+    const id = s.selection[0];
+    if (editing() || s.selection.length !== 1 || !doc.elements[id] || !canTurn(doc, id)) return null;
+    const r = screenRect(s, worldRect(doc, id));
+    const p = turnPoint(sx, sy, r.x + r.width / 2, r.y + r.height / 2, -turnOf(doc.elements[id]));
+    if (p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height) return null;
+    for (const [cx, cy] of [[r.x, r.y], [r.x + r.width, r.y], [r.x + r.width, r.y + r.height], [r.x, r.y + r.height]]) {
+      if (Math.hypot(p.x - cx, p.y - cy) <= TURN_REACH) return id;
     }
     return null;
   };
@@ -311,7 +335,14 @@ export default function CanvasView() {
     const handle = handleAt(p.sx, p.sy);
     if (handle) {
       const id = s.selection[0];
-      dragRef.current = { kind: "resize", handle, id, orig: worldRect(doc, id), sx: p.sx, sy: p.sy, start: { x: p.x, y: p.y } };
+      dragRef.current = { kind: "resize", handle, id, orig: worldRect(doc, id), turn: turnOf(doc.elements[id]), sx: p.sx, sy: p.sy, start: { x: p.x, y: p.y } };
+      return;
+    }
+    const turning = turnAt(p.sx, p.sy);
+    if (turning) {
+      const centre = turnCentre(doc, turning);
+      const from = (Math.atan2(p.y - centre.y, p.x - centre.x) * 180) / Math.PI;
+      dragRef.current = { kind: "turn", id: turning, centre, from, base: doc.elements[turning].rotation || 0, sx: p.sx, sy: p.sy, moved: false };
       return;
     }
 
@@ -351,7 +382,8 @@ export default function CanvasView() {
       }
       if (CREATE_TOOLS.includes(s.tool)) return setCursor(s.tool === "text" ? "text" : "crosshair");
       const h = handleAt(p.sx, p.sy);
-      if (h) return setCursor(HANDLES.find((x) => x.key === h)!.cursor);
+      if (h) return setCursor(handleCursor(h, turnOf(currentDoc(s).elements[s.selection[0]])));
+      if (turnAt(p.sx, p.sy)) return setCursor(TURN_CURSOR);
       setCursor("default");
       const doc = currentDoc(s);
       const hover = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y);
@@ -397,8 +429,8 @@ export default function CanvasView() {
         }
         const others = Object.keys(d.base.elements)
           .filter((id) => !skip.has(id))
-          .map((id) => worldRect(d.base, id));
-        const box = unionRect(d.ids.map((id) => worldRect(d.base, id)));
+          .map((id) => worldBounds(d.base, id));
+        const box = unionRect(d.ids.map((id) => worldBounds(d.base, id)));
         if (box) {
           const snap = snapRect({ ...box, x: box.x + dx, y: box.y + dy }, others, 6 / s.viewport.zoom);
           dx += snap.dx;
@@ -413,7 +445,7 @@ export default function CanvasView() {
     }
 
     if (d.kind === "resize") {
-      const rect = resizeRect(d.orig, d.handle, p.x - d.start.x, p.y - d.start.y, { keepRatio: e.shiftKey, fromCenter: e.altKey });
+      const rect = resizeTurned(d.orig, d.turn, d.handle, p.x - d.start.x, p.y - d.start.y, { keepRatio: e.shiftKey, fromCenter: e.altKey });
       const doc = dragBase();
       const el = doc.elements[d.id];
       const parent = el.parentId ? worldPos(doc, el.parentId) : { x: 0, y: 0 };
@@ -421,10 +453,22 @@ export default function CanvasView() {
       return;
     }
 
+    if (d.kind === "turn") {
+      if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
+      d.moved = true;
+      const now = (Math.atan2(p.y - d.centre.y, p.x - d.centre.x) * 180) / Math.PI;
+      // whole degrees, or steps of 15 with Shift
+      const step = e.shiftKey ? 15 : 1;
+      const rotation = tidyAngle(Math.round((d.base + now - d.from) / step) * step);
+      dragPreview("set_props", { ids: [d.id], props: { rotation } });
+      setOverlay({ turning: rotation });
+      return;
+    }
+
     if (d.kind === "marquee") {
       const rect = normalize(d.start.x, d.start.y, p.x, p.y);
       const doc = currentDoc(s);
-      const inside = d.scope.filter((id) => doc.elements[id] && !doc.elements[id].locked && rectsIntersect(rect, worldRect(doc, id)));
+      const inside = d.scope.filter((id) => doc.elements[id] && !doc.elements[id].locked && rectsIntersect(rect, worldBounds(doc, id)));
       setOverlay({ marquee: rect });
       select(d.additive ? Array.from(new Set([...d.prev, ...inside])) : inside);
     }
@@ -497,6 +541,13 @@ export default function CanvasView() {
 
     if (d.kind === "resize") {
       dragCommit("Resize element");
+      return;
+    }
+
+    if (d.kind === "turn") {
+      if (d.moved) dragCommit("Rotate");
+      else dragCancel();
+      setOverlay({ turning: null });
       return;
     }
 
@@ -871,7 +922,7 @@ export default function CanvasView() {
     const { w, h } = sizeRef.current;
     if (docNow.rootIds.length === 0 || w === 0) return setLost(false);
     const view = { x: -viewport.x / viewport.zoom, y: -viewport.y / viewport.zoom, width: w / viewport.zoom, height: h / viewport.zoom };
-    setLost(!docNow.rootIds.some((id) => rectsIntersect(view, worldRect(docNow, id))));
+    setLost(!docNow.rootIds.some((id) => rectsIntersect(view, worldBounds(docNow, id))));
   }, [viewport, docNow]);
 
   return (
@@ -967,6 +1018,9 @@ function TextEditor({ id, zoom, vx, vy }: { id: string; zoom: number; vx: number
         color: el.fill,
         minWidth: el.textFixed ? el.width * zoom : 40,
         width: el.textFixed ? el.width * zoom : undefined,
+        // turned text is typed at the angle it sits at
+        transform: turnOf(el) ? `rotate(${turnOf(el)}deg)` : undefined,
+        transformOrigin: `${(el.width * zoom) / 2 + 2}px ${(el.height * zoom) / 2 + 2}px`,
       }}
       onBlur={finish}
       onKeyDown={(e) => {

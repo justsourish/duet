@@ -1,4 +1,4 @@
-import { worldPos } from "../document/geometry";
+import { keepInPlace, turnOf, turnPoint, turnVector, worldPos, worldRect } from "../document/geometry";
 import { fromAbs, isSmooth, nearestOnLine, removeNode, splitSegment, toAbs, toggleSmooth } from "../document/path";
 import type { AbsNode } from "../document/path";
 import type { Doc } from "../document/types";
@@ -31,7 +31,7 @@ export function selectNode(index: number | null) {
   if (e) setOverlay({ nodeEdit: { ...e, selected: index } });
 }
 
-/** The points of the line being edited, in page pixels. */
+/** The points of the line being edited, in page pixels, as they sit before the line is turned. */
 export function nodesOf(doc: Doc, id: string): AbsNode[] {
   const el = doc.elements[id];
   if (!el || el.type !== "path") return [];
@@ -39,15 +39,24 @@ export function nodesOf(doc: Doc, id: string): AbsNode[] {
   return toAbs(el, at.x, at.y);
 }
 
-/** Write new points back into the element, refitting its box. Returns the document, not yet committed. */
-export function withNodes(doc: Doc, id: string, nodes: AbsNode[]): Doc {
+/** A spot on the page, turned back so it lines up with the points of a turned line. */
+function upright(doc: Doc, id: string, x: number, y: number): { x: number; y: number } {
+  const r = worldRect(doc, id);
+  return turnPoint(x, y, r.x + r.width / 2, r.y + r.height / 2, -turnOf(doc.elements[id]));
+}
+
+/** The new box and points for a line, placed so that a turned line does not jump when its box changes. */
+function refit(doc: Doc, id: string, nodes: AbsNode[]) {
   const el = doc.elements[id];
   const parent = el.parentId ? worldPos(doc, el.parentId) : { x: 0, y: 0 };
   const shape = fromAbs(nodes);
-  return runCommand(doc, "set_props", {
-    ids: [id],
-    props: { x: shape.x - parent.x, y: shape.y - parent.y, width: shape.width, height: shape.height, nodes: shape.nodes },
-  });
+  const box = keepInPlace(worldRect(doc, id), shape, turnOf(el));
+  return { x: box.x - parent.x, y: box.y - parent.y, width: shape.width, height: shape.height, nodes: shape.nodes };
+}
+
+/** Write new points back into the element, refitting its box. Returns the document, not yet committed. */
+export function withNodes(doc: Doc, id: string, nodes: AbsNode[]): Doc {
+  return runCommand(doc, "set_props", { ids: [id], props: refit(doc, id, nodes) });
 }
 
 /** Which point or handle is under the pointer. Handles only show for the chosen point. */
@@ -57,11 +66,9 @@ export function hitNode(sx: number, sy: number): NodeHit | null {
   if (!e) return null;
   const nodes = nodesOf(currentDoc(s), e.id);
   const z = s.viewport.zoom;
-  const screen = (x: number, y: number) => ({ x: x * z + s.viewport.x, y: y * z + s.viewport.y });
-  const near = (x: number, y: number) => {
-    const p = screen(x, y);
-    return Math.hypot(sx - p.x, sy - p.y) <= GRAB;
-  };
+  // where the pointer is on the page, turned back to meet the points
+  const at = upright(currentDoc(s), e.id, (sx - s.viewport.x) / z, (sy - s.viewport.y) / z);
+  const near = (x: number, y: number) => Math.hypot(at.x - x, at.y - y) * z <= GRAB;
   if (e.selected !== null && nodes[e.selected]) {
     const n = nodes[e.selected];
     if ((n.ox || n.oy) && near(n.x + n.ox, n.y + n.oy)) return { part: "out", index: e.selected };
@@ -75,6 +82,10 @@ export function hitNode(sx: number, sy: number): NodeHit | null {
 export function dragNode(hit: NodeHit, start: AbsNode[], dx: number, dy: number, alt: boolean) {
   const e = editing();
   if (!e) return;
+  // read the movement along the line's own sides when it is turned
+  const along = turnVector(dx, dy, -turnOf(dragBase().elements[e.id]));
+  dx = along.x;
+  dy = along.y;
   const nodes = start.map((n) => ({ ...n }));
   const n = nodes[hit.index];
   const was = start[hit.index];
@@ -107,15 +118,7 @@ export function dragNode(hit: NodeHit, start: AbsNode[], dx: number, dy: number,
 function commitNodes(nodes: AbsNode[], label: string) {
   const e = editing();
   if (!e) return;
-  const doc = currentDoc();
-  const el = doc.elements[e.id];
-  const parent = el.parentId ? worldPos(doc, el.parentId) : { x: 0, y: 0 };
-  const shape = fromAbs(nodes);
-  dispatch("set_props", {
-    ids: [e.id],
-    props: { x: shape.x - parent.x, y: shape.y - parent.y, width: shape.width, height: shape.height, nodes: shape.nodes },
-    label,
-  });
+  dispatch("set_props", { ids: [e.id], props: refit(currentDoc(), e.id, nodes), label });
 }
 
 /** Double-click: on a point it turns it smooth or sharp, on the line it adds a point. */
@@ -131,7 +134,8 @@ export function doubleClickNode(wx: number, wy: number, hit: NodeHit | null): bo
     selectNode(hit.index);
     return true;
   }
-  const near = nearestOnLine(nodes, el.closed, wx, wy);
+  const at = upright(doc, e.id, wx, wy);
+  const near = nearestOnLine(nodes, el.closed, at.x, at.y);
   const reach = 8 / getState().viewport.zoom;
   if (near.segment >= 0 && near.distance <= reach) {
     const r = splitSegment(nodes, el.closed, near.segment, near.t);

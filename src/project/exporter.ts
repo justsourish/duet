@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { message, open, save } from "@tauri-apps/plugin-dialog";
 import { drawElement } from "../canvas/render";
-import { topLevelOnly } from "../document/geometry";
+import { topLevelOnly, turnOf, turnedBox } from "../document/geometry";
 import { toSvg } from "../document/svg";
 import type { Doc } from "../document/types";
 import { currentDoc, getState } from "../state/store";
@@ -19,13 +19,15 @@ export function exportTargets(doc: Doc, selection: string[]): string[] {
 /** Draw one element to a PNG at the given scale. Returns base64 text. */
 export function renderPng(doc: Doc, id: string, scale: number): string {
   const el = doc.elements[id];
+  // a turned thing needs a picture big enough to hold all of it
+  const box = turnedBox({ x: 0, y: 0, width: el.width, height: el.height }, turnOf(el));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(el.width * scale));
-  canvas.height = Math.max(1, Math.round(el.height * scale));
+  canvas.width = Math.max(1, Math.round(box.width * scale));
+  canvas.height = Math.max(1, Math.round(box.height * scale));
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not draw the picture.");
   ctx.scale(scale, scale);
-  drawElement(ctx, doc, { ...el, x: 0, y: 0 }, 0, 0);
+  drawElement(ctx, doc, { ...el, x: 0 - box.x, y: 0 - box.y }, 0, 0);
   return canvas.toDataURL("image/png").split(",")[1];
 }
 

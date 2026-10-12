@@ -19,6 +19,81 @@ export function worldRect(doc: Doc, id: string): Rect {
   return { x: p.x, y: p.y, width: el.width, height: el.height };
 }
 
+/** How far a thing is drawn turned, in degrees. Frames, groups and copies of components are never turned themselves. */
+export const turnOf = (el: El): number => (el.type === "frame" || el.type === "group" || el.type === "instance" ? 0 : el.rotation || 0);
+
+/** An angle kept between -180 and 180, the way a designer reads it. */
+export function tidyAngle(deg: number): number {
+  if (!Number.isFinite(deg)) return 0;
+  const a = ((((deg + 180) % 360) + 360) % 360) - 180;
+  const r = Math.round(a * 100) / 100;
+  return r === -180 ? 180 : r || 0;
+}
+
+/** Turn a direction clockwise by some degrees. */
+export function turnVector(dx: number, dy: number, deg: number): { x: number; y: number } {
+  if (!deg) return { x: dx, y: dy };
+  const a = (deg * Math.PI) / 180;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return { x: dx * c - dy * s, y: dx * s + dy * c };
+}
+
+/** Turn a point clockwise around a centre. */
+export function turnPoint(px: number, py: number, cx: number, cy: number, deg: number): { x: number; y: number } {
+  const v = turnVector(px - cx, py - cy, deg);
+  return { x: cx + v.x, y: cy + v.y };
+}
+
+/** The upright box that holds a box once it is turned around its centre. */
+export function turnedBox(r: Rect, deg: number): Rect {
+  if (!deg) return r;
+  const a = (deg * Math.PI) / 180;
+  const c = Math.abs(Math.cos(a));
+  const s = Math.abs(Math.sin(a));
+  const width = r.width * c + r.height * s;
+  const height = r.width * s + r.height * c;
+  return { x: r.x + (r.width - width) / 2, y: r.y + (r.height - height) / 2, width, height };
+}
+
+/** The upright box on the page that holds a thing as it is drawn, turned or not. */
+export function worldBounds(doc: Doc, id: string): Rect {
+  return turnedBox(worldRect(doc, id), turnOf(doc.elements[id]));
+}
+
+/**
+ * A turned thing spins around the middle of its box. When its box changes, the middle moves, and the
+ * thing would jump. Given the old box and the new one (both as they sit before turning), this is where
+ * the new box must go so that what you see stays put.
+ */
+export function keepInPlace(before: Rect, after: Rect, deg: number): Rect {
+  if (!deg) return after;
+  const c = turnPoint(after.x + after.width / 2, after.y + after.height / 2, before.x + before.width / 2, before.y + before.height / 2, deg);
+  return { x: c.x - after.width / 2, y: c.y - after.height / 2, width: after.width, height: after.height };
+}
+
+/** Can this be turned? Frames and copies of components cannot, and neither can a group that holds one. */
+export function canTurn(doc: Doc, id: string): boolean {
+  const el = doc.elements[id];
+  if (!el || el.type === "frame" || el.type === "instance") return false;
+  return el.type !== "group" || descendants(doc, id).every((d) => doc.elements[d].type !== "frame" && doc.elements[d].type !== "instance");
+}
+
+/** The point a thing spins around, on the page. For a group it is the middle of the things inside it. */
+export function turnCentre(doc: Doc, id: string): { x: number; y: number } {
+  const el = doc.elements[id];
+  const parts = el.type === "group" ? descendants(doc, id).filter((d) => doc.elements[d].type !== "group") : [];
+  const of = parts.length ? parts : [id];
+  let x = 0;
+  let y = 0;
+  for (const p of of) {
+    const r = worldRect(doc, p);
+    x += r.x + r.width / 2;
+    y += r.y + r.height / 2;
+  }
+  return { x: x / of.length, y: y / of.length };
+}
+
 export function descendants(doc: Doc, id: string): string[] {
   const out: string[] = [];
   const walk = (cur: string) => {
@@ -66,11 +141,16 @@ export function unionRect(rects: Rect[]): Rect | null {
 
 /** Deepest element under a world point. Children are clipped by their frame. */
 export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = new Set(), deep = false): string | null {
-  const visit = (ids: string[], ox: number, oy: number): string | null => {
+  const visit = (ids: string[], ox: number, oy: number, px: number, py: number): string | null => {
     for (let i = ids.length - 1; i >= 0; i--) {
       const el = doc.elements[ids[i]];
       if (!el || ignore.has(el.id)) continue;
       const r = { x: ox + el.x, y: oy + el.y, width: el.width, height: el.height };
+      // for a turned thing, turn the pointer back the other way and test it as if it were upright
+      const turn = turnOf(el);
+      const at = turn ? turnPoint(px, py, r.x + r.width / 2, r.y + r.height / 2, -turn) : null;
+      const wx = at ? at.x : px;
+      const wy = at ? at.y : py;
       if (el.type === "path" && !el.closed) {
         // a thin line: hit it when the pointer is close to the line itself
         const reach = Math.max(6, el.strokeWidth / 2 + 4);
@@ -86,7 +166,7 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
         if (dx * dx + dy * dy > 1) continue;
       }
       if (el.childIds.length) {
-        const child = visit(el.childIds, r.x, r.y);
+        const child = visit(el.childIds, r.x, r.y, wx, wy);
         // a click anywhere inside a group picks the whole group, unless you dig in on purpose
         if (child) return (el.type === "group" || el.type === "instance") && !deep && !el.locked ? el.id : child;
       }
@@ -96,7 +176,7 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
     }
     return null;
   };
-  return visit(doc.rootIds, 0, 0);
+  return visit(doc.rootIds, 0, 0, wx, wy);
 }
 
 /** Deepest frame under a world point, used as the parent of new shapes. */

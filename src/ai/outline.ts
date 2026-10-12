@@ -28,6 +28,7 @@ function describe(doc: Doc, el: El): string {
     if (el.shadow) bits.push("shadow");
   }
   if (el.opacity < 1) bits.push(`opacity ${el.opacity}`);
+  if (el.rotation && el.type !== "frame" && el.type !== "instance") bits.push(`turned ${el.rotation}°`);
   if (el.layout) bits.push(`layout ${el.layout.dir} gap ${el.layout.gap} pad ${el.layout.padX}/${el.layout.padY} ${el.layout.align}/${el.layout.justify}${el.layout.hug ? " hug" : ""}`);
   if (el.grow) bits.push("fills space");
   if (el.component) bits.push("COMPONENT");

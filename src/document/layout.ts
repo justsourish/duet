@@ -1,3 +1,4 @@
+import { turnOf, turnedBox } from "./geometry";
 import type { Doc, El, Layout } from "./types";
 
 /**
@@ -119,8 +120,12 @@ function fitGroups(doc: Doc) {
   for (const g of groups) {
     const kids = g.childIds.map((id) => doc.elements[id]).filter(Boolean);
     if (kids.length === 0) continue;
-    const minX = Math.min(...kids.map((k) => k.x));
-    const minY = Math.min(...kids.map((k) => k.y));
+    // a turned thing takes up the upright box around it
+    const box = (k: El) => turnedBox({ x: k.x, y: k.y, width: k.width, height: k.height }, turnOf(k));
+    // turning leaves tiny leftovers in the sums; ignoring them stops the group creeping
+    const settle = (v: number) => (Math.abs(v) < 0.005 ? 0 : v);
+    const minX = settle(Math.min(...kids.map((k) => box(k).x)));
+    const minY = settle(Math.min(...kids.map((k) => box(k).y)));
     if (minX !== 0 || minY !== 0) {
       g.x += minX;
       g.y += minY;
@@ -129,8 +134,8 @@ function fitGroups(doc: Doc) {
         k.y -= minY;
       }
     }
-    g.width = Math.max(1, round(Math.max(...kids.map((k) => k.x + k.width))));
-    g.height = Math.max(1, round(Math.max(...kids.map((k) => k.y + k.height))));
+    g.width = Math.max(1, round(Math.max(...kids.map((k) => box(k).x + box(k).width))));
+    g.height = Math.max(1, round(Math.max(...kids.map((k) => box(k).y + box(k).height))));
   }
 }
 

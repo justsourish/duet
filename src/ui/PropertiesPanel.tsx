@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { currentDoc, dispatch, select, useStore } from "../state/store";
 import type { El, Layout } from "../document/types";
+import { canTurn } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
 import { COMMON_FONTS } from "../canvas/text";
 import { newId } from "../commands";
@@ -336,6 +337,12 @@ export default function PropertiesPanel() {
               onCommit={(n) => dispatch("resize_element", { id: one.id, x: one.x, y: one.y, width: one.width, height: n })}
             />
           </div>
+          {canTurn(doc, one.id) && (
+            <>
+              <div className="gap" />
+              <NumField label="Rotation" value={one.rotation || 0} onCommit={(n) => set({ rotation: n }, "Rotate")} />
+            </>
+          )}
         </div>
       )}
 

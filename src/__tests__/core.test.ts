@@ -1115,3 +1115,230 @@ describe("prototype", () => {
     for (const k of ["linkKind", "transition", "transitionMs", "scroll"]) expect(plain).not.toContain(`"${k}"`);
   });
 });
+
+import { canTurn, keepInPlace, tidyAngle, turnPoint, turnedBox, worldBounds } from "../document/geometry";
+import { outlineFromData, parsePathData, toAbs } from "../document/path";
+import { handleCursor, resizeTurned } from "../canvas/handles";
+import { withNodes } from "../canvas/nodes";
+
+describe("rotation", () => {
+  const bar = (rotation = 0) => runCommand(emptyDoc(), "create_element", { id: "r", type: "rect", x: 100, y: 100, width: 200, height: 20, props: { rotation } });
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1e-6);
+
+  it("turns points clockwise and reads angles the way a designer does", () => {
+    const p = turnPoint(10, 0, 0, 0, 90);
+    near(p.x, 0);
+    near(p.y, 10);
+    expect(tidyAngle(270)).toBe(-90);
+    expect(tidyAngle(360)).toBe(0);
+    expect(tidyAngle(-180)).toBe(180);
+    expect(tidyAngle(45.126)).toBe(45.13);
+  });
+
+  it("knows the upright box around a turned thing", () => {
+    const box = turnedBox({ x: 0, y: 0, width: 100, height: 50 }, 90);
+    near(box.width, 50);
+    near(box.height, 100);
+    near(box.x, 25);
+    near(box.y, -25);
+    const b = worldBounds(bar(90), "r");
+    near(b.x, 190);
+    near(b.y, 10);
+  });
+
+  it("is set like any other property, and frames stay upright", () => {
+    let d = runCommand(bar(), "set_props", { ids: ["r"], props: { rotation: 400 } });
+    expect(d.elements.r.rotation).toBe(40);
+    d = runCommand(frame(), "set_props", { ids: ["f1"], props: { rotation: 30 } });
+    expect(d.elements.f1.rotation).toBe(0);
+    d = runCommand(emptyDoc(), "create_element", { id: "f", type: "frame", x: 0, y: 0, width: 10, height: 10, props: { rotation: 30 } });
+    expect(d.elements.f.rotation).toBe(0);
+    expect(canTurn(d, "f")).toBe(false);
+  });
+
+  it("picks a turned thing where it is drawn, not where its box was", () => {
+    const d = bar(90); // now a tall bar around x 190 to 210, y 10 to 210
+    expect(hitTest(d, 200, 20)).toBe("r");
+    expect(hitTest(d, 110, 110)).toBeNull();
+    expect(hitTest(bar(), 110, 110)).toBe("r");
+  });
+
+  it("turns everything inside a group around its middle, and back again", () => {
+    let d = runCommand(emptyDoc(), "create_element", { id: "a", type: "rect", x: 0, y: 0, width: 100, height: 20 });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", x: 0, y: 50, width: 100, height: 20 });
+    d = runCommand(d, "group_elements", { ids: ["a", "b"], groupId: "g" });
+    const turnedDoc = runCommand(d, "set_props", { ids: ["g"], props: { rotation: 90 } });
+    expect(turnedDoc.elements.a.rotation).toBe(90);
+    expect(turnedDoc.elements.g.rotation).toBe(90);
+    // the group's box now holds two tall bars side by side
+    near(turnedDoc.elements.g.x, 15);
+    near(turnedDoc.elements.g.y, -15);
+    near(turnedDoc.elements.g.width, 70);
+    near(turnedDoc.elements.g.height, 100);
+    const back = runCommand(turnedDoc, "set_props", { ids: ["g"], props: { rotation: 0 } });
+    expect(back.elements.a.rotation).toBe(0);
+    for (const id of ["a", "b"]) {
+      near(worldPos(back, id).x, worldPos(d, id).x);
+      near(worldPos(back, id).y, worldPos(d, id).y);
+    }
+    expect(d.elements.a.rotation).toBe(0); // the old document is untouched
+  });
+
+  it("will not turn a group that holds a frame", () => {
+    let d = runCommand(frame("f"), "create_element", { id: "a", type: "rect", x: 600, y: 0, width: 50, height: 50 });
+    d = runCommand(d, "group_elements", { ids: ["f", "a"], groupId: "g" });
+    expect(canTurn(d, "g")).toBe(false);
+    d = runCommand(d, "set_props", { ids: ["g"], props: { rotation: 45 } });
+    expect(d.elements.g.rotation).toBe(0);
+    expect(d.elements.a.rotation).toBe(0);
+  });
+
+  it("fits a group around turned things", () => {
+    let d = runCommand(emptyDoc(), "create_element", { id: "a", type: "rect", x: 0, y: 0, width: 100, height: 20, props: { rotation: 90 } });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", x: 200, y: 0, width: 20, height: 20 });
+    d = runCommand(d, "group_elements", { ids: ["a", "b"], groupId: "g" });
+    // the turned bar reaches from x 40 to 60 and y -40 to 60
+    near(d.elements.g.x, 40);
+    near(d.elements.g.y, -40);
+    near(d.elements.g.width, 180);
+    near(d.elements.g.height, 100);
+    expect(hitTest(d, 50, -30)).toBe("g");
+  });
+
+  it("resizes a turned thing along its own sides and keeps the far side still", () => {
+    const orig = { x: 0, y: 0, width: 100, height: 50 };
+    // turned a quarter, the right-hand handle points down the page
+    const r = resizeTurned(orig, 90, "e", 0, 20);
+    near(r.width, 120);
+    near(r.height, 50);
+    const farBefore = turnPoint(orig.x, orig.y + 25, 50, 25, 90);
+    const farAfter = turnPoint(r.x, r.y + r.height / 2, r.x + r.width / 2, r.y + r.height / 2, 90);
+    near(farAfter.x, farBefore.x);
+    near(farAfter.y, farBefore.y);
+    expect(resizeTurned(orig, 0, "e", 20, 0)).toEqual(resizeRect(orig, "e", 20, 0));
+    expect(keepInPlace(orig, { x: 5, y: 5, width: 10, height: 10 }, 0)).toEqual({ x: 5, y: 5, width: 10, height: 10 });
+  });
+
+  it("points the resize cursor the way the handle faces", () => {
+    expect(handleCursor("n")).toBe("ns-resize");
+    expect(handleCursor("n", 90)).toBe("ew-resize");
+    expect(handleCursor("nw", 45)).toBe("ns-resize");
+    expect(handleCursor("nw", -45)).toBe("ew-resize");
+  });
+
+  it("keeps the other points of a turned line still while one is moved", () => {
+    const corner = (x: number, y: number) => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0 });
+    const shape = fromAbs([corner(0, 0), corner(100, 0), corner(100, 50)]);
+    const d = runCommand(emptyDoc(), "create_element", { id: "p", type: "path", ...shape, props: { nodes: shape.nodes, closed: true, rotation: 90 } });
+    const where = (doc: typeof d) => {
+      const el = doc.elements.p;
+      const n = toAbs(el, el.x, el.y)[0];
+      return turnPoint(n.x, n.y, el.x + el.width / 2, el.y + el.height / 2, 90);
+    };
+    const moved = withNodes(d, "p", [corner(0, 0), corner(100, 0), corner(100, 120)]);
+    near(moved.elements.p.height, 120);
+    near(where(moved).x, where(d).x);
+    near(where(moved).y, where(d).y);
+  });
+
+  it("is saved only when something is turned, and older files open upright", () => {
+    expect(serializeDoc(bar())).not.toContain("rotation");
+    const text = serializeDoc(bar(30));
+    expect(text).toContain('"rotation": 30');
+    expect(parseDoc(text).elements.r.rotation).toBe(30);
+    expect(parseDoc(serializeDoc(bar())).elements.r.rotation).toBe(0);
+  });
+
+  it("is exported, with room for the whole turned shape", () => {
+    let d = runCommand(frame("f"), "create_element", { id: "r", type: "rect", parentId: "f", x: 10, y: 10, width: 80, height: 30, props: { rotation: 30 } });
+    expect(toSvg(d, "f")).toContain('<g transform="rotate(30 50 25)">');
+    d = runCommand(emptyDoc(), "create_element", { id: "r", type: "rect", x: 0, y: 0, width: 100, height: 50, props: { rotation: 90 } });
+    const svg = toSvg(d, "r");
+    expect(svg).toContain('width="50" height="100"');
+    expect((svg.match(/<g[ >]/g) ?? []).length).toBe((svg.match(/<\/g>/g) ?? []).length);
+  });
+
+  it("is told to the AI in the outline", () => {
+    expect(outline(bar(30))).toContain("turned 30°");
+    expect(outline(bar())).not.toContain("turned");
+  });
+});
+
+describe("outlines written as path text", () => {
+  const near = (a: number, b: number, by = 1e-6) => expect(Math.abs(a - b)).toBeLessThan(by);
+
+  it("reads straight lines, exact and relative", () => {
+    const [tri] = parsePathData("M 0 0 L 100 0 L 50 80 Z");
+    expect(tri.closed).toBe(true);
+    expect(tri.nodes.map((n) => [n.x, n.y])).toEqual([[0, 0], [100, 0], [50, 80]]);
+    const [rel] = parsePathData("m10 10 l 20 0 l 0 20");
+    expect(rel.closed).toBe(false);
+    expect(rel.nodes.map((n) => [n.x, n.y])).toEqual([[10, 10], [30, 10], [30, 30]]);
+    const [hv] = parsePathData("M0,0H10V10 20-5");
+    expect(hv.nodes.map((n) => [n.x, n.y])).toEqual([[0, 0], [10, 0], [10, 10], [10, 20], [10, -5]]);
+  });
+
+  it("reads curves into handles", () => {
+    const [c] = parsePathData("M0 0 C 10 20 30 40 50 0");
+    expect(c.nodes[0]).toMatchObject({ ox: 10, oy: 20 });
+    expect(c.nodes[1]).toMatchObject({ x: 50, y: 0, ix: -20, iy: 40 });
+    const [s] = parsePathData("M0 0 C 0 10 10 20 20 20 S 40 10 40 0");
+    expect(s.nodes[1]).toMatchObject({ ox: 10, oy: 0 }); // the smooth curve mirrors the handle before it
+    const [q] = parsePathData("M0 0 Q 30 30 60 0");
+    near(q.nodes[0].ox, 20);
+    near(q.nodes[0].oy, 20);
+    near(q.nodes[1].ix, -20);
+    near(q.nodes[1].iy, 20);
+  });
+
+  it("turns arcs into curves that follow the same round path", () => {
+    const [half] = parsePathData("M 0 0 A 50 50 0 0 1 100 0");
+    expect(half.nodes.length).toBe(3);
+    const line = flatten(half.nodes, false, 40);
+    // every spot on it is 50 from the middle, and it goes over the top
+    for (const p of line) near(Math.hypot(p.x - 50, p.y), 50, 0.05);
+    expect(Math.min(...line.map((p) => p.y))).toBeLessThan(-49.9);
+    const [other] = parsePathData("M 0 0 A 50 50 0 0 0 100 0");
+    expect(Math.max(...flatten(other.nodes, false, 40).map((p) => p.y))).toBeGreaterThan(49.9);
+    const [tight] = parsePathData("M0 0a50 50 0 0150 50");
+    expect(tight.nodes[tight.nodes.length - 1]).toMatchObject({ x: 50, y: 50 });
+  });
+
+  it("joins the ends of a closed shape, so a leaf made of two curves is one smooth outline", () => {
+    const d = "M 0 0 C 30 -40 70 -40 100 0 C 70 40 30 40 0 0 Z";
+    const [leaf] = parsePathData(d);
+    expect(leaf.closed).toBe(true);
+    expect(leaf.nodes.length).toBe(3);
+    const line = flatten(leaf.nodes, true, 40);
+    expect(Math.min(...line.map((p) => p.y))).toBeCloseTo(-30, 1);
+    expect(Math.max(...line.map((p) => p.y))).toBeCloseTo(30, 1);
+    expect(Math.max(...line.map((p) => p.x))).toBeCloseTo(100, 5);
+    const [drop] = parsePathData("M0 0 C 30 -60 -30 -60 0 0 Z");
+    expect(drop.closed).toBe(true);
+    expect(drop.nodes.length).toBe(3);
+    expect(Math.min(...flatten(drop.nodes, true, 40).map((p) => p.y))).toBeCloseTo(-45, 1);
+  });
+
+  it("starts a new piece at every move, and after a close", () => {
+    expect(parsePathData("M0 0 L10 0 L10 10 Z M 20 20 L 30 30").length).toBe(2);
+    const pieces = parsePathData("M5 5 L10 5 L10 10 Z L 0 0");
+    expect(pieces[1].nodes.map((n) => [n.x, n.y])).toEqual([[5, 5], [0, 0]]);
+  });
+
+  it("says in plain words what is wrong", () => {
+    expect(() => parsePathData("L 10 10")).toThrow(/start with M/);
+    expect(() => parsePathData("M 0 0 X 5")).toThrow(/not a path letter/);
+    expect(() => parsePathData("M 0 0 L 10")).toThrow(/not a number/);
+    expect(() => outlineFromData("")).toThrow(/needs d/);
+    expect(() => outlineFromData("M 0 0")).toThrow(/two points/);
+    expect(() => outlineFromData("M0 0 L10 0 L10 10 Z M 20 20 L 30 30")).toThrow(/2 separate pieces/);
+  });
+
+  it("gives a box and points ready to be made into a path", () => {
+    const shape = outlineFromData("M 20 10 L 120 10 L 70 90 Z");
+    expect([shape.x, shape.y, shape.width, shape.height]).toEqual([20, 10, 100, 80]);
+    expect(shape.closed).toBe(true);
+    const d = runCommand(emptyDoc(), "create_element", { id: "p", type: "path", x: shape.x, y: shape.y, width: shape.width, height: shape.height, props: { nodes: shape.nodes, closed: shape.closed } });
+    expect(pathData(toAbs(d.elements.p, d.elements.p.x, d.elements.p.y), true)).toBe("M20 10L120 10L70 90L20 10Z");
+  });
+});

@@ -245,3 +245,220 @@ export function removeNode(nodes: AbsNode[], closed: boolean, index: number): Ab
   if (nodes.length <= (closed ? 3 : 2)) return nodes;
   return nodes.filter((_, k) => k !== index);
 }
+
+// ---- reading an outline written as SVG path text ----
+
+/** One unbroken piece of an outline. */
+export interface Piece {
+  nodes: AbsNode[];
+  closed: boolean;
+}
+
+const HOW_MANY: Record<string, number> = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 };
+
+/** A curved corner of an ellipse, as the cubic curves that draw it. Each is [handle, handle, end]. */
+function arcToCurves(x1: number, y1: number, rx: number, ry: number, turn: number, large: boolean, sweep: boolean, x2: number, y2: number): number[][] {
+  rx = Math.abs(rx);
+  ry = Math.abs(ry);
+  if (!rx || !ry || (x1 === x2 && y1 === y2)) return [];
+  const phi = (turn * Math.PI) / 180;
+  const cos = Math.cos(phi);
+  const sin = Math.sin(phi);
+  const dx = (x1 - x2) / 2;
+  const dy = (y1 - y2) / 2;
+  const px = cos * dx + sin * dy;
+  const py = -sin * dx + cos * dy;
+  // radii that are too small to reach are grown until they do
+  const grow = (px * px) / (rx * rx) + (py * py) / (ry * ry);
+  if (grow > 1) {
+    rx *= Math.sqrt(grow);
+    ry *= Math.sqrt(grow);
+  }
+  const top = rx * rx * ry * ry - rx * rx * py * py - ry * ry * px * px;
+  const k = (large === sweep ? -1 : 1) * Math.sqrt(Math.max(0, top) / (rx * rx * py * py + ry * ry * px * px));
+  const cxp = (k * rx * py) / ry;
+  const cyp = (-k * ry * px) / rx;
+  const cx = cos * cxp - sin * cyp + (x1 + x2) / 2;
+  const cy = sin * cxp + cos * cyp + (y1 + y2) / 2;
+  const angle = (ux: number, uy: number, vx: number, vy: number) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+  const start = angle(1, 0, (px - cxp) / rx, (py - cyp) / ry);
+  let sweepBy = angle((px - cxp) / rx, (py - cyp) / ry, (-px - cxp) / rx, (-py - cyp) / ry);
+  if (!sweep && sweepBy > 0) sweepBy -= Math.PI * 2;
+  if (sweep && sweepBy < 0) sweepBy += Math.PI * 2;
+  const parts = Math.max(1, Math.ceil(Math.abs(sweepBy) / (Math.PI / 2) - 1e-9));
+  const step = sweepBy / parts;
+  const reach = (4 / 3) * Math.tan(step / 4);
+  const at = (t: number) => ({ x: cx + rx * Math.cos(t) * cos - ry * Math.sin(t) * sin, y: cy + rx * Math.cos(t) * sin + ry * Math.sin(t) * cos });
+  const along = (t: number) => ({ x: -rx * Math.sin(t) * cos - ry * Math.cos(t) * sin, y: -rx * Math.sin(t) * sin + ry * Math.cos(t) * cos });
+  const out: number[][] = [];
+  for (let i = 0; i < parts; i++) {
+    const t1 = start + i * step;
+    const t2 = t1 + step;
+    const a = at(t1);
+    const b = i === parts - 1 ? { x: x2, y: y2 } : at(t2);
+    const da = along(t1);
+    const db = along(t2);
+    out.push([a.x + reach * da.x, a.y + reach * da.y, b.x - reach * db.x, b.y - reach * db.y, b.x, b.y]);
+  }
+  return out;
+}
+
+/**
+ * Read SVG path text (the d of a path) into points and handles. Every move (M) starts a new piece.
+ * Lines, curves and arcs are understood, in capital (exact) and small (from the last point) letters.
+ * Throws a plain sentence when the text cannot be read.
+ */
+export function parsePathData(d: string): Piece[] {
+  const pieces: Piece[] = [];
+  let cur: Piece | null = null;
+  let i = 0;
+  const space = () => {
+    while (i < d.length && /[\s,]/.test(d[i])) i++;
+  };
+  const number = (): number => {
+    space();
+    const m = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/.exec(d.slice(i, i + 40));
+    if (!m) throw new Error(`The outline has something that is not a number near "${d.slice(Math.max(0, i - 8), i + 8).trim()}".`);
+    i += m[0].length;
+    return parseFloat(m[0]);
+  };
+  // the two yes-or-no marks of an arc may be written with no space between them
+  const flag = (): boolean => {
+    space();
+    if (d[i] !== "0" && d[i] !== "1") throw new Error("An arc (A) needs 0 or 1 for its two marks, after the turn angle.");
+    return d[i++] === "1";
+  };
+
+  let x = 0;
+  let y = 0;
+  let startX = 0;
+  let startY = 0;
+  // the last handle, for the smooth curves S and T
+  let hx = 0;
+  let hy = 0;
+  let last = "";
+  let cmd = "";
+  let total = 0;
+
+  const point = (px: number, py: number) => {
+    if (!cur) begin(x, y);
+    if (++total > 4000) throw new Error("The outline has too many points. Keep it under 4000.");
+    cur!.nodes.push({ x: px, y: py, ix: 0, iy: 0, ox: 0, oy: 0 });
+    x = px;
+    y = py;
+  };
+  const begin = (px: number, py: number) => {
+    cur = { nodes: [], closed: false };
+    pieces.push(cur);
+    startX = px;
+    startY = py;
+    point(px, py);
+  };
+  const curve = (ax: number, ay: number, bx: number, by: number, px: number, py: number) => {
+    if (!cur) begin(x, y);
+    const from = cur!.nodes[cur!.nodes.length - 1];
+    from.ox = ax - from.x;
+    from.oy = ay - from.y;
+    point(px, py);
+    const to = cur!.nodes[cur!.nodes.length - 1];
+    to.ix = bx - px;
+    to.iy = by - py;
+  };
+
+  for (;;) {
+    space();
+    if (i >= d.length) break;
+    if (/[a-zA-Z]/.test(d[i])) {
+      cmd = d[i++];
+      if (!(cmd.toLowerCase() in HOW_MANY)) throw new Error(`The outline uses "${cmd}", which is not a path letter. Use M, L, H, V, C, S, Q, T, A and Z.`);
+      if (cmd.toLowerCase() === "z") {
+        if (cur) (cur as Piece).closed = true;
+        x = startX;
+        y = startY;
+        cur = null;
+        last = "z";
+        continue;
+      }
+    } else if (!cmd || cmd.toLowerCase() === "z") {
+      throw new Error("The outline must start with M and a point, like M 0 0.");
+    }
+    const low = cmd.toLowerCase();
+    const rel = cmd === low;
+    const bx = rel ? x : 0;
+    const by = rel ? y : 0;
+    if (low === "m") {
+      begin(bx + number(), by + number());
+      cmd = rel ? "l" : "L"; // more points after a move are lines
+    } else if (!pieces.length) {
+      throw new Error("The outline must start with M and a point, like M 0 0.");
+    } else if (low === "l") point(bx + number(), by + number());
+    else if (low === "h") point(bx + number(), y);
+    else if (low === "v") point(x, by + number());
+    else if (low === "c") {
+      const n = [number(), number(), number(), number(), number(), number()];
+      hx = bx + n[2];
+      hy = by + n[3];
+      curve(bx + n[0], by + n[1], hx, hy, bx + n[4], by + n[5]);
+    } else if (low === "s") {
+      const n = [number(), number(), number(), number()];
+      const ax = last === "c" || last === "s" ? 2 * x - hx : x;
+      const ay = last === "c" || last === "s" ? 2 * y - hy : y;
+      hx = bx + n[0];
+      hy = by + n[1];
+      curve(ax, ay, hx, hy, bx + n[2], by + n[3]);
+    } else if (low === "q" || low === "t") {
+      let qx: number;
+      let qy: number;
+      if (low === "q") {
+        qx = bx + number();
+        qy = by + number();
+      } else {
+        qx = last === "q" || last === "t" ? 2 * x - hx : x;
+        qy = last === "q" || last === "t" ? 2 * y - hy : y;
+      }
+      const px = bx + number();
+      const py = by + number();
+      hx = qx;
+      hy = qy;
+      curve(x + (2 / 3) * (qx - x), y + (2 / 3) * (qy - y), px + (2 / 3) * (qx - px), py + (2 / 3) * (qy - py), px, py);
+    } else if (low === "a") {
+      const rx = number();
+      const ry = number();
+      const turn = number();
+      const large = flag();
+      const sweep = flag();
+      const px = bx + number();
+      const py = by + number();
+      const curves = arcToCurves(x, y, rx, ry, turn, large, sweep, px, py);
+      if (curves.length === 0) point(px, py);
+      for (const c of curves) curve(c[0], c[1], c[2], c[3], c[4], c[5]);
+    }
+    last = low;
+  }
+
+  for (const p of pieces) {
+    const curved = (n: AbsNode) => !!(n.ix || n.iy || n.ox || n.oy);
+    const meets = () => p.nodes.length > 1 && Math.hypot(p.nodes[0].x - p.nodes[p.nodes.length - 1].x, p.nodes[0].y - p.nodes[p.nodes.length - 1].y) < 1e-6;
+    if (!p.closed) continue;
+    // a loop made of one curve needs a point in the middle before its two ends can be joined
+    if (meets() && p.nodes.length === 2 && p.nodes.some(curved)) p.nodes = splitSegment(p.nodes, false, 0, 0.5).nodes;
+    if (meets()) {
+      const end = p.nodes.pop()!;
+      p.nodes[0].ix = end.ix;
+      p.nodes[0].iy = end.iy;
+    }
+    // a closed shape is kept as three points or more
+    if (p.nodes.length === 2 && p.nodes.some(curved)) p.nodes = splitSegment(p.nodes, true, 0, 0.5).nodes;
+    if (p.nodes.length < 3) p.closed = false;
+  }
+  return pieces.filter((p) => p.nodes.length >= 2);
+}
+
+/** One outline from SVG path text, with its box and its points as fractions of that box. Throws a plain sentence if it cannot be used. */
+export function outlineFromData(d: string): { x: number; y: number; width: number; height: number; nodes: PathNode[]; closed: boolean } {
+  if (typeof d !== "string" || !d.trim()) throw new Error("A path needs d: its outline as SVG path text, like M 0 0 L 100 0 L 50 80 Z.");
+  const pieces = parsePathData(d);
+  if (pieces.length === 0) throw new Error("The outline needs at least two points.");
+  if (pieces.length > 1) throw new Error(`The outline has ${pieces.length} separate pieces. A path holds one piece, with no holes. Make one path for each piece (each M starts a new piece).`);
+  return { ...fromAbs(pieces[0].nodes), closed: pieces[0].closed };
+}

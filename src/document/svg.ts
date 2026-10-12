@@ -1,5 +1,6 @@
 import { assetUrl } from "../project/assets";
 import { layoutText, lineStep, lineWidth } from "../canvas/text";
+import { turnOf, turnedBox } from "./geometry";
 import { pathData, toAbs } from "./path";
 import type { Doc, El } from "./types";
 
@@ -22,7 +23,15 @@ export function toSvg(doc: Doc, id: string): string {
   const defs: string[] = [];
   let n = 0;
 
+  // a turned thing is drawn upright, then turned around its middle
   const draw = (el: El, dx: number, dy: number): string => {
+    const body = shape(el, dx, dy);
+    const turn = turnOf(el);
+    if (!turn || !body) return body;
+    return `<g transform="rotate(${num(turn)} ${num(dx + el.x + el.width / 2)} ${num(dy + el.y + el.height / 2)})">${body}</g>`;
+  };
+
+  const shape = (el: El, dx: number, dy: number): string => {
     const x = dx + el.x;
     const y = dy + el.y;
     const op = el.opacity < 1 ? ` opacity="${num(el.opacity)}"` : "";
@@ -113,12 +122,12 @@ export function toSvg(doc: Doc, id: string): string {
     }
     const stroke = el.stroke && el.strokeWidth > 0 ? ` stroke="${esc(el.stroke)}" stroke-width="${num(el.strokeWidth)}"` : "";
     const r = Math.max(0, Math.min(el.radius, el.width / 2, el.height / 2));
-    const shape =
+    const own =
       el.type === "ellipse"
         ? `<ellipse cx="${num(x + el.width / 2)}" cy="${num(y + el.height / 2)}" rx="${num(el.width / 2)}" ry="${num(el.height / 2)}" fill="${fill}"${stroke}${filter}/>`
         : `<rect x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}"${r ? ` rx="${num(r)}"` : ""} fill="${fill}"${stroke}${filter}/>`;
 
-    if (!el.childIds.length) return op ? `<g${op}>${shape}</g>` : shape;
+    if (!el.childIds.length) return op ? `<g${op}>${own}</g>` : own;
 
     const cid = `c${n++}`;
     defs.push(
@@ -131,12 +140,13 @@ export function toSvg(doc: Doc, id: string): string {
       .filter(Boolean)
       .map((c) => draw(c, x, y))
       .join("");
-    return `<g${op}>${shape}<g clip-path="url(#${cid})">${kids}</g></g>`;
+    return `<g${op}>${own}<g clip-path="url(#${cid})">${kids}</g></g>`;
   };
 
-  // draw the element at the top-left corner of the picture
-  const body = draw({ ...root, x: 0, y: 0 }, 0, 0);
-  const w = num(root.width);
-  const h = num(root.height);
+  // draw the element at the top-left corner of the picture, with room for all of it when it is turned
+  const box = turnedBox({ x: 0, y: 0, width: root.width, height: root.height }, turnOf(root));
+  const body = draw({ ...root, x: 0 - box.x, y: 0 - box.y }, 0, 0);
+  const w = num(box.width);
+  const h = num(box.height);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${defs.length ? `<defs>${defs.join("")}</defs>` : ""}${body}</svg>\n`;
 }
