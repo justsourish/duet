@@ -26,6 +26,7 @@ const WORKING: Record<string, string> = {
   create_instance: "Placing a copy",
   place_image: "Bringing in a picture",
   make_mask: "Cutting something to a shape",
+  trace_image: "Tracing a picture",
   select_elements: "Pointing at things",
   create_element: "Adding something",
   set_props: "Changing something",

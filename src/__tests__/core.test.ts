@@ -1499,3 +1499,75 @@ describe("masks", () => {
     expect(g?.childIds).toEqual(["leaf", "pic"]);
   });
 });
+
+import { TraceError, foreground, traceShapes } from "../document/trace";
+import { drawnBox } from "../document/path";
+
+describe("tracing a picture into shapes", () => {
+  /** A small picture: every pixel painted by a rule. null leaves it see-through. */
+  const picture = (w: number, h: number, paint: (x: number, y: number) => [number, number, number] | null) => {
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const c = paint(x, y);
+        if (c) rgba.set([c[0], c[1], c[2], 255], (y * w + x) * 4);
+      }
+    return rgba;
+  };
+  const green: [number, number, number] = [40, 140, 80];
+  const white: [number, number, number] = [255, 255, 255];
+
+  it("follows a square exactly, corner to corner", () => {
+    const [shape] = traceShapes(picture(40, 40, (x, y) => (x >= 10 && x < 30 && y >= 5 && y < 25 ? green : null)), 40, 40);
+    expect(shape.area).toBe(400);
+    expect(shape.color).toBe("#288c50");
+    expect(shape.nodes.map((n) => [n.x, n.y])).toEqual([[10, 5], [30, 5], [30, 25], [10, 25]]);
+    expect(shape.nodes.every((n) => !n.ix && !n.iy && !n.ox && !n.oy)).toBe(true); // square corners stay sharp
+  });
+
+  it("keeps the gentle corners of a straight-sided shape as corners", () => {
+    // a box with a shallow point at the bottom, like a shield
+    const inside = (x: number, y: number) => x >= 20 && x < 180 && y >= 20 && (y < 100 || y < 130 - (Math.abs(x - 100) * 30) / 80);
+    const [shape] = traceShapes(picture(200, 160, (x, y) => (inside(x, y) ? green : white)), 200, 160);
+    expect(shape.nodes.length).toBe(5);
+    expect(shape.nodes.every((n) => !n.ix && !n.iy && !n.ox && !n.oy)).toBe(true);
+  });
+
+  it("turns a round blob into a few smooth points that still fit it", () => {
+    const [shape] = traceShapes(picture(120, 120, (x, y) => (Math.hypot(x + 0.5 - 60, y + 0.5 - 60) < 40 ? green : white)), 120, 120);
+    expect(shape.nodes.length).toBeLessThan(40);
+    expect(shape.nodes.some((n) => n.ox || n.oy)).toBe(true);
+    const box = drawnBox(shape.nodes, true);
+    for (const v of [box.x, box.y]) expect(Math.abs(v - 20)).toBeLessThan(2);
+    for (const v of [box.width, box.height]) expect(Math.abs(v - 80)).toBeLessThan(3);
+    // every spot on the traced outline is close to the real circle
+    for (const p of flatten(shape.nodes, true, 8)) expect(Math.abs(Math.hypot(p.x - 60, p.y - 60) - 40)).toBeLessThan(2.5);
+  });
+
+  it("makes one shape for each separate part, biggest first, and drops specks", () => {
+    const shapes = traceShapes(
+      picture(100, 60, (x, y) => (x >= 5 && x < 45 && y >= 10 && y < 50 ? green : x >= 60 && x < 80 && y >= 20 && y < 40 ? [200, 60, 60] : x === 95 && y === 5 ? green : white)),
+      100,
+      60,
+    );
+    expect(shapes.length).toBe(2);
+    expect(shapes[0].area).toBe(1600);
+    expect(shapes[1].color).toBe("#c83c3c");
+  });
+
+  it("uses see-through parts when the picture has them, and the edge colour when it does not", () => {
+    const cut = foreground(picture(20, 20, (x) => (x < 10 ? white : null)), 20, 20);
+    expect(cut[0]).toBe(1);
+    expect(cut[19]).toBe(0);
+    const plain = foreground(picture(20, 20, (x, y) => (x > 5 && x < 15 && y > 5 && y < 15 ? green : white)), 20, 20);
+    expect(plain[0]).toBe(0);
+    expect(plain[10 * 20 + 10]).toBe(1);
+  });
+
+  it("says plainly when a picture is not one it can trace", () => {
+    const busy = picture(40, 40, (x, y) => ((x * 7 + y * 13) % 5 < 2 ? [20, 20, 20] : [240, 200, 40]));
+    expect(() => traceShapes(busy, 40, 40)).toThrow(TraceError);
+    expect(() => traceShapes(busy, 40, 40)).toThrow(/busy background/);
+    expect(() => traceShapes(picture(30, 30, () => white), 30, 30)).toThrow(/nothing in this picture/);
+  });
+});

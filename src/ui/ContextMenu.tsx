@@ -4,7 +4,7 @@ import { newId } from "../commands";
 import { defaultLayout } from "../document/layout";
 import { extractPayload } from "../document/clipboard";
 import { currentDoc, dispatch, getState, select } from "../state/store";
-import { maskChoice, maskSelection } from "./actions";
+import { maskChoice, maskSelection, traceSelection } from "./actions";
 import { useDismiss } from "./useDismiss";
 
 /** What you can do with the selection, found where you right-click. */
@@ -47,6 +47,7 @@ function itemsFor(): Item[] {
       if (currentDoc().elements[id]) select([id]);
     },
   });
+  if (one?.type === "image") out.push({ label: "Trace into shapes", run: () => void traceSelection() });
   if (maskChoice(doc, els)) out.push({ label: "Use as mask", hint: "Cmd Option M", run: maskSelection });
   if (els.some((e) => e.type === "group")) {
     out.push({

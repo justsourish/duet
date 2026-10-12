@@ -10,6 +10,7 @@ import type { El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
 import { addPicture, mimeFor } from "../project/assets";
 import { saveNow } from "../project/project";
+import { tracePicture } from "../project/trace";
 import { currentDoc, dispatch, getState, goTo, select } from "../state/store";
 import { addMsg, askDesigner, getChat, updateMsg } from "./chat";
 import { getSkills } from "./skills";
@@ -158,6 +159,12 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "trace_image",
+    description:
+      "Turn a picture on the canvas into flat drawn shapes that follow its outline, laid exactly over it, so a leaf, a logo or a silhouette becomes something you can recolour, reshape and turn. It works only on pictures with a plain or see-through background. Each separate part becomes one path in its average colour, and holes are filled in. The picture stays where it is. Look at the picture first if you are not sure it is suitable.",
+    inputSchema: { type: "object", properties: { id: { ...str, description: "The picture to trace." } }, required: ["id"] },
+  },
+  {
     name: "make_mask",
     description:
       "Show things only inside a shape, for example a photo cut to the outline of a leaf or a circle. shapeId is a rectangle, an ellipse or a closed path. ids are the things to show through it, such as pictures. They must all sit in the same frame as the shape. They are put together in a group. The shape is no longer drawn, it only decides where the others show. Move or resize a thing inside the group to change which part of it shows.",
@@ -170,7 +177,7 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask"]);
+const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
 const RISKY = new Set(["delete_elements", "place_image"]);
 
@@ -203,6 +210,8 @@ export function summarise(tool: string, a: Args): string {
       return `Place a copy of ${nameOf(a.componentId)}`;
     case "place_image":
       return `Bring in the picture at ${String(a.path)}`;
+    case "trace_image":
+      return `Trace ${nameOf(a.id)} into shapes`;
     case "make_mask":
       return `Show ${namesOf(a.ids)} only inside ${nameOf(a.maskId ?? a.shapeId)}`;
     case "set_props": {
@@ -320,6 +329,12 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       a.props = p;
       return { args: a };
     }
+    case "trace_image": {
+      const el = typeof a.id === "string" ? doc.elements[a.id] : undefined;
+      if (!el) return { error: `No element with id: ${String(a.id)}.` };
+      if (el.type !== "image") return { error: `${el.name} is not a picture. Only pictures can be traced.` };
+      return { args: { id: el.id } };
+    }
     case "make_mask": {
       const shape = typeof a.shapeId === "string" ? doc.elements[a.shapeId] : undefined;
       if (!shape) return { error: `No element with id: ${String(a.shapeId)}.` };
@@ -408,8 +423,21 @@ async function placeImage(args: Args): Promise<ToolResult> {
   return { text: `Placed the picture as ${String(args.id)} named "${name}", ${width} by ${height} (the file is ${pic.width} by ${pic.height}). Call look_at_image to see it.` };
 }
 
+/** Trace a picture into shapes, as one step the designer can undo. */
+async function traceImage(args: Args): Promise<ToolResult> {
+  await ensureSaved();
+  const name = nameOf(args.id);
+  const result = await tracePicture(String(args.id), "ai");
+  if ("why" in result) return fail(result.why);
+  addMsg({ role: "note", text: `Traced ${name} into shapes`, undoStep: getState().cursor });
+  void saveNow();
+  const where = result.groupId ? `, together in the group ${result.groupId}` : "";
+  return { text: `Made ${result.ids.length} ${result.ids.length === 1 ? "path" : "paths"}: ${result.ids.join(", ")}${where}. They sit exactly over the picture, which is still there. Change their fill with set_props.` };
+}
+
 async function apply(tool: string, args: Args): Promise<ToolResult> {
   if (tool === "place_image") return placeImage(args);
+  if (tool === "trace_image") return traceImage(args);
   await ensureSaved();
   const label = commandLabel(tool as CommandName, args as never);
   dispatch(tool as CommandName, args as never, "ai");

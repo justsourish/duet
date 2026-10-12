@@ -5,7 +5,7 @@ import { exportDesign } from "../project/exporter";
 import { exportDesignData, getRecents, inTauri, newProject, openProject, openProjectAt, saveNow } from "../project/project";
 import { currentDoc, getState, redo, undo } from "../state/store";
 import { getLayout, resetLayout, setLayout } from "./layout";
-import { deleteSelection, detachSelection, duplicateSelection, groupSelection, makeComponent, maskSelection, toggleAutoLayout, toggleLock, ungroupSelection } from "./actions";
+import { deleteSelection, detachSelection, duplicateSelection, groupSelection, makeComponent, maskSelection, toggleAutoLayout, traceSelection, toggleLock, ungroupSelection } from "./actions";
 
 /**
  * The menu bar at the top of the screen. It holds what people expect to find there, so nothing
@@ -81,6 +81,7 @@ export async function installMenu() {
       await item("Group", groupSelection),
       await item("Ungroup", ungroupSelection),
       await item("Use as mask", maskSelection, "CmdOrCtrl+Alt+M"),
+      await item("Trace picture into shapes", () => void traceSelection()),
       await line(),
       await item("Make a component", makeComponent),
       await item("Detach from the original", detachSelection),

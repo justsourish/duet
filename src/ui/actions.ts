@@ -4,6 +4,8 @@ import { extractPayload } from "../document/clipboard";
 import { canMask } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
 import type { Doc, El } from "../document/types";
+import { message } from "@tauri-apps/plugin-dialog";
+import { tracePicture } from "../project/trace";
 import { currentDoc, dispatch, getState, select } from "../state/store";
 
 /** Things you can do with the selection. The menus, the right-click menu and the panel all use these. */
@@ -47,6 +49,13 @@ export function maskSelection() {
   const id = newId("group");
   dispatch("make_mask", { maskId: shape.id, ids: els.filter((e) => e !== shape).map((e) => e.id), groupId: id });
   if (currentDoc().elements[id]) select([id]);
+}
+
+/** Turn the chosen picture into flat drawn shapes, laid over it. Says why when it cannot. */
+export async function traceSelection() {
+  const { els } = picked();
+  const result = els.length === 1 && els[0].type === "image" ? await tracePicture(els[0].id) : { why: "Choose one picture to trace." };
+  if ("why" in result) await message(result.why, { title: "Duet" }).catch(() => console.warn(result.why));
 }
 
 export function ungroupSelection() {
