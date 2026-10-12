@@ -725,7 +725,15 @@ button {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
+  /* clip, not hidden: a hidden box can still be scrolled from code, which slid the title out of view */
+  overflow: clip;
+}
+/* only the message list gives way when space is short */
+.chat > * {
+  flex-shrink: 0;
+}
+.chat > .cbody {
+  flex-shrink: 1;
 }
 .chead {
   display: flex;
@@ -779,7 +787,7 @@ button {
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
-  min-height: 80px;
+  min-height: 48px;
   max-height: 340px;
   user-select: text;
   -webkit-user-select: text;

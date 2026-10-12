@@ -10,7 +10,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 
 ## What works today
 
-- An infinite canvas with frames, rectangles, ellipses, text, pictures and drawn lines. Pan, zoom, select, move, resize (Shift keeps proportions, Option scales from the centre), snapping guides.
+- An infinite canvas with frames, rectangles, ellipses, text, pictures and drawn lines. Pan, zoom, select, move, resize (Shift keeps proportions, Option scales from the centre), snapping guides. A zoom tool on Z: click to zoom in, Option click to zoom out, drag to zoom into an area.
 - A pen tool with corners and smooth curves, and point editing: double-click a line to move points, pull handles, add and remove points.
 - Rotation: drag just outside a corner to turn a shape, text, picture, drawn line or group (Shift turns in steps of 15), or type an angle. Frames and copies of components stay upright.
 - Pictures: drag them in, paste them, or use the Image button. They are kept once inside your project file.
@@ -24,7 +24,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Prototype: link anything to a screen and choose what a click does (go there, open it on top as an overlay, or go back), how it arrives (dissolve or push in any direction, with its own time), and let tall screens scroll. Press Present to click through, with an optional phone frame. Selecting a linked thing draws an arrow to its screen.
 - A project is one `.duet` file. It holds your design, your pictures and your whole history, and it saves itself as you work. You can export the design as plain JSON any time.
 - A history that survives closing the app, drawn as two lanes: **You** and **Duet**. Save a named version ("Client round 1") and go back to it any time. Nothing is ever lost when you go back.
-- A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. It can draw its own shapes with curves, like leaves and arches, and turn them. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
+- A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. It can draw its own shapes with curves, like leaves and arches, and turn them. It can bring a picture file from your computer onto the canvas, and asks you first. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
 - Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens). Turn them on and off, write your own, or import skill files and folders.
 
 ## What does not exist yet

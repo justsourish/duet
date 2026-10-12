@@ -454,11 +454,66 @@ export function parsePathData(d: string): Piece[] {
   return pieces.filter((p) => p.nodes.length >= 2);
 }
 
-/** One outline from SVG path text, with its box and its points as fractions of that box. Throws a plain sentence if it cannot be used. */
+/** The box that holds exactly what is drawn. Curve handles may reach outside it. */
+export function drawnBox(nodes: AbsNode[], closed: boolean): { x: number; y: number; width: number; height: number } {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  // the furthest a curve reaches along one direction: its ends, and where it turns back
+  const reach = (out: number[], p0: number, p1: number, p2: number, p3: number) => {
+    out.push(p0, p3);
+    const a = -p0 + 3 * p1 - 3 * p2 + p3;
+    const b = 2 * (p0 - 2 * p1 + p2);
+    const c = p1 - p0;
+    const at = (t: number) => {
+      if (t <= 0 || t >= 1) return;
+      const u = 1 - t;
+      out.push(u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3);
+    };
+    if (Math.abs(a) < 1e-9) {
+      if (Math.abs(b) > 1e-9) at(-c / b);
+      return;
+    }
+    const root = b * b - 4 * a * c;
+    if (root < 0) return;
+    at((-b + Math.sqrt(root)) / (2 * a));
+    at((-b - Math.sqrt(root)) / (2 * a));
+  };
+  if (nodes.length === 1) {
+    xs.push(nodes[0].x);
+    ys.push(nodes[0].y);
+  }
+  for (const [i, j] of segments(nodes.length, closed)) {
+    const a = nodes[i];
+    const b = nodes[j];
+    reach(xs, a.x, a.x + a.ox, b.x + b.ix, b.x);
+    reach(ys, a.y, a.y + a.oy, b.y + b.iy, b.y);
+  }
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return { x, y, width: Math.max(1, Math.max(...xs) - x), height: Math.max(1, Math.max(...ys) - y) };
+}
+
+/**
+ * One outline from SVG path text, with its box and its points as fractions of that box. The box fits
+ * what is drawn, so the shape turns around its own middle. Throws a plain sentence if it cannot be used.
+ */
 export function outlineFromData(d: string): { x: number; y: number; width: number; height: number; nodes: PathNode[]; closed: boolean } {
   if (typeof d !== "string" || !d.trim()) throw new Error("A path needs d: its outline as SVG path text, like M 0 0 L 100 0 L 50 80 Z.");
   const pieces = parsePathData(d);
   if (pieces.length === 0) throw new Error("The outline needs at least two points.");
   if (pieces.length > 1) throw new Error(`The outline has ${pieces.length} separate pieces. A path holds one piece, with no holes. Make one path for each piece (each M starts a new piece).`);
-  return { ...fromAbs(pieces[0].nodes), closed: pieces[0].closed };
+  const { nodes, closed } = pieces[0];
+  const box = drawnBox(nodes, closed);
+  return {
+    ...box,
+    nodes: nodes.map((n) => ({
+      x: r4((n.x - box.x) / box.width),
+      y: r4((n.y - box.y) / box.height),
+      ix: r4(n.ix / box.width),
+      iy: r4(n.iy / box.height),
+      ox: r4(n.ox / box.width),
+      oy: r4(n.oy / box.height),
+    })),
+    closed,
+  };
 }

@@ -7,6 +7,8 @@ import { measureText } from "../canvas/text";
 import { canTurn } from "../document/geometry";
 import { outlineFromData } from "../document/path";
 import type { El } from "../document/types";
+import { invoke } from "@tauri-apps/api/core";
+import { addPicture, mimeFor } from "../project/assets";
 import { saveNow } from "../project/project";
 import { currentDoc, dispatch, getState, goTo, select } from "../state/store";
 import { addMsg, askDesigner, getChat, updateMsg } from "./chat";
@@ -109,6 +111,24 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "place_image",
+    description:
+      "Put a picture file from this computer onto the canvas, such as a photo or a reference the designer told you about. path is the full path to a PNG, JPG, GIF, WebP or SVG file (~ for the home folder works). Leave width and height out to keep its shape at up to 640 pixels on the longer side, or give one of them to set the size and keep the shape. The designer may be asked to allow it. You still cannot see the picture: call look_at_image with the new id if you need to.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: str,
+        x: num,
+        y: num,
+        width: num,
+        height: num,
+        parentId: { ...str, description: "A frame to put it in. Leave out for the page." },
+        name: { ...str, description: "What to call it in the layers list. Leave out to use the file name." },
+      },
+      required: ["path", "x", "y"],
+    },
+  },
+  {
     name: "set_props",
     description: "Change properties of one or more elements.",
     inputSchema: { type: "object", properties: { ids, props }, required: ["ids", "props"] },
@@ -145,7 +165,8 @@ export const TOOLS: ToolDef[] = [
 ];
 
 const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements"]);
-const RISKY = new Set(["delete_elements"]);
+/** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
+const RISKY = new Set(["delete_elements", "place_image"]);
 
 type Args = Record<string, unknown>;
 
@@ -174,6 +195,8 @@ export function summarise(tool: string, a: Args): string {
     }
     case "create_instance":
       return `Place a copy of ${nameOf(a.componentId)}`;
+    case "place_image":
+      return `Bring in the picture at ${String(a.path)}`;
     case "set_props": {
       const p = (a.props ?? {}) as Record<string, unknown>;
       // a new outline is a long list of points: say what it is instead of spelling it out
@@ -233,6 +256,19 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       delete a.d;
       a.props = p;
       a.id = newId(String(a.type));
+      return { args: a };
+    }
+    case "place_image": {
+      const path = typeof a.path === "string" ? a.path.trim() : "";
+      if (!path) return { error: "path must be the full path to a picture file." };
+      if (!/^(~[\\/]|[\\/]|[a-zA-Z]:[\\/])/.test(path)) return { error: "Give the full path to the file, starting from the top folder or from ~ for the home folder." };
+      if (!mimeFor(path)) return { error: "That is not a picture Duet can use. It takes PNG, JPG, GIF, WebP and SVG files." };
+      if (typeof a.x !== "number" || typeof a.y !== "number") return { error: "x and y must be numbers." };
+      for (const k of ["width", "height"]) if (a[k] != null && !(typeof a[k] === "number" && (a[k] as number) > 0)) return { error: `${k} must be a number above 0.` };
+      if (a.parentId != null && doc.elements[String(a.parentId)]?.type !== "frame") return { error: `parentId ${String(a.parentId)} is not a frame.` };
+      a.path = path;
+      a.parentId = a.parentId ?? null;
+      a.id = newId("image");
       return { args: a };
     }
     case "create_instance": {
@@ -310,7 +346,50 @@ async function ensureSaved() {
   if (p.path && p.status !== "saved") await saveNow();
 }
 
+/** Longest side of a picture the AI brings in, unless it asks for a size. Same as a picture the designer drops in. */
+const PICTURE_SIDE = 640;
+
+/** Read a picture file from the computer, keep it in the project, and put it on the canvas. */
+async function placeImage(args: Args): Promise<ToolResult> {
+  const file = String(args.path).split(/[\\/]/).pop() ?? "Image";
+  let pic: { src: string; width: number; height: number };
+  try {
+    let path = String(args.path);
+    if (path.startsWith("~")) {
+      // Duet's own folder sits in the home folder, which is how the home folder is found
+      const home = (await invoke<string>("duet_home")).replace(/[\\/]\.duet[\\/]?$/, "");
+      path = home + path.slice(1);
+    }
+    const bin = atob(await invoke<string>("read_binary_file", { path }));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    pic = await addPicture(file, bytes);
+  } catch {
+    return fail(`The picture at ${String(args.path)} could not be read. Check the path, and that the file is a picture.`);
+  }
+  const shape = pic.width / pic.height;
+  let width: number;
+  let height: number;
+  if (typeof args.width === "number" && typeof args.height === "number") [width, height] = [args.width, args.height];
+  else if (typeof args.width === "number") [width, height] = [args.width, args.width / shape];
+  else if (typeof args.height === "number") [width, height] = [args.height * shape, args.height];
+  else {
+    const k = Math.min(1, PICTURE_SIDE / Math.max(pic.width, pic.height));
+    [width, height] = [pic.width * k, pic.height * k];
+  }
+  width = Math.max(8, Math.round(width));
+  height = Math.max(8, Math.round(height));
+  const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : file.replace(/\.[^.]+$/, "") || "Image";
+  await ensureSaved();
+  dispatch("create_element", { type: "image", id: String(args.id), parentId: args.parentId as string | null, x: Number(args.x), y: Number(args.y), width, height, props: { src: pic.src, name } }, "ai");
+  if (!currentDoc().elements[String(args.id)]) return fail("The picture could not be placed there.");
+  addMsg({ role: "note", text: `Brought in the picture ${file}`, undoStep: getState().cursor });
+  void saveNow();
+  return { text: `Placed the picture as ${String(args.id)} named "${name}", ${width} by ${height} (the file is ${pic.width} by ${pic.height}). Call look_at_image to see it.` };
+}
+
 async function apply(tool: string, args: Args): Promise<ToolResult> {
+  if (tool === "place_image") return placeImage(args);
   await ensureSaved();
   const label = commandLabel(tool as CommandName, args as never);
   dispatch(tool as CommandName, args as never, "ai");
@@ -405,7 +484,7 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
   }
   if (RISKY.has(name) && mode === "ask") {
     const ok = await askDesigner(summary);
-    if (!ok) return fail("The designer said not now. Do not delete this.");
+    if (!ok) return fail(name === "place_image" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
   }
   return apply(name, check.args);
 }

@@ -19,7 +19,12 @@ import { getSkills } from "./skills";
 
 const WORKING: Record<string, string> = {
   get_context: "Looking at your design",
+  get_outline: "Looking at your design",
   get_document: "Looking at your design",
+  look_at_image: "Looking at a picture",
+  look_at_design: "Checking how it looks",
+  create_instance: "Placing a copy",
+  place_image: "Bringing in a picture",
   select_elements: "Pointing at things",
   create_element: "Adding something",
   set_props: "Changing something",
@@ -61,6 +66,7 @@ How you work:
 - How Duet is built: a page holds frames (screens). Frames hold rectangles, ellipses, text, pictures, paths (any shape drawn as an outline), groups, and copies of components. x and y are relative to the parent frame. A frame with auto layout places its children by itself, so change its layout instead of moving things by hand. A component is the original, and copies follow it: change the original to change them all, or change a thing inside one copy to change only that copy.
 - For organic shapes like leaves, petals, waves and arches, draw a path with curves instead of stacking rectangles and ellipses. Turn things with rotation: use the same outline again at other angles. A thing turns around the middle of its box, so to fan leaves out from one point, move each one as well as turning it. Frames cannot be turned.
 - Work in batches: plan the whole change, then make it with few calls. Do not call a tool just to check what you already know.
+- You can bring a picture file from the designer's computer onto the canvas when they point you to one. Only bring in files they asked for.
 - You cannot see pictures or the design unless you ask. When the designer mentions a photo or an image, or one is selected, call look_at_image before you draw or describe anything from it, and never guess what is in it. After you change a design, call look_at_design once to check your work. Each look costs tokens, so look once, then work from what you saw.
 - Make small, clear changes. Prefer one good result over many options, unless asked for options.
 - Everything you change is saved as a step in the designer's history, marked as yours, and they can undo it.
@@ -112,6 +118,12 @@ function onClaudeLine(line: string) {
         else workingId = addMsg({ role: "working", text });
       }
     }
+    return;
+  }
+
+  // a tool's answer coming back means that tool has finished
+  if (ev.type === "user" && workingId !== null) {
+    showWorking("Thinking...");
     return;
   }
 
@@ -178,6 +190,9 @@ function onAgyLine(line: string) {
         // Antigravity can reach for its own tools too. Say so, so nothing happens out of sight.
         showWorking(`Antigravity is using its own tool (${String(step.tool_name ?? "unknown")})...`);
       }
+    } else if (step.step_type === "tool" && step.state === "DONE") {
+      // the tool has finished: do not leave its message up as if it were still running
+      if (workingId !== null) showWorking("Thinking...");
     }
   } else if (ev.event === "result") {
     streamId = null;

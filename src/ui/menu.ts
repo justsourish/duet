@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/menu";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { exportDesign } from "../project/exporter";
@@ -30,7 +31,7 @@ export async function installMenu() {
   const app = await Submenu.new({
     text: "Duet",
     items: [
-      await PredefinedMenuItem.new({ item: { About: { name: "Duet", version: "0.3.0" } } }),
+      await PredefinedMenuItem.new({ item: { About: { name: "Duet", version: await getVersion().catch(() => undefined) } } }),
       await line(),
       await PredefinedMenuItem.new({ item: "Hide" }),
       await PredefinedMenuItem.new({ item: "HideOthers" }),

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { sendToAgent, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
@@ -13,7 +13,7 @@ import type { Corner } from "./layout";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
   { mode: "suggest", label: "Suggest", hint: "Duet only suggests. Nothing changes until you tap Apply." },
-  { mode: "ask", label: "Ask first", hint: "Duet makes design changes. It asks before deleting anything." },
+  { mode: "ask", label: "Ask first", hint: "Duet makes design changes. It asks before deleting anything or bringing in a file." },
   { mode: "auto", label: "Auto", hint: "Duet does what you ask on its own. You can undo any step." },
 ];
 
@@ -112,11 +112,39 @@ export default function ChatPanel() {
     window.addEventListener("pointerup", up);
   };
   const [text, setText] = useState("");
-  const end = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
 
+  // How tall the message list may be, so the whole chat always fits in the canvas area with its
+  // title on top and the message box at the bottom, however big it was pulled or wherever it was dropped.
+  const [room, setRoom] = useState<number | null>(null);
+  const dragging = moving !== null;
+  useLayoutEffect(() => {
+    const el = box.current;
+    const parent = el?.parentElement;
+    if (!el || !parent || minimized) return;
+    const hangs = dragging || !("corner" in place) || place.corner.startsWith("t");
+    const measure = () => {
+      const body = list.current;
+      if (!body) return;
+      let rest = el.offsetHeight - el.clientHeight; // the border
+      for (const c of Array.from(el.children) as HTMLElement[]) if (c !== body && !c.classList.contains("csize")) rest += c.offsetHeight;
+      // hanging from the top it must stop above the bottom edge; sitting on the bottom it may reach up to the top
+      const space = hangs ? parent.clientHeight - el.offsetTop - 16 : parent.clientHeight - 32;
+      const next = Math.max(48, Math.floor(space - rest));
+      setRoom((was) => (was === next ? was : next));
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(parent);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [minimized, place, dragging]);
+
+  // Show the newest message. Only the message list is scrolled: asking the browser to bring a message
+  // into view can also slide the whole panel, and then its title and background go missing.
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [messages, minimized]);
+    if (list.current) list.current.scrollTop = list.current.scrollHeight;
+  }, [messages, minimized, room, h]);
 
   const send = (t: string) => {
     if (!t.trim() || running) return;
@@ -187,7 +215,7 @@ export default function ChatPanel() {
             )}
           </div>
           <div className="mode-hint">{MODES.find((m) => m.mode === mode)?.hint}</div>
-          <div className="cbody" style={{ maxHeight: h }}>
+          <div className="cbody" ref={list} style={{ maxHeight: room === null ? h : Math.min(h, room) }}>
             {found === false && (
               <div className="m">
                 Duet works with the AI tool you already use, so it costs nothing extra. I could not find{" "}
@@ -250,7 +278,6 @@ export default function ChatPanel() {
                 );
               return <div key={m.id} className="m">{m.text}</div>;
             })}
-            <div ref={end} />
           </div>
 
           {messages.length === 0 && found !== false && (

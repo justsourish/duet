@@ -1334,11 +1334,77 @@ describe("outlines written as path text", () => {
     expect(() => outlineFromData("M0 0 L10 0 L10 10 Z M 20 20 L 30 30")).toThrow(/2 separate pieces/);
   });
 
+  it("fits the box to what is drawn, so a shape turns around its own middle", () => {
+    const arch = outlineFromData("M 0 0 A 50 50 0 0 1 100 0");
+    expect(arch.y).toBeCloseTo(-50, 3);
+    expect(arch.height).toBeCloseTo(50, 3);
+    const leaf = outlineFromData("M 0 0 C 30 -40 70 -40 100 0 C 70 40 30 40 0 0 Z");
+    expect([leaf.x, leaf.y, leaf.width, leaf.height]).toEqual([0, -30, 100, 60]);
+  });
+
   it("gives a box and points ready to be made into a path", () => {
     const shape = outlineFromData("M 20 10 L 120 10 L 70 90 Z");
     expect([shape.x, shape.y, shape.width, shape.height]).toEqual([20, 10, 100, 80]);
     expect(shape.closed).toBe(true);
     const d = runCommand(emptyDoc(), "create_element", { id: "p", type: "path", x: shape.x, y: shape.y, width: shape.width, height: shape.height, props: { nodes: shape.nodes, closed: shape.closed } });
     expect(pathData(toAbs(d.elements.p, d.elements.p.x, d.elements.p.y), true)).toBe("M20 10L120 10L70 90L20 10Z");
+  });
+});
+
+import { TOOLS, callTool } from "../ai/tools";
+import { getChat, setMode } from "../ai/chat";
+
+describe("what the AI can ask for", () => {
+  beforeEach(() => {
+    resetStore();
+    setMode("auto");
+  });
+
+  it("draws a path from an outline, measured from x and y, and can turn it", async () => {
+    const res = await callTool("create_element", { type: "path", x: 100, y: 200, d: "M 0 0 C 30 -40 70 -40 100 0 C 70 40 30 40 0 0 Z", props: { fill: "#2f7d4f", stroke: null, rotation: 30 } });
+    expect(res.isError).toBeFalsy();
+    const el = Object.values(currentDoc().elements)[0];
+    expect(el.type).toBe("path");
+    expect(el.closed).toBe(true);
+    // the box fits what is drawn (the leaf reaches 30 up and 30 down), not the curve handles
+    expect([el.x, el.y, el.width, el.height]).toEqual([100, 170, 100, 60]);
+    expect(el.rotation).toBe(30);
+    expect(res.text).toContain("Its box sits at 100,170");
+  });
+
+  it("redraws a path, and explains an outline it cannot use", async () => {
+    await callTool("create_element", { type: "path", x: 0, y: 0, d: "M 0 0 L 10 0 L 10 10 Z" });
+    const id = Object.keys(currentDoc().elements)[0];
+    const ok = await callTool("set_props", { ids: [id], props: { d: "M 50 50 L 150 50 L 100 120 Z" } });
+    expect(ok.isError).toBeFalsy();
+    expect(currentDoc().elements[id]).toMatchObject({ x: 50, y: 50, width: 100, height: 70 });
+    const bad = await callTool("create_element", { type: "path", x: 0, y: 0, d: "M0 0 L10 0 Z M 5 5 L 9 9" });
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toContain("separate pieces");
+    expect(Object.keys(currentDoc().elements).length).toBe(1);
+  });
+
+  it("is told plainly that a frame cannot be turned", async () => {
+    dispatch("create_element", { id: "f", type: "frame", x: 0, y: 0, width: 100, height: 100 });
+    const res = await callTool("set_props", { ids: ["f"], props: { rotation: 20 } });
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain("cannot be turned");
+    expect(currentDoc().elements.f.rotation).toBe(0);
+  });
+
+  it("can ask to bring in a picture, but only a real picture file with a full path", async () => {
+    expect(TOOLS.some((t) => t.name === "place_image")).toBe(true);
+    expect((await callTool("place_image", { path: "leaf.png", x: 0, y: 0 })).text).toContain("full path");
+    expect((await callTool("place_image", { path: "/Users/someone/notes.txt", x: 0, y: 0 })).text).toContain("not a picture");
+    expect((await callTool("place_image", { path: "~/Desktop/leaf.png", x: 0, y: 0, parentId: "nope" })).text).toContain("not a frame");
+  });
+
+  it("only suggests bringing in a picture when the designer chose Suggest", async () => {
+    setMode("suggest");
+    const res = await callTool("place_image", { path: "~/Desktop/leaf.png", x: 0, y: 0 });
+    expect(res.text).toContain("Suggestion shown");
+    const last = getChat().messages[getChat().messages.length - 1];
+    expect(last.proposal?.summary).toBe("Bring in the picture at ~/Desktop/leaf.png");
+    expect(Object.keys(currentDoc().elements).length).toBe(0);
   });
 });

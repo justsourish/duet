@@ -42,6 +42,8 @@ After a batch of features: bump the version (`package.json`, `src-tauri/Cargo.to
 
 Done on 12 October 2026, not yet in a version: rotation for everything except frames and copies of components, and the AI can draw paths from SVG path text. Still open from the same request, in this order: any shape as a mask for a picture, tracing a picture with a clean or transparent background into flat shapes (write our own tracer, Potrace is GPL), then boolean cuts, which need paths with holes first. Removing the background from a real photo needs a machine learning model, so do not promise it.
 
+Also done on 12 October 2026, not yet in a version: a zoom tool on Z, the AI can bring in a picture file (`place_image`, asked first), the chat can no longer slide out of its own box, the "working" line in the chat clears when a tool finishes, and the AI tool runs in its own session so its helpers are stopped with it (a leftover Antigravity helper was found spinning a whole core). The installed app in `/Applications` was rebuilt from this code without a version bump.
+
 How rotation is built, so the next change does not fight it: only things with no children are drawn turned (`turnOf` in `src/document/geometry.ts`). A group has no turn of its own. Setting its `rotation` swings what is inside it and remembers the angle. So positions up the tree are still plain sums, and frames clip and lay out as before.
 
 ## 3. Known gaps

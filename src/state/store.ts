@@ -5,7 +5,7 @@ import type { Actor, CommandName } from "../commands";
 import { emptyDoc } from "../document/types";
 import type { Doc, ElementType, Rect } from "../document/types";
 
-export type Tool = "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "pen";
+export type Tool = "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "pen" | "zoom";
 
 export interface HistoryEntry {
   doc: Doc;

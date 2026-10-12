@@ -15,9 +15,11 @@ A designer and an AI share the same controls. Every change in Duet is one named 
 
 ## Tools
 
-`get_context`, `get_document`, `select_elements`, `create_element`, `set_props`, `move_elements`, `resize_element`, `reparent_elements`, `delete_elements`.
+`get_context`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `select_elements`, `create_element`, `create_instance`, `place_image`, `set_props`, `move_elements`, `resize_element`, `reparent_elements`, `delete_elements`.
 
 `create_element` also makes a `path`: any shape drawn as one outline, given as SVG path text in `d` (lines, curves and arcs), measured from `x`, `y`. `set_props` takes `d` to redraw one path, and `rotation` in degrees. Frames and copies of components cannot be turned, and the tool says so.
+
+`place_image` reads a picture file from the computer by its full path and puts it on the canvas. Only picture files are accepted. Because a picture the AI then looks at is sent to the AI service, the designer is asked first in Ask first mode, the same as for deleting.
 
 ## Permission levels
 
@@ -28,6 +30,8 @@ Enforced inside Duet, not left to the agent.
 | Suggest | Shown as a suggestion with an Apply button. Nothing changes. | Same |
 | Ask first (default) | Applied straight away | The designer is asked first |
 | Auto | Applied | Applied |
+
+Bringing in a picture file follows the Deleting column.
 
 Every AI change is a step in the history, marked as Duet's (bottom lane), saved right away, and undoable.
 

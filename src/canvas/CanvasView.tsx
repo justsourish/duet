@@ -61,6 +61,7 @@ type Drag =
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number }
   | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number } }
   | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean }
+  | { kind: "zoom"; start: { x: number; y: number }; sx: number; sy: number }
   | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
 
 const CREATE_TOOLS: Tool[] = ["frame", "rect", "ellipse", "text"];
@@ -103,8 +104,7 @@ export function pastePayload(payload: ClipPayload, duplicate = false) {
 export const MIN_ZOOM = 0.02;
 export const MAX_ZOOM = 64;
 
-function fitBox(box: Rect, width: number, height: number, maxZoom: number) {
-  const pad = 120;
+function fitBox(box: Rect, width: number, height: number, maxZoom: number, pad = 120) {
   const zoom = Math.max(MIN_ZOOM, Math.min(maxZoom, (width - pad * 2) / box.width, (height - pad * 2) / box.height));
   setViewport({
     zoom,
@@ -309,6 +309,11 @@ export default function CanvasView() {
       return;
     }
 
+    if (s.tool === "zoom") {
+      dragRef.current = { kind: "zoom", start: { x: p.x, y: p.y }, sx: p.sx, sy: p.sy };
+      return;
+    }
+
     if (CREATE_TOOLS.includes(s.tool)) {
       const type = s.tool as ElementType;
       const parentId = frameAt(currentDoc(s), p.x, p.y);
@@ -381,6 +386,7 @@ export default function CanvasView() {
         return setCursor("crosshair");
       }
       if (CREATE_TOOLS.includes(s.tool)) return setCursor(s.tool === "text" ? "text" : "crosshair");
+      if (s.tool === "zoom") return setCursor(e.altKey ? "zoom-out" : "zoom-in");
       const h = handleAt(p.sx, p.sy);
       if (h) return setCursor(handleCursor(h, turnOf(currentDoc(s).elements[s.selection[0]])));
       if (turnAt(p.sx, p.sy)) return setCursor(TURN_CURSOR);
@@ -405,6 +411,12 @@ export default function CanvasView() {
 
     if (d.kind === "pan") {
       setViewport({ ...s.viewport, x: d.vx + (p.sx - d.sx), y: d.vy + (p.sy - d.sy) });
+      return;
+    }
+
+    if (d.kind === "zoom") {
+      // dragging marks out the area to zoom into
+      if (Math.hypot(p.sx - d.sx, p.sy - d.sy) >= 4) setOverlay({ marquee: normalize(d.start.x, d.start.y, p.x, p.y) });
       return;
     }
 
@@ -494,6 +506,15 @@ export default function CanvasView() {
       return;
     }
 
+    if (d.kind === "zoom") {
+      setOverlay({ marquee: null });
+      const area = normalize(d.start.x, d.start.y, p.x, p.y);
+      // a drag zooms into the area you marked; a click zooms in on that spot, or out with Option
+      if (Math.hypot(p.sx - d.sx, p.sy - d.sy) >= 4 && area.width > 0 && area.height > 0) fitBox(area, sizeRef.current.w, sizeRef.current.h, MAX_ZOOM, 24);
+      else zoomAt(p.sx, p.sy, e.altKey ? 0.5 : 2);
+      return;
+    }
+
     if (d.kind === "create") {
       const dragged = Math.hypot(p.sx - d.sx, p.sy - d.sy) >= 4;
       const size = DEFAULT_SIZE[d.type];
@@ -555,6 +576,7 @@ export default function CanvasView() {
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
+    if (getState().tool === "zoom") return; // each click already zoomed
     if (getState().tool === "pen") {
       if (penActive()) penFinish(false);
       return;
@@ -694,6 +716,7 @@ export default function CanvasView() {
       const s = getState();
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
+      if (e.key === "Alt" && s.tool === "zoom") setCursor("zoom-out");
 
       if (editing()) {
         if (e.key === "Enter" || e.key === "Escape") {
@@ -829,11 +852,11 @@ export default function CanvasView() {
         zoomToElements(getState().selection, sizeRef.current.w, sizeRef.current.h);
         return;
       }
-      const tools: Record<string, Tool> = { v: "move", f: "frame", r: "rect", o: "ellipse", t: "text", h: "hand", p: "pen" };
+      const tools: Record<string, Tool> = { v: "move", f: "frame", r: "rect", o: "ellipse", t: "text", h: "hand", p: "pen", z: "zoom" };
       if (tools[key]) {
         e.preventDefault();
         setTool(tools[key]);
-        setCursor(tools[key] === "hand" ? "grab" : tools[key] === "move" ? "default" : "crosshair");
+        setCursor(tools[key] === "hand" ? "grab" : tools[key] === "zoom" ? "zoom-in" : tools[key] === "move" ? "default" : "crosshair");
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
@@ -885,6 +908,7 @@ export default function CanvasView() {
         spaceRef.current = false;
         setCursor("default");
       }
+      if (e.key === "Alt" && getState().tool === "zoom") setCursor("zoom-in");
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
