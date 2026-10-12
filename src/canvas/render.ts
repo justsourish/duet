@@ -113,30 +113,69 @@ function drawLine(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
   }
 }
 
-/** A picture, filled into its box without stretching (the extra is cropped), with rounded corners and a shadow. */
+/** Pictures with rounded corners and a shadow, already cut to shape. Kept so they are not cut again on every repaint. */
+const cutSheets = new Map<string, HTMLCanvasElement>();
+
+/** The picture laid into its box without stretching (the extra is cropped), with the corners cut. */
+function layPicture(ctx: CanvasRenderingContext2D, pic: HTMLImageElement, el: El, x: number, y: number) {
+  ctx.save();
+  try {
+    roundedPath(ctx, x, y, el.width, el.height, el.radius);
+    ctx.clip();
+    const scale = Math.max(el.width / pic.naturalWidth, el.height / pic.naturalHeight);
+    const w = pic.naturalWidth * scale;
+    const h = pic.naturalHeight * scale;
+    ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+  } finally {
+    ctx.restore();
+  }
+}
+
+/**
+ * A picture. Nothing is painted behind it, so the see-through parts of a logo stay see-through,
+ * and its shadow follows what is really there instead of the box around it.
+ */
 function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
   const pic = getPicture(el.src);
-  roundedPath(ctx, x, y, el.width, el.height, el.radius);
-  if (el.shadow) castShadow(ctx, el.shadow);
-  ctx.fillStyle = pic ? "#ffffff" : "#2a2a31";
-  ctx.fill();
-  ctx.shadowColor = "transparent";
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
-  if (pic && pic.naturalWidth > 0 && pic.naturalHeight > 0) {
-    ctx.save();
+  if (!pic || !pic.naturalWidth || !pic.naturalHeight) {
+    // a quiet box stands in until the picture has loaded
+    roundedPath(ctx, x, y, el.width, el.height, el.radius);
+    ctx.fillStyle = "#2a2a31";
+    ctx.fill();
+  } else {
     try {
-      roundedPath(ctx, x, y, el.width, el.height, el.radius);
-      ctx.clip();
-      const scale = Math.max(el.width / pic.naturalWidth, el.height / pic.naturalHeight);
-      const w = pic.naturalWidth * scale;
-      const h = pic.naturalHeight * scale;
-      ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+      if (!el.shadow) {
+        layPicture(ctx, pic, el, x, y);
+      } else {
+        // A shadow cannot be cast through a cut-out, so the picture is cut to shape on a spare sheet
+        // first, at the sharpness it will be seen at, and then laid down with its shadow.
+        const m = ctx.getTransform();
+        const k = Math.hypot(m.a, m.b) || 1;
+        const w = Math.max(1, Math.min(4096, Math.ceil(el.width * k)));
+        const h = Math.max(1, Math.min(4096, Math.ceil(el.height * k)));
+        const key = `${el.src}|${el.width}|${el.height}|${el.radius}|${w}x${h}`;
+        let sheet = cutSheets.get(key);
+        if (!sheet) {
+          sheet = document.createElement("canvas");
+          sheet.width = w;
+          sheet.height = h;
+          const c = sheet.getContext("2d");
+          if (c) {
+            c.scale(w / el.width, h / el.height);
+            layPicture(c, pic, el, 0, 0);
+          }
+          if (cutSheets.size > 40) cutSheets.clear();
+          cutSheets.set(key, sheet);
+        }
+        castShadow(ctx, el.shadow);
+        ctx.drawImage(sheet, x, y, el.width, el.height);
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
     } catch (e) {
       logError("draw picture", e);
-    } finally {
-      ctx.restore();
     }
   }
   if (el.stroke && el.strokeWidth > 0) {

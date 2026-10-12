@@ -27,11 +27,13 @@ export async function lookAtImage(id: unknown, max: unknown): Promise<ToolResult
   canvas.height = Math.max(1, Math.round(pic.naturalHeight * k));
   const ctx = canvas.getContext("2d");
   if (!ctx) return { text: "Could not prepare the picture.", isError: true };
-  ctx.fillStyle = "#ffffff";
+  // A logo can have see-through parts, and may itself be white or black. Mid grey behind it shows either.
+  const clear = !/\.jpe?g$/i.test(el.src);
+  ctx.fillStyle = clear ? "#8a8a92" : "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(pic, 0, 0, canvas.width, canvas.height);
   return {
-    text: `The picture "${el.name}", ${pic.naturalWidth} by ${pic.naturalHeight} pixels, shown at ${canvas.width} by ${canvas.height}. On the canvas it sits at ${Math.round(el.width)} by ${Math.round(el.height)}.`,
+    text: `The picture "${el.name}", ${pic.naturalWidth} by ${pic.naturalHeight} pixels, shown at ${canvas.width} by ${canvas.height}. On the canvas it sits at ${Math.round(el.width)} by ${Math.round(el.height)}.${clear ? " If it has see-through parts, they show here as flat mid grey. On the canvas they are see-through." : ""}`,
     image: { data: canvas.toDataURL("image/jpeg", 0.85).split(",")[1], mime: "image/jpeg" },
   };
 }
