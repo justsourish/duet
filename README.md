@@ -16,7 +16,7 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Pictures: drag them in, paste them, or use the Image button. They are kept once inside your project file.
 - Auto layout: Shift A lines up what is inside a frame in a row or a column, with gap, padding, alignment, hug and fill.
 - Components: Cmd Option K turns a frame or group into a component. Place copies from the Assets tab. Change the original and every copy follows. Change text, colour or pictures on one copy without touching the rest.
-- Real text: any installed font, weight, size, line height, letter spacing, alignment, and boxes that wrap. Save a text style and change it once for every text that uses it.
+- Real text: any installed font, weight, size, line height, letter spacing, alignment, and boxes that wrap. While you type, the words stay exactly where they sit on the canvas. Save a text style and change it once for every text that uses it.
 - Masks: choose a picture and a shape, then Design, Use as mask (Cmd Option M). The picture shows only inside the shape, whether that is a circle, a rounded box or a leaf you drew. Move the picture inside to choose what shows. Ungroup takes the mask off.
 - Trace: choose a picture with a plain or see-through background, then Design, Trace picture into shapes. Each separate part becomes a flat drawn shape you can recolour, reshape and turn. The picture stays underneath.
 - Pictures keep their see-through parts, so a PNG logo sits on any background, and its shadow follows the logo.

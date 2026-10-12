@@ -51,7 +51,7 @@ import { logError } from "../errorLog";
 import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
 import { draw, labelRect, screenRect } from "./render";
-import { fontCss, lineStep } from "./text";
+import { fontCss, layoutText, lineStep, textLift } from "./text";
 
 type Drag =
   | { kind: "pen"; index: number | null }
@@ -988,7 +988,7 @@ export default function CanvasView() {
           Find your design
         </button>
       )}
-      {editingId && <TextEditor id={editingId} zoom={viewport.zoom} vx={viewport.x} vy={viewport.y} />}
+      {editingId && <TextEditor key={editingId} id={editingId} zoom={viewport.zoom} vx={viewport.x} vy={viewport.y} />}
     </div>
   );
 }
@@ -997,11 +997,15 @@ function normalize(x1: number, y1: number, x2: number, y2: number): Rect {
   return { x: Math.min(x1, x2), y: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) };
 }
 
+/** Space between the edge of the typing box and its words: its padding and its border. */
+const EDIT_EDGE = 3.5;
+
 function TextEditor({ id, zoom, vx, vy }: { id: string; zoom: number; vx: number; vy: number }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const cancelled = useRef(false);
   const doc = currentDoc();
   const el = doc.elements[id];
+  const [value, setValue] = useState(el?.text ?? "");
 
   useEffect(() => {
     ref.current?.focus();
@@ -1012,40 +1016,51 @@ function TextEditor({ id, zoom, vx, vy }: { id: string; zoom: number; vx: number
   const pos = worldPos(doc, id);
 
   const finish = () => {
-    const value = ref.current?.value ?? el.text;
+    const text = ref.current?.value ?? el.text;
     setEditing(null);
     if (cancelled.current) {
       if (el.text === "") dispatch("delete_elements", { ids: [id] });
       return;
     }
-    if (value.trim() === "") {
+    if (text.trim() === "") {
       dispatch("delete_elements", { ids: [id] });
       select([]);
       return;
     }
-    dispatch("set_props", { ids: [id], props: { text: value }, label: "Edit text" });
+    dispatch("set_props", { ids: [id], props: { text }, label: "Edit text" });
   };
+
+  // The words on the canvas are hidden while you type, and this box stands exactly where they were:
+  // the same lines, the same size, and the same height above the line, so nothing jumps or doubles.
+  const box = layoutText({ ...el, text: value || " " });
+  const width = (el.textFixed ? el.width : box.width) * zoom;
+  const height = box.height * zoom;
+  const lift = textLift(el) * zoom;
 
   return (
     <textarea
       ref={ref}
       className="text-editor"
-      defaultValue={el.text}
+      value={value}
       spellCheck={false}
+      wrap={el.textFixed ? "soft" : "off"}
       style={{
-        left: pos.x * zoom + vx - 2,
-        top: pos.y * zoom + vy - 2,
+        left: pos.x * zoom + vx - EDIT_EDGE,
+        top: pos.y * zoom + vy - EDIT_EDGE + lift,
+        // a hair wider than the words need, so a line that only just fits is not pushed down
+        width: width + (el.textFixed ? 0.5 : 4),
+        height: height + Math.max(0, -lift),
         font: fontCss(el, el.fontSize * zoom),
         lineHeight: `${lineStep(el) * zoom}px`,
         letterSpacing: el.letterSpacing * zoom,
         textAlign: el.textAlign,
         color: el.fill,
-        minWidth: el.textFixed ? el.width * zoom : 40,
-        width: el.textFixed ? el.width * zoom : undefined,
+        whiteSpace: el.textFixed ? "pre-wrap" : "pre",
         // turned text is typed at the angle it sits at
         transform: turnOf(el) ? `rotate(${turnOf(el)}deg)` : undefined,
-        transformOrigin: `${(el.width * zoom) / 2 + 2}px ${(el.height * zoom) / 2 + 2}px`,
+        transformOrigin: `${EDIT_EDGE + (el.width * zoom) / 2}px ${EDIT_EDGE - lift + (el.height * zoom) / 2}px`,
       }}
+      onChange={(e) => setValue(e.target.value)}
       onBlur={finish}
       onKeyDown={(e) => {
         e.stopPropagation();

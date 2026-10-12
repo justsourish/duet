@@ -211,6 +211,9 @@ function clipTo(ctx: CanvasRenderingContext2D, shape: El, ox: number, oy: number
   ctx.clip();
 }
 
+/** The text being typed into right now on the canvas, if any. Set only while the editor's canvas is painted. */
+let typingId: string | null = null;
+
 /** Draw an element and everything inside it. ox and oy are where its parent sits. */
 export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox: number, oy: number) {
   const x = ox + el.x;
@@ -225,6 +228,11 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
   }
 
   if (el.type === "text") {
+    // while its words are being typed, the typing box shows them instead
+    if (el.id === typingId) {
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle = el.fill;
     ctx.font = fontCss(el);
     ctx.textBaseline = "top";
@@ -349,9 +357,14 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   ctx.save();
   ctx.translate(s.viewport.x, s.viewport.y);
   ctx.scale(s.viewport.zoom, s.viewport.zoom);
-  for (const id of doc.rootIds) {
-    const el = doc.elements[id];
-    if (el) drawElement(ctx, doc, el, 0, 0);
+  typingId = s.editingId;
+  try {
+    for (const id of doc.rootIds) {
+      const el = doc.elements[id];
+      if (el) drawElement(ctx, doc, el, 0, 0);
+    }
+  } finally {
+    typingId = null;
   }
   ctx.restore();
 

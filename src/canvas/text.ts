@@ -36,6 +36,27 @@ export function fontCss(f: Pick<TextFace, "fontFamily" | "fontWeight" | "fontSiz
 
 export const lineStep = (f: Pick<TextFace, "fontSize" | "lineHeight">) => f.fontSize * (f.lineHeight || LINE_HEIGHT);
 
+/**
+ * The canvas hangs words from the top of their line. A typing box centres them in the line instead.
+ * This is how far down (or, when negative, up) a typing box must move so its words sit where the
+ * canvas draws them. In design pixels.
+ */
+export function textLift(f: TextFace): number {
+  const c = ctx2d();
+  if (!c) return 0;
+  c.font = fontCss(f);
+  c.textBaseline = "alphabetic";
+  const m = c.measureText("Hg");
+  c.textBaseline = "top";
+  const fromTop = c.measureText("Hg").fontBoundingBoxAscent;
+  c.textBaseline = "alphabetic";
+  const rise = m.fontBoundingBoxAscent;
+  const fall = m.fontBoundingBoxDescent;
+  if (![rise, fall, fromTop].every(Number.isFinite)) return 0;
+  // on the canvas the baseline sits (rise - fromTop) below the top; in a typing box it sits half the spare line space plus the rise below it
+  return -fromTop - (lineStep(f) - rise - fall) / 2;
+}
+
 /** How wide one line is, with the letter spacing added. */
 export function lineWidth(text: string, f: TextFace): number {
   const c = ctx2d();

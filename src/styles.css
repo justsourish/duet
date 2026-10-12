@@ -274,7 +274,11 @@ button {
   resize: none;
   overflow: hidden;
   white-space: pre;
-  field-sizing: content;
+  /* its size is set to fit the words exactly, so the padding and border must sit outside that */
+  box-sizing: content-box;
+  overflow-wrap: normal;
+  word-break: normal;
+  caret-color: var(--accent);
   user-select: text;
   -webkit-user-select: text;
 }
