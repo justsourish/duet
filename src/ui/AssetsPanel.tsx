@@ -36,7 +36,7 @@ export default function AssetsPanel() {
       <div className="h">Components</div>
       {list.length === 0 && (
         <div className="empty">
-          Select a frame or group and press Cmd Option K to make it a component. Then you can place as many copies as you like, and changing the original changes them all.
+          Select anything, such as a logo, a picture, a button or a whole frame, and press Cmd Option K to make it a component. Then you can place as many copies as you like, and changing the original changes them all.
         </div>
       )}
       {list.map((c) => (

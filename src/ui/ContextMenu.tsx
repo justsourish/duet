@@ -5,6 +5,7 @@ import { defaultLayout } from "../document/layout";
 import { extractPayload } from "../document/clipboard";
 import { currentDoc, dispatch, getState, select } from "../state/store";
 import { maskChoice, maskSelection, traceSelection } from "./actions";
+import { canBeComponent } from "../document/components";
 import { useDismiss } from "./useDismiss";
 
 /** What you can do with the selection, found where you right-click. */
@@ -32,8 +33,8 @@ function itemsFor(): Item[] {
     },
   });
 
-  if (one && (one.type === "frame" || one.type === "group") && !one.component && !one.id.includes("::")) {
-    out.push({ label: "Make a component", hint: "Cmd Option K", run: () => dispatch("create_component", { id: one.id }) });
+  if (canBeComponent(one ?? undefined)) {
+    out.push({ label: "Make a component", hint: "Cmd Option K", run: () => dispatch("create_component", { id: one!.id }) });
   }
   if (one?.type === "instance") out.push({ label: "Detach from the original", hint: "Cmd Option B", run: () => dispatch("detach_instance", { id: one.id }) });
   if (one?.type === "instance") out.push({ label: "Go to the original", run: () => select([one.componentId]) });

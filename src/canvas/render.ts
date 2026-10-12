@@ -4,6 +4,7 @@ import type { Doc, El, Rect } from "../document/types";
 import { currentDoc } from "../state/store";
 import type { State } from "../state/store";
 import { logError } from "../errorLog";
+import { isLooseCopy } from "../document/components";
 import { getPicture } from "../project/assets";
 import { HANDLES } from "./handles";
 import { FONT_STACK, fontCss, layoutText, lineStep, lineWidth, measureText } from "./text";
@@ -258,7 +259,7 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
 
   // a mask shows what is in the group only inside its shape, and the shape itself is not drawn
   const mask = maskOf(doc, el);
-  if (el.type === "group" || mask) {
+  if (el.type === "group" || mask || isLooseCopy(doc, el)) {
     if (mask) clipTo(ctx, mask, x, y);
     for (const id of el.childIds) {
       const child = doc.elements[id];

@@ -1571,3 +1571,93 @@ describe("tracing a picture into shapes", () => {
     expect(() => traceShapes(picture(30, 30, () => white), 30, 30)).toThrow(/nothing in this picture/);
   });
 });
+
+import { canBeComponent, isLooseCopy } from "../document/components";
+
+describe("a single thing as a component", () => {
+  // a picture made into a component, and one copy of it placed beside it
+  const scene = () => {
+    let d = runCommand(emptyDoc(), "create_element", { id: "pic", type: "image", x: 0, y: 0, width: 300, height: 200, props: { src: "assets/abc.png", name: "Logo", shadow: { x: 0, y: 4, blur: 8, color: "#00000040" } } });
+    d = runCommand(d, "create_component", { id: "pic" });
+    return runCommand(d, "create_instance", { componentId: "pic", id: "copy", x: 400, y: 0 });
+  };
+
+  it("can be made from a picture, a shape or text, but not from a copy", () => {
+    const d = scene();
+    expect(d.elements.pic.component).toBe(true);
+    expect(canBeComponent(d.elements.copy)).toBe(false);
+    expect(canBeComponent(d.elements["copy::pic"])).toBe(false);
+    const t = runCommand(emptyDoc(), "create_element", { id: "t", type: "text", x: 0, y: 0, width: 10, height: 10 });
+    expect(runCommand(t, "create_component", { id: "t" }).elements.t.component).toBe(true);
+  });
+
+  it("shows the real thing in every copy, not an empty box", () => {
+    const d = scene();
+    const copy = d.elements.copy;
+    expect(copy.childIds).toEqual(["copy::pic"]);
+    const inside = d.elements["copy::pic"];
+    expect(inside).toMatchObject({ type: "image", src: "assets/abc.png", x: 0, y: 0, width: 300, height: 200, component: false });
+    // the copy itself is a clear box: the look, shadow and all, belongs to the picture inside
+    expect(copy).toMatchObject({ fill: "#00000000", stroke: null, shadow: null });
+    expect(inside.shadow).toEqual({ x: 0, y: 4, blur: 8, color: "#00000040" });
+    expect(isLooseCopy(d, copy)).toBe(true);
+    expect(hitTest(d, 500, 100)).toBe("copy");
+  });
+
+  it("sizes the thing inside when the copy is sized, and follows the original", () => {
+    let d = runCommand(scene(), "resize_element", { id: "copy", x: 400, y: 0, width: 150, height: 100 });
+    expect(d.elements["copy::pic"]).toMatchObject({ width: 150, height: 100 });
+    d = runCommand(d, "set_props", { ids: ["pic"], props: { src: "assets/new.png", radius: 12 } });
+    expect(d.elements["copy::pic"]).toMatchObject({ src: "assets/new.png", radius: 12, width: 150, height: 100 });
+  });
+
+  it("keeps a change made on one copy", () => {
+    let d = runCommand(scene(), "set_props", { ids: ["copy::pic"], props: { opacity: 0.5 } });
+    d = runCommand(d, "set_props", { ids: ["pic"], props: { radius: 8 } });
+    expect(d.elements["copy::pic"]).toMatchObject({ opacity: 0.5, radius: 8 });
+    expect(d.elements.pic.opacity).toBe(1);
+  });
+
+  it("is saved without its inside, and comes back the same", () => {
+    const d = scene();
+    const text = serializeDoc(d);
+    expect(text).not.toContain("copy::pic");
+    expect(parseDoc(text).elements["copy::pic"]).toMatchObject({ type: "image", src: "assets/abc.png" });
+  });
+
+  it("mends copies that were saved as empty boxes by an older version", () => {
+    // how an older Duet wrote a copy of a picture: a grey box with nothing inside
+    const old = JSON.parse(serializeDoc(scene()));
+    Object.assign(old.elements.copy, { fill: "#d9d9de", shadow: { x: 0, y: 4, blur: 8, color: "#00000040" } });
+    const d = parseDoc(JSON.stringify(old));
+    expect(d.elements.copy.fill).toBe("#00000000");
+    expect(d.elements["copy::pic"].type).toBe("image");
+  });
+
+  it("turns back into the thing itself when detached, or when the original is deleted", () => {
+    const a = runCommand(scene(), "detach_instance", { id: "copy" });
+    expect(a.elements.copy).toMatchObject({ type: "image", src: "assets/abc.png", x: 400, y: 0, component: false, childIds: [] });
+    expect(a.elements["copy::pic"]).toBeUndefined();
+    const b = runCommand(scene(), "delete_elements", { ids: ["pic"] });
+    expect(b.elements.copy).toMatchObject({ type: "image", src: "assets/abc.png", x: 400 });
+  });
+
+  it("is exported as the picture, with no box drawn around it", () => {
+    const svg = toSvg(runCommand(scene(), "create_element", { id: "f", type: "frame", x: 0, y: 300, width: 10, height: 10 }), "copy");
+    expect(svg).not.toContain("<rect x=\"0\" y=\"0\" width=\"300\" height=\"200\" fill");
+  });
+
+  it("lets the AI make a component, but only from something that is not a copy", async () => {
+    resetStore();
+    setMode("auto");
+    dispatch("create_element", { id: "pic", type: "image", x: 0, y: 0, width: 300, height: 200, props: { src: "assets/abc.png" } });
+    expect((await callTool("set_props", { ids: ["pic"], props: { component: true } })).isError).toBeFalsy();
+    const placed = await callTool("create_instance", { componentId: "pic", x: 400, y: 0 });
+    expect(placed.isError).toBeFalsy();
+    const copy = Object.values(currentDoc().elements).find((e) => e.type === "instance")!;
+    expect(currentDoc().elements[`${copy.id}::pic`].type).toBe("image");
+    expect((await callTool("set_props", { ids: [copy.id], props: { component: true } })).text).toContain("copy of a component");
+    expect((await callTool("set_props", { ids: ["pic"], props: { componentId: "x", overrides: { a: {} } } })).isError).toBeFalsy();
+    expect(currentDoc().elements.pic.componentId).toBe("");
+  });
+});

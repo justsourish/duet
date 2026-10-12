@@ -1,5 +1,6 @@
 import { assetUrl } from "../project/assets";
 import { layoutText, lineStep, lineWidth } from "../canvas/text";
+import { isLooseCopy } from "./components";
 import { maskOf, turnOf, turnedBox } from "./geometry";
 import { pathData, toAbs } from "./path";
 import type { Doc, El } from "./types";
@@ -61,7 +62,7 @@ export function toSvg(doc: Doc, id: string): string {
     }
 
     const mask = maskOf(doc, el);
-    if (el.type === "group" || mask) {
+    if (el.type === "group" || mask || isLooseCopy(doc, el)) {
       const kids = el.childIds
         .map((c) => doc.elements[c])
         .filter((c) => c && c !== mask)

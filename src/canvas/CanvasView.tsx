@@ -19,6 +19,7 @@ import {
   worldPos,
   worldRect,
 } from "../document/geometry";
+import { canBeComponent } from "../document/components";
 import type { Doc, ElementType, Rect } from "../document/types";
 import {
   clearOverlay,
@@ -783,7 +784,7 @@ export default function CanvasView() {
       if (mod && e.altKey && e.code === "KeyK") {
         e.preventDefault();
         const doc = currentDoc(s);
-        const ids = s.selection.filter((i) => ["frame", "group"].includes(doc.elements[i]?.type ?? "") && !doc.elements[i].component);
+        const ids = s.selection.filter((i) => canBeComponent(doc.elements[i]));
         for (const id of ids) dispatch("create_component", { id });
         return;
       }

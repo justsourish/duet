@@ -1,7 +1,7 @@
 import { fitText } from "../canvas/text";
 import type { ClipPayload } from "../document/clipboard";
 import { canMask, canTurn, descendants, tidyAngle, turnCentre, turnPoint, worldPos } from "../document/geometry";
-import { captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
+import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
 import type { Doc, El, ElementType, Layout, TextStyle } from "../document/types";
 
@@ -462,7 +462,7 @@ const createComponent: CommandDef<CreateComponentArgs> = {
   label: () => "Make a component",
   run: (doc, a) => {
     const el = doc.elements[a.id];
-    if (!el || isDerived(a.id) || (el.type !== "frame" && el.type !== "group") || el.component) return doc;
+    if (!canBeComponent(el)) return doc;
     const next = clone(doc);
     next.elements[a.id].component = true;
     return next;

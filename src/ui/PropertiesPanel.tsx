@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { currentDoc, dispatch, select, useStore } from "../state/store";
 import type { El, Layout } from "../document/types";
+import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
 import { COMMON_FONTS } from "../canvas/text";
@@ -310,7 +311,8 @@ export default function PropertiesPanel() {
   const first = els[0];
   const allText = els.every((e) => e.type === "text");
   const allImages = els.every((e) => e.type === "image");
-  const allGroups = els.every((e) => e.type === "group");
+  // a group, or a copy of a single thing, has no fill or line of its own: those belong to what is inside
+  const allGroups = els.every((e) => e.type === "group" || isLooseCopy(doc, e));
   const noFill = allImages || allGroups || els.every((e) => e.type === "path" && !e.closed);
   const hasRadius = els.every((e) => e.type === "frame" || e.type === "rect" || e.type === "image");
 
@@ -383,7 +385,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {one && (one.type === "frame" || one.type === "group") && !one.component && !one.id.includes("::") && (
+      {one && canBeComponent(one) && (
         <div className="sec">
           <h4>Component</h4>
           <button className="pill" onClick={() => dispatch("create_component", { id: one.id })}>

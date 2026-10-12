@@ -1,6 +1,7 @@
 import { pastePayload } from "../canvas/CanvasView";
 import { newId } from "../commands";
 import { extractPayload } from "../document/clipboard";
+import { canBeComponent } from "../document/components";
 import { canMask } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
 import type { Doc, El } from "../document/types";
@@ -67,7 +68,7 @@ export function ungroupSelection() {
 }
 
 export function makeComponent() {
-  for (const e of picked().els) if ((e.type === "frame" || e.type === "group") && !e.component && !e.id.includes("::")) dispatch("create_component", { id: e.id });
+  for (const e of picked().els) if (canBeComponent(e)) dispatch("create_component", { id: e.id });
 }
 
 export function detachSelection() {

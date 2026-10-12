@@ -1,8 +1,9 @@
 import type { Doc, El } from "./types";
 
 /**
- * Components. A frame or group marked as a component is the main one. Anything made from it is an
- * instance: a live copy that follows the main, apart from the things you changed on that copy.
+ * Components. Anything marked as a component is the main one: a frame, a group, or a single thing
+ * such as a picture or a logo. Anything made from it is an instance: a live copy that follows the
+ * main, apart from the things you changed on that copy.
  *
  * The copy's inside is not saved in the file. It is rebuilt from the main every time, so changing
  * the main changes every copy, and only the main and your changes are stored.
@@ -12,6 +13,18 @@ const SEP = "::";
 
 /** Things inside an instance are made from the component. Their ids start with the instance's id. */
 export const isDerived = (id: string) => id.includes(SEP);
+
+/** Can this be made into a component? Anything that is not already a copy of one. */
+export const canBeComponent = (el: El | undefined): boolean => !!el && el.type !== "instance" && !el.component && !isDerived(el.id);
+
+/** Does a component hold other things (a frame or a group), or is it one thing by itself (a picture, a shape, some text)? */
+const holdsThings = (el: El) => el.type === "frame" || el.type === "group";
+
+/**
+ * A copy of a single thing, or of a group, has no box of its own to draw: only what is inside it shows.
+ * A copy of a frame is drawn as a frame.
+ */
+export const isLooseCopy = (doc: Doc, el: El): boolean => el.type === "instance" && doc.elements[el.componentId]?.type !== "frame";
 
 /** The instance that owns something inside it, and which part of the component it came from. */
 export function ownerOf(id: string): { owner: string; key: string } | null {
@@ -48,6 +61,13 @@ export function detachInstance(doc: Doc, id: string): Doc {
   if (!inst || inst.type !== "instance") return doc;
   const next = structuredClone(doc);
   const root = next.elements[id];
+  // A copy of a single thing becomes that thing again, not a frame around it.
+  const only = next.elements[`${id}${SEP}${inst.componentId}`];
+  if (only && root.childIds.length === 1 && root.childIds[0] === only.id) {
+    delete next.elements[only.id];
+    next.elements[id] = { ...only, id, parentId: root.parentId, x: root.x, y: root.y, name: root.name, locked: root.locked, grow: root.grow, link: root.link, linkKind: root.linkKind, transition: root.transition, transitionMs: root.transitionMs, component: false, childIds: [] };
+    return next;
+  }
   const map: Record<string, string> = {};
   for (const d of descendantsOf(next, id)) map[d] = fresh(next.elements[d].type);
   for (const [oldId, newId] of Object.entries(map)) {
@@ -118,6 +138,27 @@ export function syncInstances(doc: Doc): Doc {
       inst.childIds = [];
       const ro = inst.overrides["$root"] ?? {};
       for (const k of MIRRORED) (inst as unknown as Record<string, unknown>)[k] = k in ro ? copy(ro[k]) : copy(main[k]);
+      if (!holdsThings(main)) {
+        // A copy of a single thing, such as a picture: the copy is a clear box holding that one thing,
+        // which fills it. So the look belongs to the thing inside, and sizing the copy sizes the thing.
+        Object.assign(inst, { fill: "#00000000", stroke: null, shadow: null, gradient: null, radius: 0, layout: null, mask: false });
+        const e: El = copy(main);
+        e.id = `${inst.id}${SEP}${main.id}`;
+        e.parentId = inst.id;
+        e.component = false;
+        e.childIds = [];
+        e.x = 0;
+        e.y = 0;
+        e.width = inst.width;
+        e.height = inst.height;
+        e.link = null;
+        e.locked = false;
+        e.grow = 0;
+        Object.assign(e, copy(inst.overrides[main.id] ?? {}), { x: 0, y: 0 });
+        next.elements[e.id] = e;
+        inst.childIds.push(e.id);
+        continue;
+      }
       const build = (srcId: string, parentId: string) => {
         const s = next.elements[srcId];
         if (!s) return;
