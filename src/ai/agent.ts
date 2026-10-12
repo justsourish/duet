@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { saveNow } from "../project/project";
 import {
   AGENTS,
@@ -41,6 +42,8 @@ const WORKING: Record<string, string> = {
 let sawText = false;
 let stderrLines: string[] = [];
 let workingId: number | null = null;
+/** False once the designer has left the project the AI was working on. What it says after that is not shown. */
+let live = false;
 
 /** Look for every AI tool this computer has. */
 export async function detectAgent() {
@@ -194,6 +197,7 @@ function onAgyLine(line: string) {
 }
 
 function onLine(line: string) {
+  if (!live) return;
   if (getChat().agent === "agy") onAgyLine(line);
   else onClaudeLine(line);
 }
@@ -216,8 +220,11 @@ export async function startAgentListeners(): Promise<() => void> {
     stderrLines = [...stderrLines.slice(-5), e.payload];
   });
   const offExit = await listen<number | null>("agent-exit", (e) => {
-    removeWorking();
     workingId = null;
+    // the designer has moved to another project, and that chat was already tidied
+    if (!live) return;
+    live = false;
+    removeWorking();
     declineAllWaiting();
     setRunning(false);
     if (!sawText) {
@@ -248,6 +255,7 @@ export async function sendToAgent(text: string) {
     : "";
   const prompt = `${said || "Look at what I attached."}${attached}`;
   setRunning(true);
+  live = true;
   sawText = false;
   streamId = null;
   lastStreamId = null;
@@ -296,6 +304,7 @@ export async function sendToAgent(text: string) {
     }
     await invoke("agent_run", { program: agent, args, input: prompt, cwd: `${home}/agent-workspace` });
   } catch (e) {
+    live = false;
     removeWorking();
     setRunning(false);
     addMsg({ role: "error", text: friendly(String(e)) });
@@ -308,4 +317,30 @@ export async function stopAgent() {
   } catch {
     /* nothing running */
   }
+}
+
+/**
+ * Before another project is opened. The AI works on whatever design is open, so it must not carry on
+ * into the next one. If it is in the middle of something the designer decides: let it finish here,
+ * or stop it. Returns false to stay.
+ */
+export async function readyToLeave(): Promise<boolean> {
+  if (!getChat().running) return true;
+  const go = await ask("Duet is still working on this design. Stop it and open the other project?", {
+    title: "Duet",
+    kind: "warning",
+    okLabel: "Stop and open",
+    cancelLabel: "Let it finish",
+  });
+  if (!go) return false;
+  // it may have finished while the question was up
+  if (!getChat().running) return true;
+  live = false;
+  await stopAgent();
+  removeWorking();
+  workingId = null;
+  declineAllWaiting();
+  setRunning(false);
+  addMsg({ role: "note", text: "Stopped, because you opened another project." });
+  return true;
 }

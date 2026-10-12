@@ -209,6 +209,7 @@ export function setAgent(agent: AgentId) {
     /* ignore */
   }
   declineAllWaiting();
+  kept.clear();
   set({ agent, agentFound: state.installed[agent] ?? false, messages: [], pictures: state.pictures.filter((p) => !p.sent), sessionId: null });
 }
 export function setModel(agent: AgentId, model: string) {
@@ -217,6 +218,7 @@ export function setModel(agent: AgentId, model: string) {
   } catch {
     /* ignore */
   }
+  for (const k of kept.values()) k.sessionId = null;
   set({ models: { ...state.models, [agent]: model }, sessionId: null });
 }
 
@@ -234,6 +236,48 @@ export const setSessionId = (sessionId: string | null) => set({ sessionId });
 export function newConversation() {
   declineAllWaiting();
   set({ messages: [], pictures: state.pictures.filter((p) => !p.sent), sessionId: null });
+}
+
+/** A conversation put away while another project is open. */
+interface Kept {
+  messages: Msg[];
+  pictures: Picture[];
+  sessionId: string | null;
+}
+
+/** Conversations of the projects opened earlier, by project file. Kept while Duet is open. */
+const kept = new Map<string, Kept>();
+/** The project file the conversation on show belongs to. Empty for work that has no file yet. */
+let shownFor = "";
+
+/**
+ * A conversation belongs to a project. Opening another project puts this one away and brings
+ * that project's own conversation back, so the AI never talks about the design you just left.
+ * A brand new project always starts with an empty one.
+ */
+export function showConversationFor(project: string, fresh = false) {
+  if (project === shownFor && !fresh) return;
+  declineAllWaiting();
+  // work without a file is gone once another project opens, and so is its conversation
+  if (shownFor && project !== shownFor) {
+    kept.set(shownFor, {
+      // a step in the history is not the same step after the project is opened again, so Undo is not offered
+      messages: state.messages.filter((m) => m.role !== "working").map((m) => (m.undoStep === undefined ? m : { ...m, undoStep: undefined })),
+      // pictures still waiting in the message box do not come along
+      pictures: state.pictures.filter((p) => p.sent),
+      sessionId: state.sessionId,
+    });
+  }
+  const back = fresh ? undefined : kept.get(project);
+  kept.delete(project);
+  shownFor = project;
+  set({ messages: back?.messages ?? [], pictures: back?.pictures ?? [], sessionId: back?.sessionId ?? null, running: false });
+}
+
+/** Save As: the conversation stays with the work and goes to its new file. */
+export function moveConversationTo(project: string) {
+  kept.delete(project);
+  shownFor = project;
 }
 
 /** Ask the designer a yes or no question and wait for the answer. */

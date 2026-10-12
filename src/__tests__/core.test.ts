@@ -1754,3 +1754,80 @@ describe("a single thing as a component", () => {
     expect(currentDoc().elements.pic.componentId).toBe("");
   });
 });
+
+import { addMsg, askDesigner, moveConversationTo, setSessionId, showConversationFor } from "../ai/chat";
+
+describe("a conversation for each project", () => {
+  const picture = { name: "ref.png", data: "", mime: "image/png", width: 10, height: 10, thumb: "" };
+  const texts = () => getChat().messages.map((m) => m.text);
+
+  it("puts the conversation away and brings it back with its project", () => {
+    showConversationFor("/a.duet", true);
+    addMsg({ role: "you", text: "make it blue" });
+    setSessionId("session-a");
+
+    showConversationFor("/b.duet", true);
+    expect(texts()).toEqual([]);
+    expect(getChat().sessionId).toBeNull();
+    addMsg({ role: "you", text: "add a title" });
+    setSessionId("session-b");
+
+    showConversationFor("/a.duet");
+    expect(texts()).toEqual(["make it blue"]);
+    expect(getChat().sessionId).toBe("session-a");
+
+    showConversationFor("/b.duet");
+    expect(texts()).toEqual(["add a title"]);
+    expect(getChat().sessionId).toBe("session-b");
+  });
+
+  it("opening the same project again changes nothing", () => {
+    showConversationFor("/a.duet", true);
+    addMsg({ role: "you", text: "hello" });
+    showConversationFor("/a.duet");
+    expect(texts()).toEqual(["hello"]);
+  });
+
+  it("a brand new project starts empty, even over a file used before", () => {
+    showConversationFor("/a.duet", true);
+    addMsg({ role: "you", text: "old words" });
+    showConversationFor("/b.duet", true);
+    showConversationFor("/a.duet", true);
+    expect(texts()).toEqual([]);
+  });
+
+  it("leaves waiting pictures behind and keeps the ones already sent", () => {
+    showConversationFor("/a.duet", true);
+    addPictures([picture]);
+    sendPictures();
+    addPictures([picture]);
+    showConversationFor("/b.duet", true);
+    expect(getChat().pictures).toEqual([]);
+    showConversationFor("/a.duet");
+    expect(getChat().pictures.map((p) => p.sent)).toEqual([true]);
+  });
+
+  it("declines a waiting question, and drops the working line and Undo", async () => {
+    showConversationFor("/a.duet", true);
+    const answer = askDesigner("Delete the header?");
+    addMsg({ role: "note", text: "Moved the logo", undoStep: 4 });
+    addMsg({ role: "working", text: "Thinking..." });
+    showConversationFor("/b.duet", true);
+    expect(await answer).toBe(false);
+    showConversationFor("/a.duet");
+    expect(getChat().messages.some((m) => m.role === "working")).toBe(false);
+    expect(getChat().messages.every((m) => m.undoStep === undefined)).toBe(true);
+    expect(getChat().running).toBe(false);
+  });
+
+  it("Save As takes the conversation to the new file", () => {
+    showConversationFor("/a.duet", true);
+    addMsg({ role: "you", text: "keep me" });
+    moveConversationTo("/copy.duet");
+    showConversationFor("/b.duet", true);
+    showConversationFor("/copy.duet");
+    expect(texts()).toEqual(["keep me"]);
+    showConversationFor("/a.duet");
+    expect(texts()).toEqual([]);
+  });
+});

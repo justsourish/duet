@@ -5,6 +5,8 @@ import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
 import { emptyDoc } from "../document/types";
 import type { Doc } from "../document/types";
 import { DesignFileError, parseDoc, serializeDoc } from "../document/serialize";
+import { readyToLeave } from "../ai/agent";
+import { moveConversationTo, showConversationFor } from "../ai/chat";
 import { getState, loadDoc, loadTimeline, setEntryVersion, setProject, subscribe } from "../state/store";
 import type { HistoryEntry } from "../state/store";
 
@@ -260,6 +262,7 @@ async function saveAsDialog() {
     const work = await createProject(picked, doc, "Start of project");
     lastSaved = doc;
     setProject({ path: work, file: picked, name: baseName(picked), status: "saved", error: null });
+    moveConversationTo(picked);
     await packNow();
     remember(picked);
     void writePreview(work, doc);
@@ -287,9 +290,11 @@ async function newProjectDialog() {
   }
   const picked = await chooseFile("Name your new project");
   if (!picked) return;
+  if (!(await readyToLeave())) return;
   try {
     const doc = emptyDoc();
     const work = await createProject(picked, doc, "New file");
+    showConversationFor(picked, true);
     loadDoc(doc, "New file");
     lastSaved = committed();
     setProject({ path: work, file: picked, name: baseName(picked), status: "saved", error: null });
@@ -343,6 +348,7 @@ async function loadFrom(path: string, quiet: boolean, file: string): Promise<boo
     }
     const doc = parseDoc(await invoke<string>("read_text_file", { path: design }));
     const entries = await readHistory(path);
+    showConversationFor(file);
     if (entries.length === 0) {
       loadDoc(doc);
       await startHistory(path, "Start of project");
@@ -378,6 +384,7 @@ export async function openProjectAt(path: string): Promise<boolean> {
     });
     if (!go) return false;
   }
+  if (!(await readyToLeave())) return false;
   return openAny(path);
 }
 
@@ -408,7 +415,7 @@ export async function openProject() {
 async function openProjectDialog() {
   if (!inTauri()) return;
   const picked = await open({ directory: false, multiple: false, title: "Open a Duet project", filters: [{ name: "Duet project", extensions: ["duet"] }] });
-  if (typeof picked === "string") await openAny(picked);
+  if (typeof picked === "string" && (await readyToLeave())) await openAny(picked);
 }
 
 /** Save the design as plain data (a .json file), for people and programs that want it. */
