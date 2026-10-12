@@ -1,6 +1,6 @@
 /** One icon set for the whole app: 24 grid, round ends, same stroke weight everywhere. */
 
-export type IconName = "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "zoom" | "image" | "pen" | "group" | "lock" | "unlock" | "component" | "instance" | "panel-left" | "panel-right";
+export type IconName = "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "zoom" | "image" | "pen" | "mask" | "group" | "lock" | "unlock" | "component" | "instance" | "panel-left" | "panel-right";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   move: <path d="M5.5 3.5l13 6.3-5.7 1.8-1.8 5.9z" />,
@@ -46,6 +46,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <rect x="4" y="5" width="16" height="14" rx="2.5" />
       <circle cx="9" cy="10" r="1.5" />
       <path d="M4.5 17l4.5-4.5 3 3 2.5-2.5 5 5" />
+    </>
+  ),
+  mask: (
+    <>
+      <rect x="4" y="5" width="16" height="14" rx="2.5" strokeDasharray="2.5 3" />
+      <circle cx="12" cy="12" r="4.5" />
     </>
   ),
   zoom: (

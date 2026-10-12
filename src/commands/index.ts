@@ -1,6 +1,6 @@
 import { fitText } from "../canvas/text";
 import type { ClipPayload } from "../document/clipboard";
-import { canTurn, descendants, tidyAngle, turnCentre, turnPoint, worldPos } from "../document/geometry";
+import { canMask, canTurn, descendants, tidyAngle, turnCentre, turnPoint, worldPos } from "../document/geometry";
 import { captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
 import type { Doc, El, ElementType, Layout, TextStyle } from "../document/types";
@@ -106,6 +106,7 @@ const createElement: CommandDef<CreateArgs> = {
       component: false,
       componentId: "",
       overrides: {},
+      mask: false,
       locked: false,
       layout: null,
       grow: 0,
@@ -611,6 +612,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       component: false,
       componentId: "",
       overrides: {},
+      mask: false,
       locked: false,
       layout: { dir: w >= h ? "row" : "column", gap: 12, padX: 0, padY: 0, align: "start", justify: "start", hug: true },
       grow: 0,
@@ -689,6 +691,7 @@ const groupElements: CommandDef<GroupArgs> = {
       component: false,
       componentId: "",
       overrides: {},
+      mask: false,
       locked: false,
       layout: null,
       grow: 0,
@@ -710,6 +713,32 @@ const groupElements: CommandDef<GroupArgs> = {
     }
     const insertAt = Math.min(list.length, Math.max(0, at - ordered.length + 1));
     list.splice(insertAt, 0, group.id);
+    return next;
+  },
+};
+
+// ---- make_mask ----
+export interface MaskArgs {
+  /** The shape the other things will show through. */
+  maskId: string;
+  /** The things to show through it. */
+  ids: string[];
+  groupId: string;
+}
+
+/** Put things in a group with a shape, so they show only inside that shape. */
+const makeMask: CommandDef<MaskArgs> = {
+  label: () => "Use as mask",
+  run: (doc, a) => {
+    const ids = a.ids.filter((id) => id !== a.maskId && doc.elements[id]);
+    if (!canMask(doc.elements[a.maskId]) || ids.length === 0) return doc;
+    const next = groupElements.run(doc, { ids: [a.maskId, ...ids], groupId: a.groupId });
+    if (next === doc) return doc;
+    const g = next.elements[a.groupId];
+    // the shape goes to the bottom of the group: that is what marks it as the mask
+    g.childIds = [a.maskId, ...g.childIds.filter((c) => c !== a.maskId)];
+    g.mask = true;
+    g.name = `Mask ${Object.values(doc.elements).filter((e) => e.type === "group" && e.mask).length + 1}`;
     return next;
   },
 };
@@ -755,6 +784,7 @@ export const commands = {
   set_layout: setLayout,
   wrap_in_layout: wrapInLayout,
   group_elements: groupElements,
+  make_mask: makeMask,
   ungroup,
   create_text_style: createTextStyle,
   apply_text_style: applyTextStyle,

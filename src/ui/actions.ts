@@ -1,7 +1,9 @@
 import { pastePayload } from "../canvas/CanvasView";
 import { newId } from "../commands";
 import { extractPayload } from "../document/clipboard";
+import { canMask } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
+import type { Doc, El } from "../document/types";
 import { currentDoc, dispatch, getState, select } from "../state/store";
 
 /** Things you can do with the selection. The menus, the right-click menu and the panel all use these. */
@@ -22,6 +24,28 @@ export function groupSelection() {
   if (!els.length) return;
   const id = newId("group");
   dispatch("group_elements", { ids: els.map((e) => e.id), groupId: id });
+  if (currentDoc().elements[id]) select([id]);
+}
+
+/**
+ * Which of the chosen things would be the mask. If only one of them is a plain shape, it is that one,
+ * wherever it sits in the stack. If several are, it is the one at the bottom. Null when it cannot be done.
+ */
+export function maskChoice(doc: Doc, els: El[]): El | null {
+  if (els.length < 2 || !els.every((e) => (e.parentId ?? null) === (els[0].parentId ?? null))) return null;
+  const shapes = els.filter(canMask);
+  if (shapes.length === 0) return null;
+  const order = els[0].parentId ? doc.elements[els[0].parentId].childIds : doc.rootIds;
+  return [...shapes].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))[0];
+}
+
+/** Show the chosen things only inside the chosen shape. */
+export function maskSelection() {
+  const { doc, els } = picked();
+  const shape = maskChoice(doc, els);
+  if (!shape) return;
+  const id = newId("group");
+  dispatch("make_mask", { maskId: shape.id, ids: els.filter((e) => e !== shape).map((e) => e.id), groupId: id });
   if (currentDoc().elements[id]) select([id]);
 }
 

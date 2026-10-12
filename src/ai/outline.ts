@@ -31,6 +31,7 @@ function describe(doc: Doc, el: El): string {
   if (el.rotation && el.type !== "frame" && el.type !== "instance") bits.push(`turned ${el.rotation}°`);
   if (el.layout) bits.push(`layout ${el.layout.dir} gap ${el.layout.gap} pad ${el.layout.padX}/${el.layout.padY} ${el.layout.align}/${el.layout.justify}${el.layout.hug ? " hug" : ""}`);
   if (el.grow) bits.push("fills space");
+  if (el.mask && el.type === "group") bits.push("mask: the rest shows only inside its first thing, which is not drawn");
   if (el.component) bits.push("COMPONENT");
   if (el.type === "instance") bits.push(`copy of ${doc.elements[el.componentId]?.name ?? el.componentId}${Object.keys(el.overrides).length ? " (changed)" : ""}`);
   if (el.locked) bits.push("locked");

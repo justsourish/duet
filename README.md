@@ -17,6 +17,8 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Auto layout: Shift A lines up what is inside a frame in a row or a column, with gap, padding, alignment, hug and fill.
 - Components: Cmd Option K turns a frame or group into a component. Place copies from the Assets tab. Change the original and every copy follows. Change text, colour or pictures on one copy without touching the rest.
 - Real text: any installed font, weight, size, line height, letter spacing, alignment, and boxes that wrap. Save a text style and change it once for every text that uses it.
+- Masks: choose a picture and a shape, then Design, Use as mask (Cmd Option M). The picture shows only inside the shape, whether that is a circle, a rounded box or a leaf you drew. Move the picture inside to choose what shows. Ungroup takes the mask off.
+- Pictures keep their see-through parts, so a PNG logo sits on any background, and its shadow follows the logo.
 - Groups (Cmd G), locking (Shift Cmd L), select all in context (Cmd A), and a selection box that picks a frame's contents.
 - Layers panel with drag and drop in and out of frames. Properties for position, size, corners, fill, gradient, stroke, shadow, opacity and text.
 - Copy, paste and duplicate (Cmd or Ctrl + D), including between projects.
@@ -24,14 +26,14 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Prototype: link anything to a screen and choose what a click does (go there, open it on top as an overlay, or go back), how it arrives (dissolve or push in any direction, with its own time), and let tall screens scroll. Press Present to click through, with an optional phone frame. Selecting a linked thing draws an arrow to its screen.
 - A project is one `.duet` file. It holds your design, your pictures and your whole history, and it saves itself as you work. You can export the design as plain JSON any time.
 - A history that survives closing the app, drawn as two lanes: **You** and **Duet**. Save a named version ("Client round 1") and go back to it any time. Nothing is ever lost when you go back.
-- A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. It can draw its own shapes with curves, like leaves and arches, and turn them. It can bring a picture file from your computer onto the canvas, and asks you first. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
+- A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. It can draw its own shapes with curves, like leaves and arches, and turn them. It can bring a picture file from your computer onto the canvas, and asks you first. It can cut a picture to any shape. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
 - Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens). Turn them on and off, write your own, or import skill files and folders.
 
 ## What does not exist yet
 
 Be honest with yourself before you try it for real work.
 
-- No variants, colour styles or boolean operations yet. A drawn shape is one outline with no holes, a shape cannot be used as a mask, and pictures cannot be traced into shapes. Gradients are linear only, and there is one shadow per shape.
+- No variants, colour styles or boolean operations yet. A drawn shape is one outline with no holes, and pictures cannot be traced into shapes. Gradients are linear only, and there is one shadow per shape.
 - Prototyping has no animation inside a screen yet, and no hover or timed triggers.
 - The AI chat works with **Claude Code** and the **Antigravity CLI** today (the command line tools, not the desktop apps). Codex and OpenCode are detected but not connected yet.
 - Windows builds are new and less tested than Mac. The AI chat on Windows is untested.

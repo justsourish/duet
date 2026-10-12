@@ -1,6 +1,6 @@
 import { assetUrl } from "../project/assets";
 import { layoutText, lineStep, lineWidth } from "../canvas/text";
-import { turnOf, turnedBox } from "./geometry";
+import { maskOf, turnOf, turnedBox } from "./geometry";
 import { pathData, toAbs } from "./path";
 import type { Doc, El } from "./types";
 
@@ -60,13 +60,28 @@ export function toSvg(doc: Doc, id: string): string {
       return `<g${op}><image href="${esc(url)}" x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${cid})"/></g>`;
     }
 
-    if (el.type === "group") {
+    const mask = maskOf(doc, el);
+    if (el.type === "group" || mask) {
       const kids = el.childIds
         .map((c) => doc.elements[c])
-        .filter(Boolean)
+        .filter((c) => c && c !== mask)
         .map((c) => draw(c, x, y))
         .join("");
-      return `<g${op}>${kids}</g>`;
+      if (!mask) return `<g${op}>${kids}</g>`;
+      // a mask: everything else in the group is cut to the outline of its shape
+      const mx = x + mask.x;
+      const my = y + mask.y;
+      const turn = turnOf(mask) ? ` transform="rotate(${num(turnOf(mask))} ${num(mx + mask.width / 2)} ${num(my + mask.height / 2)})"` : "";
+      const mr = Math.max(0, Math.min(mask.radius, mask.width / 2, mask.height / 2));
+      const outline =
+        mask.type === "ellipse"
+          ? `<ellipse cx="${num(mx + mask.width / 2)}" cy="${num(my + mask.height / 2)}" rx="${num(mask.width / 2)}" ry="${num(mask.height / 2)}"${turn}/>`
+          : mask.type === "path"
+            ? `<path d="${pathData(toAbs(mask, mx, my), true)}"${turn}/>`
+            : `<rect x="${num(mx)}" y="${num(my)}" width="${num(mask.width)}" height="${num(mask.height)}"${mr ? ` rx="${num(mr)}"` : ""}${turn}/>`;
+      const cid = `c${n++}`;
+      defs.push(`<clipPath id="${cid}">${outline}</clipPath>`);
+      return `<g${op} clip-path="url(#${cid})">${kids}</g>`;
     }
 
     if (el.type === "path") {

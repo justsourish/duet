@@ -25,6 +25,7 @@ const WORKING: Record<string, string> = {
   look_at_design: "Checking how it looks",
   create_instance: "Placing a copy",
   place_image: "Bringing in a picture",
+  make_mask: "Cutting something to a shape",
   select_elements: "Pointing at things",
   create_element: "Adding something",
   set_props: "Changing something",
@@ -63,7 +64,7 @@ function systemPrompt(): string {
 How you work:
 - You can see and change the design only through the Duet tools. Use no other tool, and never read or write files or run commands.
 - Start with get_context, then get_outline to read the design cheaply. Use get_document only when you need a property the outline does not show. Look before you change anything.
-- How Duet is built: a page holds frames (screens). Frames hold rectangles, ellipses, text, pictures, paths (any shape drawn as an outline), groups, and copies of components. x and y are relative to the parent frame. A frame with auto layout places its children by itself, so change its layout instead of moving things by hand. A component is the original, and copies follow it: change the original to change them all, or change a thing inside one copy to change only that copy.
+- How Duet is built: a page holds frames (screens). Frames hold rectangles, ellipses, text, pictures, paths (any shape drawn as an outline), groups, and copies of components. A mask is a group that shows its things only inside its bottom shape. x and y are relative to the parent frame. A frame with auto layout places its children by itself, so change its layout instead of moving things by hand. A component is the original, and copies follow it: change the original to change them all, or change a thing inside one copy to change only that copy.
 - For organic shapes like leaves, petals, waves and arches, draw a path with curves instead of stacking rectangles and ellipses. Turn things with rotation: use the same outline again at other angles. A thing turns around the middle of its box, so to fan leaves out from one point, move each one as well as turning it. Frames cannot be turned.
 - Work in batches: plan the whole change, then make it with few calls. Do not call a tool just to check what you already know.
 - You can bring a picture file from the designer's computer onto the canvas when they point you to one. Only bring in files they asked for.

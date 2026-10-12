@@ -94,6 +94,40 @@ export function turnCentre(doc: Doc, id: string): { x: number; y: number } {
   return { x: x / of.length, y: y / of.length };
 }
 
+/** Can this shape be used as a mask? A rectangle, an ellipse, or a closed drawn shape. */
+export const canMask = (el: El | undefined): boolean => !!el && (el.type === "rect" || el.type === "ellipse" || (el.type === "path" && el.closed && el.nodes.length > 2));
+
+/** The shape a mask group shows its contents through: the bottom thing inside it. Null when it is not a mask. */
+export function maskOf(doc: Doc, el: El): El | null {
+  if (!el.mask || (el.type !== "group" && el.type !== "instance")) return null;
+  const first = doc.elements[el.childIds[0]];
+  return canMask(first) && el.childIds.length > 1 ? first : null;
+}
+
+/** Is a point inside a many-cornered outline? */
+function insideOutline(px: number, py: number, line: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = line.length - 1; i < line.length; j = i++) {
+    const a = line[i];
+    const b = line[j];
+    if (a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Is a point on the page inside a shape, as the shape is drawn? x0 and y0 are where its box sits. */
+export function insideShape(el: El, x0: number, y0: number, px: number, py: number): boolean {
+  const p = turnPoint(px, py, x0 + el.width / 2, y0 + el.height / 2, -turnOf(el));
+  if (!pointInRect(p.x, p.y, { x: x0, y: y0, width: el.width, height: el.height })) return false;
+  if (el.type === "ellipse") {
+    const dx = (p.x - (x0 + el.width / 2)) / (el.width / 2);
+    const dy = (p.y - (y0 + el.height / 2)) / (el.height / 2);
+    return dx * dx + dy * dy <= 1;
+  }
+  if (el.type === "path") return insideOutline(p.x, p.y, flatten(toAbs(el, x0, y0), true));
+  return true;
+}
+
 export function descendants(doc: Doc, id: string): string[] {
   const out: string[] = [];
   const walk = (cur: string) => {
@@ -158,6 +192,9 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
         return el.id;
       }
       if (!pointInRect(wx, wy, r)) continue;
+      // a mask group is only there where its shape is
+      const mask = maskOf(doc, el);
+      if (mask && !insideShape(mask, r.x + mask.x, r.y + mask.y, wx, wy)) continue;
       if (el.type === "ellipse") {
         const rx = r.width / 2;
         const ry = r.height / 2;

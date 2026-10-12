@@ -1,4 +1,4 @@
-import { turnOf, turnPoint, turnVector, worldBounds, worldRect } from "../document/geometry";
+import { maskOf, turnOf, turnPoint, turnVector, worldBounds, worldRect } from "../document/geometry";
 import { toAbs, trace } from "../document/path";
 import type { Doc, El, Rect } from "../document/types";
 import { currentDoc } from "../state/store";
@@ -186,6 +186,31 @@ function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) 
   }
 }
 
+/** From here on, draw only inside a shape. ox and oy are where the shape's parent sits. */
+function clipTo(ctx: CanvasRenderingContext2D, shape: El, ox: number, oy: number) {
+  const x = ox + shape.x;
+  const y = oy + shape.y;
+  // the outline is laid down turned the way the shape is turned, and the drawing carries on upright
+  const upright = ctx.getTransform();
+  const turn = turnOf(shape);
+  if (turn) {
+    ctx.translate(x + shape.width / 2, y + shape.height / 2);
+    ctx.rotate((turn * Math.PI) / 180);
+    ctx.translate(-(x + shape.width / 2), -(y + shape.height / 2));
+  }
+  if (shape.type === "ellipse") {
+    ctx.beginPath();
+    ctx.ellipse(x + shape.width / 2, y + shape.height / 2, shape.width / 2, shape.height / 2, 0, 0, Math.PI * 2);
+  } else if (shape.type === "path") {
+    ctx.beginPath();
+    trace(ctx, toAbs(shape, x, y), true);
+  } else {
+    roundedPath(ctx, x, y, shape.width, shape.height, shape.radius);
+  }
+  ctx.setTransform(upright);
+  ctx.clip();
+}
+
 /** Draw an element and everything inside it. ox and oy are where its parent sits. */
 export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox: number, oy: number) {
   const x = ox + el.x;
@@ -223,10 +248,13 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
     return;
   }
 
-  if (el.type === "group") {
+  // a mask shows what is in the group only inside its shape, and the shape itself is not drawn
+  const mask = maskOf(doc, el);
+  if (el.type === "group" || mask) {
+    if (mask) clipTo(ctx, mask, x, y);
     for (const id of el.childIds) {
       const child = doc.elements[id];
-      if (child) drawElement(ctx, doc, child, x, y);
+      if (child && child !== mask) drawElement(ctx, doc, child, x, y);
     }
     ctx.restore();
     return;

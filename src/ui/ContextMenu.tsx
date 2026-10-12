@@ -4,6 +4,7 @@ import { newId } from "../commands";
 import { defaultLayout } from "../document/layout";
 import { extractPayload } from "../document/clipboard";
 import { currentDoc, dispatch, getState, select } from "../state/store";
+import { maskChoice, maskSelection } from "./actions";
 import { useDismiss } from "./useDismiss";
 
 /** What you can do with the selection, found where you right-click. */
@@ -46,9 +47,10 @@ function itemsFor(): Item[] {
       if (currentDoc().elements[id]) select([id]);
     },
   });
+  if (maskChoice(doc, els)) out.push({ label: "Use as mask", hint: "Cmd Option M", run: maskSelection });
   if (els.some((e) => e.type === "group")) {
     out.push({
-      label: "Ungroup",
+      label: els.every((e) => e.type === "group" && e.mask) ? "Remove the mask" : "Ungroup",
       hint: "Shift Cmd G",
       run: () => {
         const kids = els.flatMap((e) => (e.type === "group" ? e.childIds : []));

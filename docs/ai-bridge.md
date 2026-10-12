@@ -15,7 +15,7 @@ A designer and an AI share the same controls. Every change in Duet is one named 
 
 ## Tools
 
-`get_context`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `select_elements`, `create_element`, `create_instance`, `place_image`, `set_props`, `move_elements`, `resize_element`, `reparent_elements`, `delete_elements`.
+`get_context`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `select_elements`, `create_element`, `create_instance`, `place_image`, `make_mask`, `set_props`, `move_elements`, `resize_element`, `reparent_elements`, `delete_elements`.
 
 `create_element` also makes a `path`: any shape drawn as one outline, given as SVG path text in `d` (lines, curves and arcs), measured from `x`, `y`. `set_props` takes `d` to redraw one path, and `rotation` in degrees. Frames and copies of components cannot be turned, and the tool says so.
 
@@ -32,6 +32,8 @@ Enforced inside Duet, not left to the agent.
 | Auto | Applied | Applied |
 
 Bringing in a picture file follows the Deleting column.
+
+`make_mask` puts things in a group with a shape, and they show only inside that shape.
 
 Every AI change is a step in the history, marked as Duet's (bottom lane), saved right away, and undoable.
 

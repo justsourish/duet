@@ -20,7 +20,7 @@ export function ownerOf(id: string): { owner: string; key: string } | null {
 }
 
 /** What an instance takes from its main, unless you changed it on the copy. */
-const MIRRORED = ["fill", "stroke", "strokeWidth", "radius", "shadow", "gradient", "layout", "width", "height"] as const;
+const MIRRORED = ["fill", "stroke", "strokeWidth", "radius", "shadow", "gradient", "layout", "mask", "width", "height"] as const;
 /** What can be changed on a thing inside an instance. */
 const INSIDE = ["x", "y", "width", "height", "fill", "stroke", "strokeWidth", "radius", "opacity", "rotation", "text", "fontSize", "shadow", "gradient", "src", "nodes", "closed"] as const;
 

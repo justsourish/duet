@@ -84,6 +84,8 @@ export interface El {
   componentId: string;
   /** For an instance: what was changed on this copy, by part of the component and then property. "$root" is the copy itself. */
   overrides: Record<string, Record<string, unknown>>;
+  /** A group only: its bottom thing is a shape, and everything else in the group shows only inside that shape. The shape itself is not drawn. */
+  mask: boolean;
   /** Locked things cannot be picked on the canvas, so you can select what is behind or inside them. */
   locked: boolean;
   /** For frames: auto layout, or null to place children by hand. */

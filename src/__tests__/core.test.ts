@@ -1408,3 +1408,94 @@ describe("what the AI can ask for", () => {
     expect(Object.keys(currentDoc().elements).length).toBe(0);
   });
 });
+
+import { canMask, maskOf } from "../document/geometry";
+import { maskChoice } from "../ui/actions";
+
+describe("masks", () => {
+  // a photo-sized box with a circle drawn over part of it, inside a frame at 100,50
+  const scene = () => {
+    let d = frame("f");
+    d = runCommand(d, "create_element", { id: "photo", type: "image", parentId: "f", x: 20, y: 20, width: 200, height: 200 });
+    d = runCommand(d, "create_element", { id: "ring", type: "ellipse", parentId: "f", x: 60, y: 60, width: 100, height: 100 });
+    return d;
+  };
+  const masked = () => runCommand(scene(), "make_mask", { maskId: "ring", ids: ["photo"], groupId: "m" });
+
+  it("puts the shape at the bottom of a group that is as big as the shape", () => {
+    const d = masked();
+    const g = d.elements.m;
+    expect(g.mask).toBe(true);
+    expect(g.name).toBe("Mask 1");
+    expect(g.childIds).toEqual(["ring", "photo"]);
+    expect([g.x, g.y, g.width, g.height]).toEqual([60, 60, 100, 100]);
+    expect(maskOf(d, g)?.id).toBe("ring");
+    // nothing moved on the page
+    expect(worldPos(d, "photo")).toEqual({ x: 120, y: 70 });
+    expect(worldPos(d, "ring")).toEqual({ x: 160, y: 110 });
+    expect(scene().elements.photo.parentId).toBe("f"); // the old document is untouched
+  });
+
+  it("is only there where its shape is", () => {
+    const d = masked();
+    expect(hitTest(d, 210, 160)).toBe("m"); // the middle of the circle
+    expect(hitTest(d, 163, 113)).toBe("f"); // a corner of the circle's box, outside the circle
+    expect(hitTest(d, 130, 80)).toBe("f"); // on the photo, but outside the shape, so it is not shown
+    expect(hitTest(d, 210, 160, new Set(), true)).toBe("photo");
+  });
+
+  it("needs a plain shape, and something to show through it", () => {
+    expect(canMask(scene().elements.photo)).toBe(false);
+    expect(runCommand(scene(), "make_mask", { maskId: "photo", ids: ["ring"], groupId: "m" }).elements.m).toBeUndefined();
+    expect(runCommand(scene(), "make_mask", { maskId: "ring", ids: [], groupId: "m" }).elements.m).toBeUndefined();
+  });
+
+  it("stops being a mask when its shape is taken away", () => {
+    const d = runCommand(masked(), "delete_elements", { ids: ["ring"] });
+    expect(d.elements.m.mask).toBe(false);
+    expect(maskOf(d, d.elements.m)).toBeNull();
+    expect([d.elements.m.width, d.elements.m.height]).toEqual([200, 200]);
+  });
+
+  it("comes apart with ungroup, and the shape is a shape again", () => {
+    const d = runCommand(masked(), "ungroup", { ids: ["m"] });
+    expect(d.elements.m).toBeUndefined();
+    expect(d.elements.f.childIds).toEqual(["ring", "photo"]);
+    expect(worldPos(d, "ring")).toEqual({ x: 160, y: 110 });
+  });
+
+  it("picks the shape as the mask wherever it sits, when it is the only shape chosen", () => {
+    const d = scene();
+    expect(maskChoice(d, [d.elements.photo, d.elements.ring])?.id).toBe("ring");
+    expect(maskChoice(d, [d.elements.photo])).toBeNull();
+    expect(maskChoice(d, [d.elements.photo, d.elements.f])).toBeNull();
+    const two = runCommand(d, "create_element", { id: "box", type: "rect", parentId: "f", x: 0, y: 0, width: 50, height: 50 });
+    expect(maskChoice(two, [two.elements.box, two.elements.ring])?.id).toBe("ring"); // the lower of two shapes
+  });
+
+  it("is saved, turned with its contents, and exported as a cut-out", () => {
+    const d = masked();
+    expect(serializeDoc(d)).toContain('"mask": true');
+    expect(serializeDoc(scene())).not.toContain('"mask"');
+    expect(parseDoc(serializeDoc(d)).elements.m.mask).toBe(true);
+    const t = runCommand(d, "set_props", { ids: ["m"], props: { rotation: 45 } });
+    expect(t.elements.ring.rotation).toBe(45);
+    expect(t.elements.photo.rotation).toBe(45);
+    const svg = toSvg(d, "f");
+    expect(svg).toContain('<ellipse cx="110" cy="110" rx="50" ry="50"/></clipPath>');
+    expect(svg).not.toContain('<ellipse cx="110" cy="110" rx="50" ry="50" fill');
+    expect(outline(d)).toContain("mask:");
+  });
+
+  it("can be asked for by the AI, which is told when the shape will not do", async () => {
+    resetStore();
+    setMode("auto");
+    dispatch("create_element", { id: "pic", type: "image", x: 0, y: 0, width: 200, height: 200 });
+    dispatch("create_element", { id: "leaf", type: "ellipse", x: 50, y: 50, width: 80, height: 120 });
+    expect((await callTool("make_mask", { shapeId: "pic", ids: ["leaf"] })).text).toContain("cannot be a mask");
+    const res = await callTool("make_mask", { shapeId: "leaf", ids: ["pic"] });
+    expect(res.isError).toBeFalsy();
+    const g = Object.values(currentDoc().elements).find((e) => e.mask);
+    expect(g?.childIds).toEqual(["leaf", "pic"]);
+  });
+});

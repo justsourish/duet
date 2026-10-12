@@ -14,7 +14,7 @@ interface Drop {
 
 function LayerIcon({ el }: { el: El }) {
   const type = el.type;
-  const name = el.component ? "component" : type === "instance" ? "instance" : type === "text" ? "text" : type === "group" ? "group" : type === "image" ? "image" : type === "path" ? "pen" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
+  const name = el.component ? "component" : type === "instance" ? "instance" : type === "text" ? "text" : type === "group" ? (el.mask ? "mask" : "group") : type === "image" ? "image" : type === "path" ? "pen" : type === "frame" ? "frame" : type === "ellipse" ? "ellipse" : "rect";
   return <Icon name={name} size={14} className="ico" />;
 }
 

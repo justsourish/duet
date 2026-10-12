@@ -1,4 +1,4 @@
-import { turnOf, turnedBox } from "./geometry";
+import { canMask, turnOf, turnedBox } from "./geometry";
 import type { Doc, El, Layout } from "./types";
 
 /**
@@ -118,8 +118,12 @@ function fitGroups(doc: Doc) {
   const groups = Object.values(doc.elements).filter((e) => e.type === "group");
   groups.sort((a, b) => depthOf(doc, b) - depthOf(doc, a));
   for (const g of groups) {
-    const kids = g.childIds.map((id) => doc.elements[id]).filter(Boolean);
-    if (kids.length === 0) continue;
+    const all = g.childIds.map((id) => doc.elements[id]).filter(Boolean);
+    if (all.length === 0) continue;
+    // a mask needs its shape at the bottom and something to show through it
+    if (g.mask && !(canMask(all[0]) && all.length > 1)) g.mask = false;
+    // a mask group is as big as its shape, because that is all of it you can see
+    const kids = g.mask ? [all[0]] : all;
     // a turned thing takes up the upright box around it
     const box = (k: El) => turnedBox({ x: k.x, y: k.y, width: k.width, height: k.height }, turnOf(k));
     // turning leaves tiny leftovers in the sums; ignoring them stops the group creeping
@@ -129,7 +133,7 @@ function fitGroups(doc: Doc) {
     if (minX !== 0 || minY !== 0) {
       g.x += minX;
       g.y += minY;
-      for (const k of kids) {
+      for (const k of all) {
         k.x -= minX;
         k.y -= minY;
       }

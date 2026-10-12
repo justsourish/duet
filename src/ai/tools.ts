@@ -4,7 +4,7 @@ import { lookAtDesign, lookAtImage } from "./vision";
 import { commandLabel, newId } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
-import { canTurn } from "../document/geometry";
+import { canMask, canTurn } from "../document/geometry";
 import { outlineFromData } from "../document/path";
 import type { El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -158,13 +158,19 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "make_mask",
+    description:
+      "Show things only inside a shape, for example a photo cut to the outline of a leaf or a circle. shapeId is a rectangle, an ellipse or a closed path. ids are the things to show through it, such as pictures. They must all sit in the same frame as the shape. They are put together in a group. The shape is no longer drawn, it only decides where the others show. Move or resize a thing inside the group to change which part of it shows.",
+    inputSchema: { type: "object", properties: { shapeId: { ...str, description: "The shape to show them through." }, ids }, required: ["shapeId", "ids"] },
+  },
+  {
     name: "delete_elements",
     description: "Delete elements and everything inside them. The designer may be asked to approve this.",
     inputSchema: { type: "object", properties: { ids }, required: ["ids"] },
   },
 ];
 
-const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements"]);
+const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
 const RISKY = new Set(["delete_elements", "place_image"]);
 
@@ -197,6 +203,8 @@ export function summarise(tool: string, a: Args): string {
       return `Place a copy of ${nameOf(a.componentId)}`;
     case "place_image":
       return `Bring in the picture at ${String(a.path)}`;
+    case "make_mask":
+      return `Show ${namesOf(a.ids)} only inside ${nameOf(a.maskId ?? a.shapeId)}`;
     case "set_props": {
       const p = (a.props ?? {}) as Record<string, unknown>;
       // a new outline is a long list of points: say what it is instead of spelling it out
@@ -312,6 +320,18 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       a.props = p;
       return { args: a };
     }
+    case "make_mask": {
+      const shape = typeof a.shapeId === "string" ? doc.elements[a.shapeId] : undefined;
+      if (!shape) return { error: `No element with id: ${String(a.shapeId)}.` };
+      if (!canMask(shape)) return { error: `${shape.name} cannot be a mask. Use a rectangle, an ellipse or a closed path.` };
+      const bad = missing(a.ids);
+      if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
+      const list = (a.ids as string[]).filter((i) => i !== shape.id);
+      if (list.length === 0) return { error: "Give at least one thing to show inside the shape." };
+      const apart = list.filter((i) => (doc.elements[i].parentId ?? null) !== (shape.parentId ?? null));
+      if (apart.length) return { error: `${namesOf(apart)} must be in the same frame as ${shape.name} first. Use reparent_elements.` };
+      return { args: { maskId: shape.id, ids: list, groupId: newId("group") } };
+    }
     case "move_elements": {
       const bad = missing(a.ids);
       if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
@@ -397,6 +417,10 @@ async function apply(tool: string, args: Args): Promise<ToolResult> {
   addMsg({ role: "note", text: summarise(tool, args), undoStep: step });
   void saveNow();
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
+  if (tool === "make_mask") {
+    if (!currentDoc().elements[String(args.groupId)]) return fail("That mask could not be made.");
+    return { text: `Made the mask group ${String(args.groupId)}. It is as big as the shape. Its things kept their ids.` };
+  }
   if (tool === "create_element") {
     const el = currentDoc().elements[String(args.id)];
     const box = el?.type === "path" ? ` Its box sits at ${Math.round(el.x)},${Math.round(el.y)} and is ${Math.round(el.width)} by ${Math.round(el.height)}.` : "";
