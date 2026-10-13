@@ -34,6 +34,7 @@ Keep it fair: same task text, a fresh branch from the same starting point, no ex
 | Date | Task | Model and thinking | Time | Check | In its lane | Click list | Help needed | Kept | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 13 Oct 2026 | 16, fold layers | Gemini 3.8 Flash, high | 11 min | Passed after one fix, in its own test | Yes, the four files allowed | 5 of 5, tested in the browser preview by the main AI, not by hand | None | Kept | The hand test was dropped: the app opened a real project and the steps were hard to follow. Rows with no arrow sit a little left of rows with one. One save, right author. Branch `helper/16-fold-layers`. Prompt was the task text pasted in, with a line asking for its model and times. |
+| 13 Oct 2026 | 16, arrow gap | gemini-3.8-flash-high | 5 min | Passed | Yes | Not clicked. The six changed lines were read by the main AI | None | Kept | Started by the main AI with `scripts/helper.py`. 206,179 helper tokens. Branch `helper/16-arrow-gap`. |
 
 ## What has been learned
 
