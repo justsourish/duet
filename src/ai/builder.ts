@@ -1,7 +1,10 @@
 import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
 import { inTestDesign, keepTestDesign, leaveTestDesign, startTestDesign } from "../project/project";
+import { invoke } from "@tauri-apps/api/core";
 import { getState } from "../state/store";
+import { addClip, getCut, emptyCut, setCut, sizeOf } from "../video/cut";
+import type { Info } from "../video/cut";
 import { busyOutside } from "./outside";
 import type { ToolDef, ToolResult } from "./tools";
 
@@ -74,6 +77,11 @@ export const BUILDER_TOOLS: ToolDef[] = [
     name: "dev_history",
     description: "Builder tool. The last steps in the history: what each one is called, who made it, and where the design is now.",
     inputSchema: { type: "object", properties: { last: { ...num, description: "How many steps, counting back from the newest. 12 if left out." } } },
+  },
+  {
+    name: "dev_video",
+    description: "Builder tool. Stand in for the two system windows of the video screen. add: put a video file in the list by its full path. export: make the video at a full path. clear: empty the list.",
+    inputSchema: { type: "object", properties: { do: { type: "string", enum: ["add", "export", "clear"] }, path: str }, required: ["do"] },
   },
   { name: "dev_reload", description: "Builder tool. Load the interface again, so a change to Duet's code is surely the one running. A test design does not survive it: the project that was open comes back.", inputSchema: { type: "object", properties: {} } },
   {
@@ -351,6 +359,21 @@ export async function callBuilderTool(name: string, raw: unknown, by?: string): 
     const s = getState();
     const from = Math.max(0, s.timeline.length - (typeof a.last === "number" && a.last > 0 ? Math.floor(a.last) : 12));
     return { text: s.timeline.slice(from).map((e, i) => `${from + i + 1} ${e.actor === "ai" ? (e.by ?? "an AI") : "you"}: ${e.label}${from + i === s.cursor ? "  <- now" : ""}`).join("\n") };
+  }
+  if (name === "dev_video") {
+    try {
+      if (a.do === "clear") setCut(emptyCut());
+      else if (a.do === "add") setCut(addClip(getCut(), String(a.path), await invoke<Info>("video_info", { path: String(a.path) }), `clip-${Date.now().toString(36)}`));
+      else if (a.do === "export") {
+        const size = sizeOf(getCut());
+        if (!size) return fail("Add a clip first.");
+        await invoke("video_export", { clips: getCut().clips.map((c) => ({ path: c.path, start: c.start, end: c.end })), width: size[0], height: size[1], out: String(a.path) });
+      } else return fail("do must be add, export or clear.");
+    } catch (e) {
+      return fail(String(e));
+    }
+    await settle();
+    return { text: `Done. ${getCut().clips.length} clips in the list.` };
   }
   if (name === "dev_reload") {
     // answer first: the answer cannot be sent from an interface that is already gone

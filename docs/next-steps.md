@@ -73,6 +73,10 @@ Since 13 October 2026 the main AI starts the helper itself, with `scripts/helper
 - One helper at a time, twenty minutes unless told otherwise. A fix of a few lines is quicker done directly and is not handed over.
 - Not for tasks that need the app run by the helper, or a drag on the canvas checked. Those still need a person, or better builder tools.
 
+### Cutting video, the first slice
+
+Done on 13 October 2026, not yet in a version: a Video button in the top bar opens a screen where clips are brought in, the part of each to keep is set with two sliders, they are put in order, and one video is exported (`src/ui/VideoCut.tsx`, the logic in `src/video/cut.ts`, the engine in `src-tauri/src/video.rs`). It needs ffmpeg on the computer, which Duet does not ship, and says so when it is missing. The list of clips is kept on the computer, not in a project. Checked in Duet dev with test clips: bring in, trim, reorder, export. Not checked: playing a clip in the screen, which a person has to try. Not there: text on video, effects, music, a timeline, saving the cut in a project. Shipping ffmpeg, or asking for it properly, has to be decided before a release.
+
 ### Which AI is working (issue 39)
 
 Done on 13 October 2026, not yet in a version: every step an AI makes keeps the name of the AI tool that made it, it is saved with the project, the history says it on hover, and the chat says who is working from its own window. See "Which AI tool made a step" in `docs/ai-bridge.md`. Outside tools connect through the bridge of the installed app, so the installed app has to be rebuilt before they send their names. Still open from the issue: the words asked in the other tool's window, and the larger picture in the creator's comment there (the whole process around a design, shown in the lower panel).
