@@ -2,16 +2,31 @@
 
 Written 8 October 2026 for whoever picks this up next, human or agent. Read `AGENTS.md` first, then this.
 
-## 0. Where things stand (13 October 2026, afternoon)
+## 0. Where things stand (13 October 2026, evening)
 
 Read this first. It is the short version of a long working day.
 
-- **How we work now.** The creator is the first user and decides what matters. The main AI is architect and manager: short replies, concepts not technicalities. Antigravity does the big writing, started by the main AI with `scripts/helper.py`. The creator works in the Duet in Applications (purple icon). The main AI checks only in Duet dev (orange icon, `scripts/dev-duet.sh`), with the builder tools.
-- **Not pushed.** 26 or more saves are on the creator's computer only. Do not push until he says so, and remind him first that some of them show how the memory works.
-- **Built today:** fold arrows in Layers, builder tools, Duet dev, the helper runner, which AI made a step (issue 39, first part), no Save window from an AI's change, and the first slice of cutting video. Each has its own section below.
-- **Waiting for the creator:** to try the video cutter with real clips (does a clip play in the screen), and his reaction to the mockup `scratch/mockups/the-whole-story-v1.duet` (also in his Documents, Duet folder). First reaction: the one line history is fine, the opened view with a line for each AI is not clear to him, and the real history strip looks different. A second version should grow out of the real strip (the You line and the Duet line).
-- **Next, in the order he was weighing:** video (cutting, then motion graphics), the view of who did what, references (issue 19, first slice: mark a picture as a reference). Also open: New without a window (42), several projects open (40), workspaces (43), drawing many things in one call as a real tool.
-- **Mockups** are drawn in Duet dev from a short list with `scripts/draw-mockup.py` and kept as Duet files. Show him a mockup before building anything he says he does not understand.
+- **How we work now.** The creator is the first user and decides what matters. The main AI is architect and manager: very short replies, written for the ear, concepts not technicalities. Antigravity does the building of anything seen and clicked, started by the main AI with `scripts/helper.py` (two at once at most, in different files). The main AI keeps what can lose work: the file format, saving, history, export, permissions. The creator works in the Duet in Applications (purple icon). Checks happen only in Duet dev (orange icon, `scripts/dev-duet.sh`), with the builder tools. Mockups are real work and are drawn in the purple Duet, in the file "Duet mockup - the whole story".
+- **After a helper's work is kept, open Duet dev and look before saying it is in.** Its checks cannot see a broken screen. A hook below a return blanked the whole window once.
+- **Where an option lives is designed first.** No quick buttons, no empty screens, no tool names in front of a person. A mockup, then code.
+- **Not pushed.** About fifty saves are on the creator's computer only. Do not push until he says so, and remind him first that some of them show how the memory works.
+- **Built today, all in Duet dev only:** video and motion (see "Video and motion" below), Design and Motion modes with a clean top bar (issue 45), Settings (44, needs the redo in 49), the builder tools, the helper runner.
+- **A test build went to a friend, Somya,** on 13 October: `~/Desktop/Duet test for Somya/` holds the zip and `INSTALL.md`. It was not opened here before it was sent. His reactions are the next input.
+- **Waiting for the creator:** his view of the history mockup (frames 6, 7 and 8: one request is one capsule, a card for what was asked and which skills were used, two AIs working at once), and whether the names Layers and Cut should become Animate and Edit.
+- **Next, in the agreed order:** 1) a project keeps its clips and sounds with it (issue 43 is the wider idea), then the built app is checked for Reload and Inspect (51), then video goes into the purple Duet; 2) a scene inside a scene (52), then the two timeline looks made truly different (50): Layers shows a row for each property that moves, Cut shows only clips and sound as tall rows; 3) copy and paste of clips, volume in the Motion panel, video shapes for shorts; 4) the history view, built from the mockup once he agrees.
+- **Parked as issues:** sound extras (46), keyframes by hand beyond what is there (47), the AI drawing many things as one step (48), the first question (53), telling us how Duet is used, only with a yes (54).
+
+### Video and motion
+
+A frame on the page with a length is a **scene** and plays like a video. Everything in it is seen over time. The pieces: `src/document/time.ts` (what a design looks like at one moment, keys, arrivals, `poseAt` and `settle`), the time commands in `src/commands/index.ts` (`set_duration`, `set_timing`, `set_key`, `set_keys`, `key_now`, `move_key`, `remove_key`, `set_entrance`, `split_at`, `ripple_delete`), the clock in `src/state/store.ts`, `src/video/` (players for clips, play and pause, export, the keys for marking a moment), `src/ui/TimeStrip.tsx` (the timeline), the Motion section in `src/ui/PropertiesPanel.tsx`, and the export in `src-tauri/src/video.rs`.
+
+- **Two new kinds of thing:** `video` (a clip on the canvas) and `sound` (only heard). Both keep `src` as a full path on the computer, not inside the project. That is the gap to close first.
+- **A change by hand at a moment.** While a scene is open, the canvas and the right panel work on the design as it looks at the playhead (`workDoc`). A change to a property that already has keys becomes a key at that moment, and its resting value stays (`runAtNow` and `settle`). Changes that are about time itself are listed in `ABOUT_TIME` and skip this.
+- **Export** draws every picture with the same code as the canvas and hands them to ffmpeg, which also mixes the sound. ffmpeg has to be on the computer. Clips in a hidden folder cannot be played.
+- **Keys in Motion:** space, K and L play and stop; S cuts, D deletes and closes the gap, Q and W trim to the playhead (the creator's own Premiere keys); minus, equals and backslash zoom; Option with P, S, T or R marks a moment.
+- **The AI has the same controls:** `set_duration`, `set_timing`, `set_entrance`, `animate`, `place_video`, `place_sound`.
+- **Tested** by a helper acting as tester, 24 of 25 cases, on 13 October: `../duet-helpers/test-video/TESTS.md` and `REPORT.md`. Not tested: saving and opening a project with a scene, dragging in the timeline, the right click menu.
+- The older Video screen that only joins clips (`src/ui/VideoCut.tsx`) is still reachable from the File menu. It can go once scenes are in a version.
 
 ## 1. Decided but not done: swap Gemini CLI for Antigravity
 
