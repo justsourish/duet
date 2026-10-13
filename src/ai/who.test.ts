@@ -37,4 +37,15 @@ describe("a saved step says which AI tool made it", () => {
   it("keeps a name with a line break in it on one line", () => {
     expect(stepMessage({ label: "Move", actor: "ai", by: "Odd\nSteps: x" }, false)).toBe("Move\n\nActor: ai\nBy: Odd Steps: x");
   });
+
+  it("a message can name the agent it is for", async () => {
+    const { mentioned } = await import("./chat");
+    const here = { claude: true, agy: true };
+    expect(mentioned("@Antigravity tidy the spacing", here)).toBe("agy");
+    expect(mentioned("hey @antigravity, tidy", here)).toBe("agy");
+    expect(mentioned("@Claude Code look at this", here)).toBe("claude");
+    expect(mentioned("@claude look", here)).toBe("claude");
+    expect(mentioned("mail me at a@b.co", here)).toBe(null);
+    expect(mentioned("@Antigravity tidy", { claude: true })).toBe(null);
+  });
 });

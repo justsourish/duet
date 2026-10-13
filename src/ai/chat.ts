@@ -31,6 +31,25 @@ export interface Msg {
   undone?: boolean;
   /** The name of the history step this change created. Unlike undoStep, it still means the same step after the project is opened again. */
   step?: string;
+  /** For what an AI said: the name of the agent that said it, so a chat with several agents shows who spoke. */
+  by?: string;
+}
+
+/**
+ * Who a message is meant for, when it names an agent with @. "@antigravity tidy this" and
+ * "@Claude Code look" both work: the name may be shortened and may hold a space.
+ */
+export function mentioned(text: string, installed: Partial<Record<AgentId, boolean>>): AgentId | null {
+  const flat = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const m of text.matchAll(/@([A-Za-z][A-Za-z0-9]*(?: [A-Za-z][A-Za-z0-9]*)?)/g)) {
+    const words = m[1].split(" ");
+    for (const said of [flat(m[1]), flat(words[0])]) {
+      if (said.length < 3) continue;
+      const hit = AGENTS.find((a) => a.runnable && installed[a.id] && (flat(a.name).startsWith(said) || a.id === said));
+      if (hit) return hit.id;
+    }
+  }
+  return null;
 }
 
 /** A picture the designer gave the AI with a message. It is never part of the design. */

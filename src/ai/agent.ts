@@ -18,6 +18,7 @@ import {
 } from "./chat";
 import { brief, carryOn, keepable } from "../memory/thread";
 import type { AgentId } from "./chat";
+import { mentioned, setAgent } from "./chat";
 import { FROM_CHAT } from "./who";
 import { chatRules } from "./rules";
 
@@ -48,6 +49,9 @@ let stderrLines: string[] = [];
 let workingId: number | null = null;
 /** False once the designer has left the project the AI was working on. What it says after that is not shown. */
 let live = false;
+
+/** The name of the agent that is answering in the chat right now. */
+const speaker = () => AGENTS.find((a) => a.id === getChat().agent)?.name;
 
 /** Look for every AI tool this computer has. */
 export async function detectAgent() {
@@ -90,7 +94,7 @@ function onClaudeLine(line: string) {
         removeWorking();
         workingId = null;
         sawText = true;
-        addMsg({ role: "duet", text: block.text.trim() });
+        addMsg({ role: "duet", text: block.text.trim(), by: speaker() });
       } else if (block.type === "tool_use") {
         const tool = String(block.name ?? "").replace(/^mcp__duet__/, "");
         const text = `${WORKING[tool] ?? "Working"}...`;
@@ -116,7 +120,7 @@ function onClaudeLine(line: string) {
       sawText = true;
     } else if (!sawText && text) {
       removeWorking();
-      addMsg({ role: "duet", text });
+      addMsg({ role: "duet", text, by: speaker() });
       sawText = true;
     }
   }
@@ -136,7 +140,7 @@ function streamText(piece: string) {
     const cur = getChat().messages.find((m) => m.id === streamId);
     updateMsg(streamId, { text: (cur?.text ?? "") + piece });
   } else {
-    streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, "") });
+    streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, ""), by: speaker() });
   }
   lastStreamId = streamId;
 }
@@ -185,7 +189,7 @@ function onAgyLine(line: string) {
       sawText = true;
     } else if (!sawText && typeof r.response === "string" && r.response.trim()) {
       removeWorking();
-      addMsg({ role: "duet", text: r.response.trim() });
+      addMsg({ role: "duet", text: r.response.trim(), by: speaker() });
       sawText = true;
     } else if (typeof r.response === "string" && r.response.trim() && lastStreamId !== null) {
       // Streamed pieces can get lost on the way in. The final result holds the whole reply, so
@@ -250,6 +254,9 @@ export async function sendToAgent(text: string) {
   const said = text.trim();
   if (getChat().running) return;
   if (!said && !getChat().pictures.some((p) => !p.sent)) return;
+  // naming an agent with @ hands the message to that one, and it answers from then on
+  const asked = mentioned(said, getChat().installed);
+  if (asked && asked !== getChat().agent) setAgent(asked);
   const agent = getChat().agent;
   // Duet holds the conversation, not the AI tool. A quick back and forth carries the tool's own session on.
   // Otherwise it starts fresh and light, with a short note from Duet of what was said and done.
