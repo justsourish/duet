@@ -2291,3 +2291,19 @@ button {
   white-space: nowrap;
   font-weight: 600;
 }
+
+/* motion panel */
+.motion-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.motion-row span {
+  color: var(--text);
+}
+.motion-row .mini {
+  padding: 2px 8px;
+  font-size: 11px;
+}

@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { workDoc, dispatch, select, useStore } from "../state/store";
-import type { El, Layout } from "../document/types";
+import type { El, Layout, Moving } from "../document/types";
 import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
 import { COMMON_FONTS } from "../canvas/text";
 import { newId } from "../commands";
+import { useLayout } from "./layout";
+import { entranceOf, sceneOf, spanOf } from "../document/time";
+import type { Entrance } from "../document/time";
 
 function NumField({ label, value, onCommit, min }: { label: string; value: number | ""; onCommit: (n: number) => void; min?: number }) {
   const [text, setText] = useState(String(value));
@@ -288,7 +291,123 @@ function ComponentSection({ el, copies }: { el: El; copies: number }) {
   );
 }
 
+const ENTRANCE_CHOICES: [Entrance, string][] = [
+  ["none", "Straight away"],
+  ["fade", "Fade"],
+  ["slide-left", "Slide from the right"],
+  ["slide-right", "Slide from the left"],
+  ["slide-up", "Slide up"],
+  ["slide-down", "Slide down"],
+  ["grow", "Grow"],
+];
+
+const KEY_GROUPS: { name: string; props: Moving[] }[] = [
+  { name: "Position", props: ["x", "y"] },
+  { name: "Size", props: ["width", "height"] },
+  { name: "Opacity", props: ["opacity"] },
+  { name: "Turn", props: ["rotation"] },
+];
+
+function momentsCount(el: El, props: Moving[]): number {
+  const times = new Set<number>();
+  for (const p of props) {
+    const list = el.keys[p];
+    if (list) {
+      for (const k of list) {
+        times.add(Math.round(k.t * 1000) / 1000);
+      }
+    }
+  }
+  return times.size;
+}
+
+function MotionSection({ el, scene }: { el: El; scene: El }) {
+  if (el.id === scene.id) {
+    return (
+      <div className="sec">
+        <h4>Motion</h4>
+        <NumField
+          label="Length"
+          value={Math.round(el.duration * 100) / 100}
+          min={0}
+          onCommit={(seconds) => dispatch("set_duration", { id: el.id, seconds })}
+        />
+      </div>
+    );
+  }
+  const span = spanOf(el, scene);
+  const groupsWithKeys = KEY_GROUPS.map((g) => ({ ...g, count: momentsCount(el, g.props) })).filter((g) => g.count > 0);
+  return (
+    <div className="sec">
+      <h4>Motion</h4>
+      <div className="field">
+        <NumField
+          label="Appears"
+          value={Math.round(span.start * 100) / 100}
+          min={0}
+          onCommit={(start) => dispatch("set_timing", { ids: [el.id], start, end: span.end })}
+        />
+        <NumField
+          label="Leaves"
+          value={Math.round(span.end * 100) / 100}
+          min={0}
+          onCommit={(end) => dispatch("set_timing", { ids: [el.id], start: span.start, end })}
+        />
+      </div>
+      <div className="gap" />
+      <label className="f">
+        <span>Arrives</span>
+        <select
+          value={entranceOf(el, scene, "in")}
+          onChange={(e) => dispatch("set_entrance", { ids: [el.id], when: "in", kind: e.target.value as Entrance })}
+        >
+          {ENTRANCE_CHOICES.map(([val, label]) => (
+            <option key={val} value={val}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="gap" />
+      <label className="f">
+        <span>Goes</span>
+        <select
+          value={entranceOf(el, scene, "out")}
+          onChange={(e) => dispatch("set_entrance", { ids: [el.id], when: "out", kind: e.target.value as Entrance })}
+        >
+          {ENTRANCE_CHOICES.map(([val, label]) => (
+            <option key={val} value={val}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="gap" />
+      <div className="hint2">Moves over time</div>
+      {groupsWithKeys.length > 0 ? (
+        groupsWithKeys.map((g) => (
+          <div key={g.name} className="motion-row">
+            <span>
+              {g.name}, {g.count} {g.count === 1 ? "moment" : "moments"}
+            </span>
+            <button
+              type="button"
+              className="mini"
+              onClick={() => dispatch("remove_key", { ids: [el.id], props: g.props })}
+            >
+              Clear
+            </button>
+          </div>
+        ))
+      ) : (
+        <div className="hint2">Hold Option and press P, S, T or R to mark a moment.</div>
+      )}
+    </div>
+  );
+}
+
 export default function PropertiesPanel() {
+  const mode = useLayout((d) => d.mode);
   const selection = useStore((s) => s.selection);
   useStore((s) => s.timeline[s.cursor]);
   useStore((s) => s.transientDoc);
@@ -310,6 +429,7 @@ export default function PropertiesPanel() {
   const ids = els.map((e) => e.id);
   const frames = Object.values(doc.elements).filter((e) => e.type === "frame");
   const one = els.length === 1 ? els[0] : null;
+  const scene = one ? sceneOf(doc, one.id) : null;
   const set = (props: Partial<El>, label?: string) => dispatch("set_props", { ids, props, label });
   const first = els[0];
   const allText = els.every((e) => e.type === "text");
@@ -322,6 +442,8 @@ export default function PropertiesPanel() {
   return (
     <aside className="right">
       <div className="panel-title">{one ? one.name : `${els.length} selected`}</div>
+
+      {mode === "motion" && one && scene && <MotionSection el={one} scene={scene} />}
 
       {one && (
         <div className="sec">
@@ -388,7 +510,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {one && canBeComponent(one) && (
+      {mode !== "motion" && one && canBeComponent(one) && (
         <div className="sec">
           <h4>Component</h4>
           <button className="pill" onClick={() => dispatch("create_component", { id: one.id })}>
@@ -398,7 +520,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {one && (one.component || one.type === "instance") && (
+      {mode !== "motion" && one && (one.component || one.type === "instance") && (
         <ComponentSection el={one} copies={Object.values(doc.elements).filter((e) => e.type === "instance" && e.componentId === one.id && !e.id.includes("::")).length} />
       )}
 
@@ -447,7 +569,7 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {one && frames.length > 0 && (
+      {mode !== "motion" && one && frames.length > 0 && (
         <div className="sec">
           <h4>Prototype</h4>
           <Seg
