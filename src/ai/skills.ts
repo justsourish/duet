@@ -4,6 +4,9 @@ import contrast from "./skills/contrast.md?raw";
 import mobile from "./skills/mobile-screens.md?raw";
 import spacing from "./skills/spacing.md?raw";
 import typeScale from "./skills/type-scale.md?raw";
+import plainWords from "./skills/plain-words.md?raw";
+import boldBlocks from "./skills/bold-blocks.md?raw";
+import bento from "./skills/bento.md?raw";
 
 export interface Skill {
   id: string;
@@ -19,7 +22,14 @@ const SHIPPED: Record<string, string> = {
   spacing,
   "type-scale": typeScale,
   contrast,
+  "plain-words": plainWords,
+  "bold-blocks": boldBlocks,
+  bento,
 };
+
+/** Skills that change the whole look of a design. They ship switched off, and a designer turns one on when they want it. */
+const OFF_AT_FIRST = ["bold-blocks", "bento"];
+const SEEDED = "duet:skills-seeded-1";
 
 const KEY = "duet:skills-off";
 
@@ -56,7 +66,13 @@ export function describeSkill(body: string, fallback: string): { name: string; s
 
 function offSet(): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[]);
+    const off = new Set(JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[]);
+    if (!localStorage.getItem(SEEDED)) {
+      for (const id of OFF_AT_FIRST) off.add(id);
+      localStorage.setItem(SEEDED, "1");
+      localStorage.setItem(KEY, JSON.stringify([...off]));
+    }
+    return off;
   } catch {
     return new Set();
   }

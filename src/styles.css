@@ -3162,3 +3162,80 @@ button {
   border-radius: 999px;
   padding: 5px 14px;
 }
+
+/* Chat settings and an agent's card are a page inside the chat, not a box hanging out of it. */
+.chat .chat-settings,
+.chat .agent-card {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  overflow-y: auto;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 14px 14px;
+  box-shadow: none;
+  padding: 14px 16px 18px;
+  z-index: 6;
+}
+.chat:has(.chat-settings),
+.chat:has(.agent-card) {
+  overflow: clip;
+  min-height: 360px;
+}
+/* links that do something are buttons */
+.chat .agent-pop-link {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat .agent-pop-link.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* who answers opens over the whole foot, so it is never cut off at the side */
+.cfoot .agent-anchor {
+  position: static;
+}
+.cfoot .agent-pop {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+}
+button.agent-perm {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--muted);
+}
+button.agent-perm.auto {
+  color: var(--duet);
+}
+button.agent-perm:hover {
+  background: var(--panel);
+}
+.m.greeting {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--muted);
+}
+.m.greeting .member-badge {
+  flex: none;
+}

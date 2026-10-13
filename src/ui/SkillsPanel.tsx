@@ -96,7 +96,7 @@ export default function SkillsPanel() {
           {note && <div className="pop-note pad">{note}</div>}
         </>
       )}
-      <div className="hint">Turned-on skills are given to Duet every time you chat.</div>
+      <div className="hint">Turned-on skills are given to Duet every time you chat. More skills are coming soon.</div>
     </div>
   );
 }

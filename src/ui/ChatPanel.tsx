@@ -835,7 +835,12 @@ export default function ChatPanel() {
               </div>
             )}
             {messages.length === 0 && found !== false && (
-              <div className="m">Hi. Tell me what you want to do, or tap an idea. I can see what is selected on your canvas.</div>
+              <div className="m greeting">
+                <span className="member-badge" style={{ backgroundColor: agentColour(toolName) }}>
+                  {chatToolLetter}
+                </span>
+                Hey, {toolName} here. Tell me what to make or change. I can see what is selected on your canvas.
+              </div>
             )}
             {conversationItems.map((item) => {
               if (item.type === "joined") {
@@ -1037,9 +1042,15 @@ export default function ChatPanel() {
                 <span className="agent-btn-name">{toolName}</span>
                 <span className="agent-btn-v">v</span>
               </button>
-              <span className={`agent-perm ${mode === "auto" ? "auto" : ""}`}>
+              <button
+                type="button"
+                data-name="perm-button"
+                className={`agent-perm ${mode === "auto" ? "auto" : ""}`}
+                title="How much agents may do. Click to change: Suggest, Ask first, Auto."
+                onClick={() => setMode(mode === "suggest" ? "ask" : mode === "ask" ? "auto" : "suggest")}
+              >
                 {MODES.find((m) => m.mode === mode)?.label}
-              </span>
+              </button>
               {popOpen && (
                 <div className="agent-pop">
                   <div>
