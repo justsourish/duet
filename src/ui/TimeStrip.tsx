@@ -88,9 +88,13 @@ export default function TimeStrip() {
         return;
       }
       const k = e.key.toLowerCase();
-      if (!["s", "d", "q", "w", "k", "l"].includes(k)) return;
+      if (!["s", "d", "q", "w", "k", "l", " "].includes(k)) return;
       e.preventDefault();
       e.stopPropagation();
+      // the canvas listens on the window too, and must not take the spacebar for the hand tool
+      e.stopImmediatePropagation();
+      // the spacebar plays and stops, as in every video editor. The hand tool still moves the canvas.
+      if (k === " ") return e.repeat ? undefined : togglePlay();
       if (k === "l") return play();
       if (k === "k") return pause();
       const s = getState();
