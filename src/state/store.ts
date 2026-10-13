@@ -3,6 +3,7 @@ import type { AbsNode } from "../document/path";
 import { useSyncExternalStore } from "react";
 import { commandLabel, runCommand } from "../commands";
 import type { Actor, CommandName } from "../commands";
+import { docAt } from "../document/time";
 import { emptyDoc } from "../document/types";
 import type { Doc, ElementType, Rect } from "../document/types";
 
@@ -54,6 +55,15 @@ export interface Project {
   error: string | null;
 }
 
+/** Where in time the canvas is showing a frame that plays. */
+export interface Clock {
+  /** The frame being played, or null when the canvas shows the design as it is. */
+  scene: string | null;
+  /** Seconds from the start of that frame. */
+  t: number;
+  playing: boolean;
+}
+
 export interface State {
   project: Project;
   timeline: HistoryEntry[];
@@ -65,6 +75,7 @@ export interface State {
   viewport: Viewport;
   overlay: Overlay;
   editingId: string | null;
+  clock: Clock;
 }
 
 const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null, pen: null, nodeEdit: null, turning: null });
@@ -79,6 +90,7 @@ const initial = (): State => ({
   viewport: { x: 160, y: 100, zoom: 1 },
   overlay: noOverlay(),
   editingId: null,
+  clock: { scene: null, t: 0, playing: false },
 });
 
 let state: State = initial();
@@ -103,6 +115,17 @@ export function useStore<T>(selector: (s: State) => T): T {
 }
 
 export const currentDoc = (s: State = state): Doc => s.transientDoc ?? s.timeline[s.cursor].doc;
+
+let seen: { doc: Doc; scene: string; t: number; out: Doc } | null = null;
+
+/** The design as the canvas shows it: at the moment the clock is on, when a frame that plays is open. */
+export function seenDoc(s: State = state): Doc {
+  const doc = currentDoc(s);
+  const { scene, t } = s.clock;
+  if (!scene || !doc.elements[scene]?.duration) return doc;
+  if (!seen || seen.doc !== doc || seen.scene !== scene || seen.t !== t) seen = { doc, scene, t, out: docAt(doc, scene, t) };
+  return seen.out;
+}
 
 /** Test helper: reset everything. */
 export function resetStore() {
@@ -196,6 +219,7 @@ export function loadDoc(doc: Doc, label = "Opened") {
     selection: [],
     editingId: null,
     overlay: noOverlay(),
+    clock: { scene: null, t: 0, playing: false },
   });
 }
 
@@ -208,6 +232,7 @@ export function loadTimeline(entries: HistoryEntry[]) {
     selection: [],
     editingId: null,
     overlay: noOverlay(),
+    clock: { scene: null, t: 0, playing: false },
   });
 }
 
@@ -240,3 +265,4 @@ export const setViewport = (viewport: Viewport) => set({ viewport });
 export const setOverlay = (patch: Partial<Overlay>) => set({ overlay: { ...state.overlay, ...patch } });
 export const clearOverlay = () => set({ overlay: noOverlay() });
 export const setEditing = (id: string | null) => set({ editingId: id });
+export const setClock = (patch: Partial<Clock>) => set({ clock: { ...state.clock, ...patch } });

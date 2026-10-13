@@ -3,8 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 
 /// Where a tool such as ffmpeg lives. An app started from the Dock does not get the folders a terminal knows.
 fn find(program: &str) -> Option<PathBuf> {
@@ -126,6 +128,117 @@ pub async fn video_export(clips: Vec<Clip>, width: u32, height: u32, out: String
     .map_err(|e| e.to_string())?
 }
 
+// ---------- a frame that plays: its pictures arrive one by one and become one video ----------
+
+#[derive(Deserialize, Clone)]
+pub struct Sound {
+    path: String,
+    /// Seconds into the file where the sound to keep starts.
+    from: f64,
+    /// The second of the video where it is heard.
+    at: f64,
+    length: f64,
+    /// 0 to 1.
+    volume: f64,
+}
+
+/// The video being made right now: ffmpeg, waiting for pictures.
+static MAKING: Mutex<Option<Child>> = Mutex::new(None);
+
+/// The ffmpeg arguments that turn pictures handed in one by one, and the sound of the clips, into one file.
+fn scene_args(fps: u32, seconds: f64, sounds: &[Sound], out: &str) -> Vec<String> {
+    let mut args: Vec<String> = ["-y", "-hide_banner", "-loglevel", "error", "-f", "image2pipe", "-framerate"].map(String::from).to_vec();
+    args.extend([fps.to_string(), "-c:v".into(), "mjpeg".into(), "-i".into(), "-".into()]);
+    let mut graph = String::new();
+    for (i, s) in sounds.iter().enumerate() {
+        args.extend(["-ss".into(), format!("{:.3}", s.from.max(0.0)), "-t".into(), format!("{:.3}", s.length.max(0.05)), "-i".into(), s.path.clone()]);
+        let wait = (s.at.max(0.0) * 1000.0).round() as u64;
+        graph += &format!("[{}:a]aresample=48000,aformat=channel_layouts=stereo,volume={:.3},adelay={wait}:all=1[a{i}];", i + 1, s.volume.clamp(0.0, 1.0));
+    }
+    args.extend(["-map".into(), "0:v".into()]);
+    if !sounds.is_empty() {
+        for i in 0..sounds.len() {
+            graph += &format!("[a{i}]");
+        }
+        // the sound runs exactly as long as the picture, with silence where no clip is heard
+        graph += &format!("amix=inputs={}:normalize=0,apad,atrim=duration={seconds:.3}[a]", sounds.len());
+        args.extend(["-filter_complex".into(), graph, "-map".into(), "[a]".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "160k".into()]);
+    }
+    args.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart"].map(String::from));
+    args.push(out.into());
+    args
+}
+
+/// Start making a video. Pictures follow with `scene_export_frame`, and `scene_export_end` finishes it.
+#[tauri::command]
+pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, sounds: Vec<Sound>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
+        // a clip with no sound in it has nothing to add
+        let mut heard = Vec::new();
+        for s in sounds {
+            if probe(&s.path)?.sound {
+                heard.push(s);
+            }
+        }
+        let child = Command::new(ffmpeg)
+            .args(scene_args(fps.clamp(1, 120), seconds, &heard, &out))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        if let Some(mut old) = MAKING.lock().map_err(|e| e.to_string())?.replace(child) {
+            let _ = old.kill();
+            let _ = old.wait();
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// One picture of the video, as a JPEG.
+#[tauri::command]
+pub fn scene_export_frame(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("That was not a picture.".into());
+    };
+    let mut making = MAKING.lock().map_err(|e| e.to_string())?;
+    let child = making.as_mut().ok_or("No video is being made.")?;
+    let pipe = child.stdin.as_mut().ok_or("No video is being made.")?;
+    pipe.write_all(bytes).map_err(|_| "The video could not be made. ffmpeg stopped early.".to_string())
+}
+
+/// The last picture has been handed in: finish the file.
+#[tauri::command]
+pub async fn scene_export_end() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut child = MAKING.lock().map_err(|e| e.to_string())?.take().ok_or("No video is being made.")?;
+        drop(child.stdin.take());
+        let done = child.wait_with_output().map_err(|e| e.to_string())?;
+        if done.status.success() {
+            return Ok(());
+        }
+        let said = String::from_utf8_lossy(&done.stderr);
+        let last: Vec<&str> = said.lines().rev().take(3).collect();
+        Err(format!("The video could not be made. {}", last.into_iter().rev().collect::<Vec<_>>().join(" ")))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Give up on the video being made.
+#[tauri::command]
+pub fn scene_export_stop() {
+    if let Ok(mut making) = MAKING.lock() {
+        if let Some(mut child) = making.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +260,17 @@ mod tests {
         assert!(graph.contains("anullsrc=r=48000:cl=stereo,atrim=duration=2.000[a1]"));
         assert!(graph.ends_with("[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"));
         assert_eq!(args.last().unwrap(), "out.mp4");
+    }
+
+    #[test]
+    fn a_frame_that_plays_gets_its_pictures_and_each_clip_heard_at_its_moment() {
+        let sounds = vec![Sound { path: "a.mp4".into(), from: 1.0, at: 2.5, length: 3.0, volume: 0.5 }];
+        let args = scene_args(30, 10.0, &sounds, "out.mp4").join(" ");
+        assert!(args.contains("-f image2pipe -framerate 30 -c:v mjpeg -i -"));
+        assert!(args.contains("-ss 1.000 -t 3.000 -i a.mp4"));
+        assert!(args.contains("volume=0.500,adelay=2500:all=1[a0]"));
+        assert!(args.contains("atrim=duration=10.000[a]"));
+        let silent = scene_args(30, 10.0, &[], "out.mp4").join(" ");
+        assert!(!silent.contains("filter_complex"));
     }
 }

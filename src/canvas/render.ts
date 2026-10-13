@@ -1,11 +1,12 @@
 import { maskOf, turnOf, turnPoint, turnVector, worldBounds, worldRect } from "../document/geometry";
 import { toAbs, trace } from "../document/path";
 import type { Doc, El, Rect } from "../document/types";
-import { currentDoc } from "../state/store";
+import { seenDoc } from "../state/store";
 import type { State } from "../state/store";
 import { logError } from "../errorLog";
 import { isLooseCopy } from "../document/components";
 import { getPicture } from "../project/assets";
+import { clipPicture } from "../video/clips";
 import { HANDLES } from "./handles";
 import { FONT_STACK, fontCss, layoutText, lineStep, lineWidth, measureText } from "./text";
 
@@ -187,6 +188,27 @@ function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) 
   }
 }
 
+/** A video clip, at the moment its player is on. It fills its box and what does not fit is cut off. */
+function drawClip(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
+  const pic = clipPicture(el.src);
+  ctx.save();
+  roundedPath(ctx, x, y, el.width, el.height, el.radius);
+  ctx.clip();
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(x, y, el.width, el.height);
+  if (pic && pic.videoWidth && pic.videoHeight) {
+    try {
+      const k = Math.max(el.width / pic.videoWidth, el.height / pic.videoHeight);
+      const w = pic.videoWidth * k;
+      const h = pic.videoHeight * k;
+      ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+    } catch (e) {
+      logError("draw clip", e);
+    }
+  }
+  ctx.restore();
+}
+
 /** From here on, draw only inside a shape. ox and oy are where the shape's parent sits. */
 function clipTo(ctx: CanvasRenderingContext2D, shape: El, ox: number, oy: number) {
   const x = ox + shape.x;
@@ -281,6 +303,12 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
     return;
   }
 
+  if (el.type === "video") {
+    drawClip(ctx, el, x, y);
+    ctx.restore();
+    return;
+  }
+
   if (el.type === "ellipse") {
     ctx.beginPath();
     ctx.ellipse(x + el.width / 2, y + el.height / 2, el.width / 2, el.height / 2, 0, 0, Math.PI * 2);
@@ -348,7 +376,7 @@ function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number
 }
 
 export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: number, dpr: number) {
-  const doc = currentDoc(s);
+  const doc = seenDoc(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, w, h);

@@ -2,7 +2,10 @@ import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
 import { inTestDesign, keepTestDesign, leaveTestDesign, startTestDesign } from "../project/project";
 import { invoke } from "@tauri-apps/api/core";
-import { getState } from "../state/store";
+import { getState, seenDoc } from "../state/store";
+import { clipPicture } from "../video/clips";
+import { seek } from "../video/play";
+import { exportScene } from "../video/scene";
 import { addClip, getCut, emptyCut, setCut, sizeOf } from "../video/cut";
 import type { Info } from "../video/cut";
 import { busyOutside } from "./outside";
@@ -80,8 +83,8 @@ export const BUILDER_TOOLS: ToolDef[] = [
   },
   {
     name: "dev_video",
-    description: "Builder tool. Stand in for the two system windows of the video screen. add: put a video file in the list by its full path. export: make the video at a full path. clear: empty the list.",
-    inputSchema: { type: "object", properties: { do: { type: "string", enum: ["add", "export", "clear"] }, path: str }, required: ["do"] },
+    description: "Builder tool. Stand in for the two system windows of the video screen. add: put a video file in the list by its full path. export: make the video at a full path. clear: empty the list. For a frame that plays: frame makes the video of the frame with id at a full path, and clock moves the clock to the second t and says what the canvas shows then.",
+    inputSchema: { type: "object", properties: { do: { type: "string", enum: ["add", "export", "clear", "frame", "clock"] }, path: str, id: str, t: { type: "number" } }, required: ["do"] },
   },
   { name: "dev_reload", description: "Builder tool. Load the interface again, so a change to Duet's code is surely the one running. A test design does not survive it: the project that was open comes back.", inputSchema: { type: "object", properties: {} } },
   {
@@ -359,6 +362,28 @@ export async function callBuilderTool(name: string, raw: unknown, by?: string): 
     const s = getState();
     const from = Math.max(0, s.timeline.length - (typeof a.last === "number" && a.last > 0 ? Math.floor(a.last) : 12));
     return { text: s.timeline.slice(from).map((e, i) => `${from + i + 1} ${e.actor === "ai" ? (e.by ?? "an AI") : "you"}: ${e.label}${from + i === s.cursor ? "  <- now" : ""}`).join("\n") };
+  }
+  if (name === "dev_video" && a.do === "frame") {
+    try {
+      const began = Date.now();
+      const file = await exportScene(String(a.id), () => {}, String(a.path));
+      return { text: `Made ${file} in ${Math.round((Date.now() - began) / 100) / 10} seconds.` };
+    } catch (e) {
+      return fail(String(e instanceof Error ? e.message : e));
+    }
+  }
+  if (name === "dev_video" && a.do === "clock") {
+    seek(Number(a.t) || 0);
+    await settle();
+    const s = getState();
+    const scene = s.clock.scene;
+    if (!scene) return fail("No frame that plays is open. Select one first.");
+    const seen = seenDoc(s);
+    const lines = seen.elements[scene].childIds.map((c) => {
+      const el = seen.elements[c];
+      return `${el.name}: at ${Math.round(el.x)},${Math.round(el.y)} size ${Math.round(el.width)}x${Math.round(el.height)} opacity ${Math.round(el.opacity * 100) / 100}${el.type === "video" ? ` clip ${clipPicture(el.src) ? `ready at ${Math.round((clipPicture(el.src)?.currentTime ?? 0) * 100) / 100}s` : "not ready"}` : ""}`;
+    });
+    return { text: `At ${s.clock.t}s the canvas shows:\n${lines.join("\n") || "nothing"}` };
   }
   if (name === "dev_video") {
     try {

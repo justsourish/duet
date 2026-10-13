@@ -1,4 +1,4 @@
-export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path" | "group" | "instance";
+export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path" | "group" | "instance" | "video";
 
 /** One point on a drawn line. All numbers are fractions of the element's box, so resizing just works. */
 export interface PathNode {
@@ -39,6 +39,19 @@ export interface Gradient {
   /** Degrees. 0 runs left to right, 90 runs top to bottom. */
   angle: number;
 }
+
+/** One moment in a change over time: at this second, the property has this value. */
+export interface Key {
+  /** Seconds from the start of the frame it plays in. */
+  t: number;
+  v: number;
+  /** How it arrives at this value from the one before: at a steady pace, or easing in, out, or both. */
+  ease: "linear" | "in" | "out" | "in-out";
+}
+
+/** The properties that can change over time. */
+export const MOVING = ["x", "y", "width", "height", "opacity", "rotation"] as const;
+export type Moving = (typeof MOVING)[number];
 
 export interface El {
   id: string;
@@ -105,6 +118,16 @@ export interface El {
   transitionMs: number;
   /** Screens only: in Present mode, what is below the bottom edge can be scrolled into view. */
   scroll: boolean;
+  /** A frame only: how long it plays, in seconds. 0 means it is a still design, not a video. */
+  duration: number;
+  /** Inside a frame that plays: the second this appears, and the second it leaves. An end of 0 means it stays to the end. */
+  start: number;
+  end: number;
+  /** Changes over time, by property. Each list is in order of time. Empty for something that stays as it is. */
+  keys: Partial<Record<Moving, Key[]>>;
+  /** A video clip only: the second in its file where playing starts, and how loud it is from 0 to 1. For a clip, src is where the file is on the computer. */
+  clipFrom: number;
+  volume: number;
   childIds: string[];
 }
 

@@ -76,6 +76,7 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   path: { w: 100, h: 100 },
   group: { w: 100, h: 100 },
   instance: { w: 100, h: 100 },
+  video: { w: 320, h: 180 },
 };
 
 /** Copy of what was last copied inside this window, in case the system clipboard is unavailable. */

@@ -15,6 +15,8 @@ import { clampW, getLayout, setLayout, useLayout } from "./ui/layout";
 import Icon from "./ui/Icons";
 import Home from "./ui/Home";
 import VideoCut from "./ui/VideoCut";
+import TimeStrip from "./ui/TimeStrip";
+import { wireClips } from "./video/play";
 import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
@@ -54,6 +56,8 @@ function Grip({ side }: { side: "l" | "r" }) {
   };
   return <div className={`grip grip-${side}`} onPointerDown={down} onDoubleClick={() => setLayout({ [key]: key === "leftW" ? 232 : 248 })} title="Drag to resize. Double-click to reset." />;
 }
+
+wireClips();
 
 export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);
@@ -140,7 +144,7 @@ export default function App() {
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const appStyle = {
     gridTemplateColumns: dock.swapped ? `${rw}px 1fr ${lw}px` : `${lw}px 1fr ${rw}px`,
-    gridTemplateAreas: dock.swapped ? '"top top top" "right canvas left" "hist hist hist"' : '"top top top" "left canvas right" "hist hist hist"',
+    gridTemplateAreas: dock.swapped ? '"top top top" "right canvas left" "time time time" "hist hist hist"' : '"top top top" "left canvas right" "time time time" "hist hist hist"',
   };
 
   return (
@@ -217,6 +221,7 @@ export default function App() {
         <ChatPanel />
       </main>
       {!dock.rightHidden && <PropertiesPanel />}
+      <TimeStrip />
       <HistoryStrip />
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />

@@ -3,7 +3,10 @@ import type { ClipPayload } from "../document/clipboard";
 import { canMask, canTurn, descendants, tidyAngle, turnCentre, turnPoint, worldPos } from "../document/geometry";
 import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
-import type { Doc, El, ElementType, Layout, TextStyle } from "../document/types";
+import { MOVING } from "../document/types";
+import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../document/types";
+import { ENTRANCES, entranceKeys, sceneOf, withKey } from "../document/time";
+import type { Entrance } from "../document/time";
 
 /**
  * Every change to a design goes through one of these named commands.
@@ -33,6 +36,7 @@ const defaults: Record<ElementType, Partial<El>> = {
   path: { fill: "#d9d9de", stroke: "#1b1b1f", strokeWidth: 2, radius: 0 },
   group: { fill: "#00000000", radius: 0 },
   instance: { fill: "#ffffff", radius: 0 },
+  video: { fill: "#000000", radius: 0 },
 };
 
 const typeName: Record<ElementType, string> = {
@@ -44,6 +48,7 @@ const typeName: Record<ElementType, string> = {
   path: "Path",
   group: "Group",
   instance: "Component",
+  video: "Clip",
 };
 
 function nextName(doc: Doc, type: ElementType): string {
@@ -112,6 +117,12 @@ const createElement: CommandDef<CreateArgs> = {
       grow: 0,
       nodes: [],
       closed: false,
+      duration: 0,
+      start: 0,
+      end: 0,
+      keys: {},
+      clipFrom: 0,
+      volume: 1,
       childIds: [],
       ...defaults[a.type],
       ...a.props,
@@ -618,6 +629,12 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       grow: 0,
       nodes: [],
       closed: false,
+      duration: 0,
+      start: 0,
+      end: 0,
+      keys: {},
+      clipFrom: 0,
+      volume: 1,
       childIds: [],
     };
     next.elements[frame.id] = frame;
@@ -697,6 +714,12 @@ const groupElements: CommandDef<GroupArgs> = {
       grow: 0,
       nodes: [],
       closed: false,
+      duration: 0,
+      start: 0,
+      end: 0,
+      keys: {},
+      clipFrom: 0,
+      volume: 1,
       childIds: [],
     };
     next.elements[group.id] = group;
@@ -772,6 +795,169 @@ const ungroup: CommandDef<UngroupArgs> = {
   },
 };
 
+// ---- set_duration ----
+export interface SetDurationArgs {
+  id: string;
+  /** How long the frame plays, in seconds. 0 makes it a still design again. */
+  seconds: number;
+}
+
+const round = (n: number) => Math.round(n * 1000) / 1000;
+
+const setDuration: CommandDef<SetDurationArgs> = {
+  label: (a) => (a.seconds > 0 ? `Make it play for ${round(a.seconds)} seconds` : "Make it a still design"),
+  run: (doc, a) => {
+    const el = doc.elements[a.id];
+    // only a frame on the page plays: the things in it are what is seen over time
+    if (!el || el.type !== "frame" || el.parentId) return doc;
+    const seconds = Math.max(0, Math.min(3600, round(Number(a.seconds) || 0)));
+    if (seconds === el.duration) return doc;
+    const next = clone(doc);
+    next.elements[a.id].duration = seconds;
+    return next;
+  },
+};
+
+// ---- set_timing ----
+export interface SetTimingArgs {
+  ids: string[];
+  /** The second it appears. */
+  start?: number;
+  /** The second it leaves. 0 means it stays to the end. */
+  end?: number;
+  /** A video clip only: the second in its file where playing starts. */
+  clipFrom?: number;
+}
+
+const setTiming: CommandDef<SetTimingArgs> = {
+  label: () => "Change when it shows",
+  run: (doc, a) => {
+    const next = clone(doc);
+    let changed = false;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      const scene = sceneOf(next, id);
+      if (!el || !scene || scene.id === id) continue;
+      const was = el.start;
+      if (a.start !== undefined) el.start = Math.max(0, Math.min(scene.duration, round(Number(a.start) || 0)));
+      if (a.end !== undefined) el.end = Math.max(0, Math.min(scene.duration, round(Number(a.end) || 0)));
+      if (el.end && el.end <= el.start) el.end = Math.min(scene.duration, round(el.start + 0.1));
+      if (a.clipFrom !== undefined && el.type === "video") el.clipFrom = Math.max(0, round(Number(a.clipFrom) || 0));
+      // what it does over time moves along with it
+      const by = el.start - was;
+      if (by) for (const prop of MOVING) if (el.keys[prop]) el.keys[prop] = el.keys[prop]!.map((k) => ({ ...k, t: round(k.t + by) }));
+      changed = true;
+    }
+    return changed ? next : doc;
+  },
+};
+
+// ---- set_key ----
+export interface SetKeyArgs {
+  ids: string[];
+  prop: Moving;
+  /** Seconds from the start of the frame it plays in. */
+  t: number;
+  v: number;
+  ease?: Key["ease"];
+}
+
+const propName: Record<Moving, string> = { x: "position", y: "position", width: "size", height: "size", opacity: "opacity", rotation: "turn" };
+
+const setKey: CommandDef<SetKeyArgs> = {
+  label: (a) => `Set ${propName[a.prop] ?? "a value"} at ${round(a.t)}s`,
+  run: (doc, a) => {
+    if (!MOVING.includes(a.prop) || !Number.isFinite(a.t) || !Number.isFinite(a.v)) return doc;
+    const next = clone(doc);
+    let changed = false;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      const scene = sceneOf(next, id);
+      if (!el || !scene || scene.id === id) continue;
+      el.keys[a.prop] = withKey(el.keys[a.prop] ?? [], { t: Math.max(0, Math.min(scene.duration, round(a.t))), v: a.v, ease: a.ease ?? "in-out" });
+      changed = true;
+    }
+    return changed ? next : doc;
+  },
+};
+
+// ---- set_keys ----
+export interface SetKeysArgs {
+  id: string;
+  prop: Moving;
+  /** Every moment of this property, replacing what was there. An empty list makes it stay as it is. */
+  keys: { t: number; v: number; ease?: Key["ease"] }[];
+}
+
+const setKeys: CommandDef<SetKeysArgs> = {
+  label: (a) => (a.keys.length ? `Change ${propName[a.prop] ?? "a value"} over time` : "Remove a change over time"),
+  run: (doc, a) => {
+    const scene = sceneOf(doc, a.id);
+    if (!MOVING.includes(a.prop) || !doc.elements[a.id] || !scene || scene.id === a.id) return doc;
+    const next = clone(doc);
+    let keys: Key[] = [];
+    for (const k of a.keys) if (Number.isFinite(k.t) && Number.isFinite(k.v)) keys = withKey(keys, { t: Math.max(0, Math.min(scene.duration, round(k.t))), v: k.v, ease: k.ease ?? "in-out" });
+    if (keys.length) next.elements[a.id].keys[a.prop] = keys;
+    else delete next.elements[a.id].keys[a.prop];
+    return next;
+  },
+};
+
+// ---- remove_key ----
+export interface RemoveKeyArgs {
+  ids: string[];
+  /** Leave out to clear every change over time on these things. */
+  prop?: Moving;
+  /** Leave out to clear every moment of that property. */
+  t?: number;
+}
+
+const removeKey: CommandDef<RemoveKeyArgs> = {
+  label: () => "Remove a change over time",
+  run: (doc, a) => {
+    const next = clone(doc);
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      if (!el) continue;
+      for (const prop of a.prop ? [a.prop] : MOVING) {
+        const keys = el.keys[prop];
+        if (!keys) continue;
+        const left = a.t === undefined ? [] : keys.filter((k) => Math.abs(k.t - a.t!) > 0.004);
+        if (left.length) el.keys[prop] = left;
+        else delete el.keys[prop];
+      }
+    }
+    return next;
+  },
+};
+
+// ---- set_entrance ----
+export interface SetEntranceArgs {
+  ids: string[];
+  /** How it arrives when it appears, or how it goes when it leaves. */
+  when: "in" | "out";
+  kind: Entrance;
+  /** How long that takes, in seconds. */
+  seconds?: number;
+}
+
+const setEntrance: CommandDef<SetEntranceArgs> = {
+  label: (a) => (a.when === "in" ? "Change how it arrives" : "Change how it leaves"),
+  run: (doc, a) => {
+    if (!ENTRANCES.includes(a.kind)) return doc;
+    const next = clone(doc);
+    let changed = false;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      const scene = sceneOf(next, id);
+      if (!el || !scene || scene.id === id) continue;
+      el.keys = entranceKeys(el, scene, a.when, a.kind, Math.max(0.05, Number(a.seconds) || 0.4));
+      changed = true;
+    }
+    return changed ? next : doc;
+  },
+};
+
 // ---- registry ----
 export const commands = {
   create_element: createElement,
@@ -794,6 +980,12 @@ export const commands = {
   create_instance: createInstance,
   detach_instance: detachCommand,
   reset_overrides: resetOverrides,
+  set_duration: setDuration,
+  set_timing: setTiming,
+  set_key: setKey,
+  set_keys: setKeys,
+  remove_key: removeKey,
+  set_entrance: setEntrance,
 } as const;
 
 export type CommandName = keyof typeof commands;

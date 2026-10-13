@@ -27,6 +27,10 @@ function describe(doc: Doc, el: El): string {
     if (el.radius) bits.push(`radius ${el.radius}`);
     if (el.shadow) bits.push("shadow");
   }
+  if (el.type === "video") bits.push(`clip ${el.src}${el.clipFrom ? ` from ${el.clipFrom}s of the file` : ""}${el.volume !== 1 ? ` volume ${el.volume}` : ""}`);
+  if (el.duration > 0) bits.push(`PLAYS ${el.duration}s`);
+  if (el.start || el.end) bits.push(`shows ${el.start}s to ${el.end ? `${el.end}s` : "the end"}`);
+  for (const [prop, keys] of Object.entries(el.keys)) if (keys?.length) bits.push(`${prop} over time ${keys.map((k) => `${k.t}s:${Math.round(k.v * 100) / 100}`).join(" ")}`);
   if (el.opacity < 1) bits.push(`opacity ${el.opacity}`);
   if (el.rotation && el.type !== "frame" && el.type !== "instance") bits.push(`turned ${el.rotation}°`);
   if (el.layout) bits.push(`layout ${el.layout.dir} gap ${el.layout.gap} pad ${el.layout.padX}/${el.layout.padY} ${el.layout.align}/${el.layout.justify}${el.layout.hug ? " hug" : ""}`);

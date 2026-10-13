@@ -7,6 +7,8 @@ import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
 import { canMask, canTurn } from "../document/geometry";
 import { outlineFromData } from "../document/path";
+import { ENTRANCES, sceneOf } from "../document/time";
+import { MOVING } from "../document/types";
 import type { El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
 import { addPicture, mimeFor } from "../project/assets";
@@ -185,15 +187,52 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { shapeId: { ...str, description: "The shape to show them through." }, ids }, required: ["shapeId", "ids"] },
   },
   {
+    name: "set_duration",
+    description:
+      "Make a frame on the page play like a video, or change how long it plays. Everything in the frame is then seen over time: use set_timing for when a thing shows, set_entrance for a ready-made arrival, animate for any other movement, and place_video for clips. The frame's size is the size of the video (1920 by 1080 for wide, 1080 by 1920 for tall). Things later in the frame's list are in front. seconds 0 makes it a still design again.",
+    inputSchema: { type: "object", properties: { id: { ...str, description: "A frame on the page." }, seconds: num }, required: ["id", "seconds"] },
+  },
+  {
+    name: "set_timing",
+    description:
+      "When things show inside a frame that plays: the second they appear and the second they leave, counted from the start of the frame. end 0 means to the end of the frame. Whatever they do over time moves along with them. For a video clip, clipFrom is the second in its file where playing starts.",
+    inputSchema: { type: "object", properties: { ids, start: num, end: num, clipFrom: num }, required: ["ids"] },
+  },
+  {
+    name: "set_entrance",
+    description: "A ready-made way for things to arrive when they appear (when: in) or go when they leave (when: out). kind is none, fade, slide-left, slide-right, slide-up, slide-down or grow. seconds is how long it takes, 0.4 if left out. Set the timing first.",
+    inputSchema: { type: "object", properties: { ids, when: { ...str, description: "in or out." }, kind: str, seconds: num }, required: ["ids", "when", "kind"] },
+  },
+  {
+    name: "animate",
+    description:
+      "Make one property of one thing change over time, inside a frame that plays. prop is x, y, width, height, opacity or rotation. keys is the whole list of moments for that property, replacing what was there: each has t (seconds from the start of the frame), v (the value then) and ease (linear, in, out or in-out, which is used if left out; it shapes the way into that moment). x and y are relative to the parent, like everywhere else. Before the first moment the first value holds, after the last the last holds. An empty list makes it stay as it is. Give several calls for several properties.",
+    inputSchema: {
+      type: "object",
+      properties: { id: str, prop: str, keys: { type: "array", items: { type: "object", properties: { t: num, v: num, ease: str }, required: ["t", "v"] } } },
+      required: ["id", "prop", "keys"],
+    },
+  },
+  {
+    name: "place_video",
+    description:
+      "Put a video file from this computer into a frame that plays. path is the full path to an MP4, MOV, M4V or WebM file (~ for the home folder works). It appears at start (seconds, 0 if left out) and plays to its end, and the frame grows longer if it has to. Leave x, y, width and height out to fit it inside the frame, centred. The file stays where it is on the computer. Trim it afterwards with set_timing. The designer is asked first.",
+    inputSchema: {
+      type: "object",
+      properties: { path: str, parentId: { ...str, description: "A frame that plays." }, start: num, x: num, y: num, width: num, height: num, name: str },
+      required: ["path", "parentId"],
+    },
+  },
+  {
     name: "delete_elements",
     description: "Delete elements and everything inside them. The designer may be asked to approve this.",
     inputSchema: { type: "object", properties: { ids }, required: ["ids"] },
   },
 ];
 
-const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image"]);
+const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
-const RISKY = new Set(["delete_elements", "place_image"]);
+const RISKY = new Set(["delete_elements", "place_image", "place_video"]);
 
 type Args = Record<string, unknown>;
 
@@ -224,6 +263,16 @@ export function summarise(tool: string, a: Args): string {
       return `Place a copy of ${nameOf(a.componentId)}`;
     case "place_image":
       return `Bring in the picture at ${String(a.path)}`;
+    case "place_video":
+      return `Bring in the clip at ${String(a.path)}`;
+    case "set_duration":
+      return Number(a.seconds) > 0 ? `Make ${nameOf(a.id)} play for ${String(a.seconds)} seconds` : `Make ${nameOf(a.id)} a still design`;
+    case "set_timing":
+      return `Change when ${namesOf(a.ids)} ${Array.isArray(a.ids) && a.ids.length > 1 ? "show" : "shows"}`;
+    case "set_entrance":
+      return `${namesOf(a.ids)}: ${a.when === "out" ? "leave" : "arrive"} with ${String(a.kind)}`;
+    case "animate":
+      return `Change ${String(a.prop)} of ${nameOf(a.id)} over time`;
     case "trace_image":
       return `Trace ${nameOf(a.id)} into shapes`;
     case "make_mask":
@@ -366,6 +415,52 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       if (apart.length) return { error: `${namesOf(apart)} must be in the same frame as ${shape.name} first. Use reparent_elements.` };
       return { args: { maskId: shape.id, ids: list, groupId: newId("group") } };
     }
+    case "set_duration": {
+      const el = typeof a.id === "string" ? doc.elements[a.id] : undefined;
+      if (!el) return { error: `No element with id: ${String(a.id)}.` };
+      if (el.type !== "frame" || el.parentId) return { error: `${el.name} is not a frame on the page. Only a frame on the page can play.` };
+      if (typeof a.seconds !== "number" || a.seconds < 0) return { error: "seconds must be a number, 0 or more." };
+      return { args: a };
+    }
+    case "set_timing":
+    case "set_entrance": {
+      const bad = missing(a.ids);
+      if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
+      const still = (a.ids as string[]).filter((i) => !sceneOf(doc, i) || sceneOf(doc, i)?.id === i);
+      if (still.length) return { error: `${namesOf(still)} must be inside a frame that plays. Use set_duration on the frame first.` };
+      if (tool === "set_timing") {
+        for (const k of ["start", "end", "clipFrom"]) if (a[k] != null && !(typeof a[k] === "number" && (a[k] as number) >= 0)) return { error: `${k} must be a number, 0 or more.` };
+        if (a.start == null && a.end == null && a.clipFrom == null) return { error: "Give start, end or clipFrom." };
+      } else {
+        if (a.when !== "in" && a.when !== "out") return { error: "when must be in or out." };
+        if (!(ENTRANCES as readonly string[]).includes(String(a.kind))) return { error: `kind must be one of: ${ENTRANCES.join(", ")}.` };
+      }
+      return { args: a };
+    }
+    case "animate": {
+      if (missing([a.id]).length) return { error: `No element with id: ${String(a.id)}.` };
+      const scene = sceneOf(doc, String(a.id));
+      if (!scene || scene.id === a.id) return { error: `${nameOf(a.id)} must be inside a frame that plays. Use set_duration on the frame first.` };
+      if (!(MOVING as readonly string[]).includes(String(a.prop))) return { error: `prop must be one of: ${MOVING.join(", ")}.` };
+      if (!Array.isArray(a.keys)) return { error: "keys must be a list of moments, each with t and v." };
+      for (const k of a.keys as Record<string, unknown>[]) {
+        if (typeof k?.t !== "number" || typeof k?.v !== "number") return { error: "Each moment needs t and v as numbers." };
+        if (k.ease != null && !["linear", "in", "out", "in-out"].includes(String(k.ease))) return { error: "ease must be linear, in, out or in-out." };
+      }
+      return { args: a };
+    }
+    case "place_video": {
+      const path = typeof a.path === "string" ? a.path.trim() : "";
+      if (!/^(~[\\/]|[\\/]|[a-zA-Z]:[\\/])/.test(path)) return { error: "Give the full path to the file, starting from the top folder or from ~ for the home folder." };
+      if (!/\.(mp4|mov|m4v|webm)$/i.test(path)) return { error: "That is not a video Duet can use. It takes MP4, MOV, M4V and WebM files." };
+      const scene = doc.elements[String(a.parentId)];
+      if (!scene || scene.type !== "frame" || scene.parentId || !(scene.duration > 0)) return { error: "parentId must be a frame that plays. Use set_duration on a frame on the page first." };
+      for (const k of ["start", "x", "y"]) if (a[k] != null && typeof a[k] !== "number") return { error: `${k} must be a number.` };
+      for (const k of ["width", "height"]) if (a[k] != null && !(typeof a[k] === "number" && (a[k] as number) > 0)) return { error: `${k} must be a number above 0.` };
+      a.path = path;
+      a.id = newId("video");
+      return { args: a };
+    }
     case "move_elements": {
       const bad = missing(a.ids);
       if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
@@ -450,6 +545,40 @@ async function placeImage(args: Args, by?: string): Promise<ToolResult> {
   return { text: `Placed the picture as ${String(args.id)} named "${name}", ${width} by ${height} (the file is ${pic.width} by ${pic.height}). Call look_at_image to see it.` };
 }
 
+/** Put a video file from the computer into a frame that plays. The file stays where it is. */
+async function placeVideo(args: Args, by?: string): Promise<ToolResult> {
+  let path = String(args.path);
+  // Duet's own folder sits in the home folder, which is how the home folder is found
+  if (path.startsWith("~")) path = (await invoke<string>("duet_home")).replace(/[\\/]\.duet[^\\/]*[\\/]?$/, "") + path.slice(1);
+  let info: { duration: number; width: number; height: number; sound: boolean };
+  try {
+    info = await invoke("video_info", { path });
+  } catch (e) {
+    return fail(`The clip at ${String(args.path)} could not be read. ${String(e)}`);
+  }
+  const sceneId = String(args.parentId);
+  const scene = currentDoc().elements[sceneId];
+  const start = Math.max(0, Number(args.start) || 0);
+  const end = Math.round((start + info.duration) * 1000) / 1000;
+  const k = Math.min(scene.width / info.width, scene.height / info.height);
+  const shape = info.width / info.height;
+  let width = typeof args.width === "number" ? args.width : typeof args.height === "number" ? args.height * shape : info.width * k;
+  let height = typeof args.height === "number" ? args.height : width / shape;
+  width = Math.max(8, Math.round(width));
+  height = Math.max(8, Math.round(height));
+  const x = typeof args.x === "number" ? args.x : Math.round((scene.width - width) / 2);
+  const y = typeof args.y === "number" ? args.y : Math.round((scene.height - height) / 2);
+  const file = path.split(/[\\/]/).pop() ?? "Clip";
+  const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : file;
+  await ensureSaved();
+  if (end > scene.duration) dispatch("set_duration", { id: sceneId, seconds: end }, "ai", by);
+  dispatch("create_element", { type: "video", id: String(args.id), parentId: sceneId, x, y, width, height, props: { src: path, name, start, end } }, "ai", by);
+  if (!currentDoc().elements[String(args.id)]) return fail("The clip could not be placed there.");
+  addMsg({ role: "note", text: `Brought in the clip ${file}`, ...stepNow() });
+  saveIfHome();
+  return { text: `Placed the clip as ${String(args.id)} named "${name}", ${width} by ${height}, showing from ${start}s to ${end}s (the file is ${info.duration}s long, ${info.width} by ${info.height}, ${info.sound ? "with" : "without"} sound). The frame now plays for ${currentDoc().elements[sceneId].duration}s.` };
+}
+
 /** The step a change has just made: where it is for Undo, and its name so the words stay tied to it. */
 function stepNow() {
   const s = getState();
@@ -470,10 +599,13 @@ async function traceImage(args: Args, by?: string): Promise<ToolResult> {
 
 async function apply(tool: string, args: Args, by?: string): Promise<ToolResult> {
   if (tool === "place_image") return placeImage(args, by);
+  if (tool === "place_video") return placeVideo(args, by);
   if (tool === "trace_image") return traceImage(args, by);
   await ensureSaved();
-  const label = commandLabel(tool as CommandName, args as never);
-  dispatch(tool as CommandName, args as never, "ai", by);
+  // changing a value over time is one tool for the AI and the set_keys command underneath
+  const command = (tool === "animate" ? "set_keys" : tool) as CommandName;
+  const label = commandLabel(command, args as never);
+  dispatch(command, args as never, "ai", by);
   addMsg({ role: "note", text: summarise(tool, args), ...stepNow() });
   saveIfHome();
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
@@ -573,7 +705,7 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
   }
   if (RISKY.has(name) && mode === "ask") {
     const ok = await askDesigner(summary);
-    if (!ok) return fail(name === "place_image" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
+    if (!ok) return fail(name === "place_image" || name === "place_video" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
   }
   return apply(name, check.args, by);
 }

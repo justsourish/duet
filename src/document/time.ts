@@ -1,0 +1,133 @@
+import type { Doc, El, Key, Moving } from "./types";
+import { MOVING } from "./types";
+
+/**
+ * Time. A frame on the page with a length plays like a video, and the things in it are what is seen:
+ * each has a second it appears and a second it leaves, and its position, size, opacity and turn can
+ * change in between. Nothing here draws. It only answers what the design looks like at one moment.
+ */
+
+const EASE: Record<Key["ease"], (p: number) => number> = {
+  linear: (p) => p,
+  in: (p) => p * p * p,
+  out: (p) => 1 - (1 - p) ** 3,
+  "in-out": (p) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2),
+};
+
+/** The value at one moment. Before the first key it holds the first value, after the last it holds the last. */
+export function valueAt(keys: Key[], t: number): number {
+  if (t <= keys[0].t) return keys[0].v;
+  for (let i = 1; i < keys.length; i++) {
+    const b = keys[i];
+    if (t > b.t) continue;
+    const a = keys[i - 1];
+    const p = b.t === a.t ? 1 : (t - a.t) / (b.t - a.t);
+    return a.v + (b.v - a.v) * (EASE[b.ease] ?? EASE.linear)(p);
+  }
+  return keys[keys.length - 1].v;
+}
+
+/** The list with this key added, in order of time. A key at the same moment is replaced. */
+export function withKey(keys: Key[], key: Key): Key[] {
+  return keys
+    .filter((k) => Math.abs(k.t - key.t) > 0.004)
+    .concat(key)
+    .sort((a, b) => a.t - b.t);
+}
+
+/** The frame that plays this thing: the frame on the page it sits in, when that frame has a length. */
+export function sceneOf(doc: Doc, id: string): El | null {
+  let el: El | undefined = doc.elements[id];
+  while (el?.parentId) el = doc.elements[el.parentId];
+  return el && el.type === "frame" && el.duration > 0 ? el : null;
+}
+
+/** The second a thing appears and the second it leaves, inside the frame that plays it. */
+export function spanOf(el: El, scene: El): { start: number; end: number } {
+  const start = Math.min(el.start, scene.duration);
+  return { start, end: el.end > start ? Math.min(el.end, scene.duration) : scene.duration };
+}
+
+/** Whether anything at all changes over time on this thing. */
+export const moves = (el: El) => MOVING.some((p) => el.keys[p]?.length);
+
+/** One thing as it is at one moment. The same object comes back when nothing on it changes over time. */
+export function elAt(el: El, t: number): El {
+  if (!moves(el)) return el;
+  const out = { ...el };
+  for (const p of MOVING) {
+    const keys = el.keys[p];
+    if (keys?.length) out[p] = valueAt(keys, t);
+  }
+  return out;
+}
+
+/**
+ * The design as it looks at one moment of a frame that plays. Things that have not appeared yet or
+ * have left are taken out, and what changes over time is set to its value at that moment.
+ */
+export function docAt(doc: Doc, sceneId: string, t: number): Doc {
+  const scene = doc.elements[sceneId];
+  if (!scene || scene.type !== "frame" || !(scene.duration > 0)) return doc;
+  const elements = { ...doc.elements };
+  const walk = (id: string) => {
+    const el = elements[id];
+    const kept = el.childIds.filter((c) => {
+      const child = doc.elements[c];
+      if (!child) return false;
+      const span = spanOf(child, scene);
+      // the last moment still shows what was there at the end
+      return t >= span.start && (t < span.end || (t >= scene.duration && span.end >= scene.duration));
+    });
+    if (kept.length !== el.childIds.length) elements[id] = { ...el, childIds: kept };
+    for (const c of kept) {
+      elements[c] = elAt(doc.elements[c], t);
+      walk(c);
+    }
+  };
+  walk(sceneId);
+  return { ...doc, elements };
+}
+
+export const ENTRANCES = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "grow"] as const;
+export type Entrance = (typeof ENTRANCES)[number];
+
+/**
+ * The keys that make a thing arrive or leave in a ready-made way. Arriving is written at its first
+ * moments and leaving at its last, and whatever was written there before for the same properties goes.
+ */
+export function entranceKeys(el: El, scene: El, when: "in" | "out", kind: Entrance, seconds: number): El["keys"] {
+  const { start, end } = spanOf(el, scene);
+  const len = Math.min(seconds, (end - start) / 2);
+  const [a, b] = when === "in" ? [start, start + len] : [end - len, end];
+  const keys: El["keys"] = {};
+  const inside = (k: Key) => k.t >= a - 0.004 && k.t <= b + 0.004;
+  // clear this stretch of time first, on everything a ready-made arrival can touch
+  for (const p of MOVING) {
+    const left = (el.keys[p] ?? []).filter((k) => !inside(k) || (p !== "opacity" && p !== "x" && p !== "y" && p !== "width" && p !== "height"));
+    if (left.length) keys[p] = left;
+  }
+  const put = (p: Moving, away: number, home: number) => {
+    const [first, last] = when === "in" ? [away, home] : [home, away];
+    let list = keys[p] ?? [];
+    list = withKey(list, { t: a, v: first, ease: "linear" });
+    list = withKey(list, { t: b, v: last, ease: when === "in" ? "out" : "in" });
+    keys[p] = list;
+  };
+  const far = 80;
+  if (kind === "fade") put("opacity", 0, el.opacity);
+  if (kind === "slide-left") (put("x", el.x + far, el.x), put("opacity", 0, el.opacity));
+  if (kind === "slide-right") (put("x", el.x - far, el.x), put("opacity", 0, el.opacity));
+  if (kind === "slide-up") (put("y", el.y + far, el.y), put("opacity", 0, el.opacity));
+  if (kind === "slide-down") (put("y", el.y - far, el.y), put("opacity", 0, el.opacity));
+  if (kind === "grow") {
+    put("width", el.width * 0.8, el.width);
+    put("height", el.height * 0.8, el.height);
+    put("x", el.x + el.width * 0.1, el.x);
+    put("y", el.y + el.height * 0.1, el.y);
+    put("opacity", 0, el.opacity);
+  }
+  // a key that only repeats the resting value on its own says nothing
+  for (const p of MOVING) if (keys[p]?.length === 1 && keys[p]![0].v === el[p]) delete keys[p];
+  return keys;
+}

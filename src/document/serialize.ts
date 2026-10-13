@@ -44,10 +44,19 @@ const EL_KEYS: (keyof El)[] = [
   "grow",
   "nodes",
   "closed",
+  "duration",
+  "start",
+  "end",
+  "keys",
+  "clipFrom",
+  "volume",
   "childIds",
 ];
 
 const TEXT_ONLY = new Set<keyof El>(["fontFamily", "fontWeight", "textAlign", "lineHeight", "letterSpacing", "textFixed", "textStyleId"]);
+
+/** Written only when set, so a still design's file stays as it was. */
+const TIME_ONLY = new Set<keyof El>(["duration", "start", "end", "clipFrom"]);
 
 const PROTOTYPE_ONLY = new Set<keyof El>(["linkKind", "transition", "transitionMs", "scroll"]);
 
@@ -90,6 +99,12 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   grow: 0,
   nodes: [],
   closed: false,
+  duration: 0,
+  start: 0,
+  end: 0,
+  keys: {},
+  clipFrom: 0,
+  volume: 1,
   childIds: [],
 };
 
@@ -102,7 +117,7 @@ export function serializeDoc(doc: Doc): string {
     const ordered: Record<string, unknown> = {};
     for (const k of EL_KEYS) if (TEXT_ONLY.has(k) && (el.type !== "text" || el[k] === (FALLBACK as Record<string, unknown>)[k])) continue;
     else if (k === "childIds" && el.type === "instance") ordered[k] = [];
-    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (!PROTOTYPE_ONLY.has(k) || el[k] !== (FALLBACK as Record<string, unknown>)[k]) && (k !== "locked" || el.locked) && (k !== "mask" || el.mask) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "rotation" || el.rotation) && (k !== "src" || el.type === "image") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
+    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (!PROTOTYPE_ONLY.has(k) || el[k] !== (FALLBACK as Record<string, unknown>)[k]) && (k !== "locked" || el.locked) && (k !== "mask" || el.mask) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "rotation" || el.rotation) && (k !== "src" || el.type === "image" || el.type === "video") && (!TIME_ONLY.has(k) || el[k]) && (k !== "keys" || Object.keys(el.keys).length) && (k !== "volume" || el.type === "video") && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
   const out: Record<string, unknown> = { version: doc.version, rootIds: doc.rootIds, elements };
@@ -112,7 +127,7 @@ export function serializeDoc(doc: Doc): string {
 
 export class DesignFileError extends Error {}
 
-const TYPES = new Set(["frame", "rect", "ellipse", "text", "image", "path", "group", "instance"]);
+const TYPES = new Set(["frame", "rect", "ellipse", "text", "image", "path", "group", "instance", "video"]);
 
 /** Parse and check a design file. Fills in missing properties so older files still open. */
 export function parseDoc(text: string): Doc {
