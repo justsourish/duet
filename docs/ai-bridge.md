@@ -70,6 +70,16 @@ What the bridge does when Duet is not there:
 
 By hand, without the bridge: read `~/.duet/session.json`, then POST to `http://127.0.0.1:<port>/mcp` with the header `Authorization: Bearer <token>`.
 
+## Which AI tool made a step
+
+Each AI tool says a short name for itself when it connects (`clientInfo.name` in MCP). The bridge remembers it and sends it with every request as the `X-Duet-Client` header. A tool started from Duet's own chat is given the header by Duet, marked `chat:`. The name is only a label: it opens nothing, and the secret is still what lets a request in.
+
+`src/ai/who.ts` turns it into the name a designer knows (Claude Code, Codex, Cursor, Antigravity). A step made by an AI keeps that name (`by` on the step in `src/state/store.ts`), it is saved with the step as a `By:` line, and the history shows it when a step is hovered. While a tool works from its own window the chat says so (`src/ai/outside.ts`), and stops six seconds after its last change.
+
+Checked on 13 October 2026 on the running app: steps from three tools each kept their own name, the bridge passed on the name a tool gave, and the line in the chat came and went. Not checked by hand: the name after a project is closed and opened again, which is covered by tests only. Not done: the words asked in the other tool's window, and the name beside each change listed in the chat.
+
+`dev_history` (a builder tool, below) lists the last steps and who made each.
+
 ## Builder tools, for building Duet itself
 
 These are not for designers. They let an AI that works on Duet's code check the interface without a person clicking through it. Only the build Duet is developed with (`npm run tauri dev`) has them: `src/ai/mcp.ts` loads `src/ai/builder.ts` only there, and the downloaded app does not contain the file. Their names all start with `dev_`.

@@ -46,6 +46,18 @@ fn respond(req: tiny_http::Request, code: u16, body: &str) {
     let _ = req.respond(resp);
 }
 
+const CLIENT_HEADER: &str = "X-Duet-Client";
+
+/// A name that is safe to carry in one header line and to show: plain letters, digits and a few marks.
+fn client_name(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || " .-_:/".contains(*c))
+        .take(60)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
 fn rpc_error(id: &Value, code: i64, message: &str) -> String {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}).to_string()
 }
@@ -62,6 +74,13 @@ fn handle(mut req: tiny_http::Request, state: Arc<McpState>, app: AppHandle) {
     if !authorised {
         return respond(req, 401, "{\"error\":\"unauthorised\"}");
     }
+    // What the AI tool calls itself, so each step can say who made it. Only a name: it opens nothing.
+    let client = req
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv(CLIENT_HEADER))
+        .map(|h| client_name(h.value.as_str()))
+        .filter(|n| !n.is_empty());
     if req.method() != &tiny_http::Method::Post {
         // We do not offer a server-to-agent event stream.
         return respond(req, 405, "{\"error\":\"use POST\"}");
@@ -94,7 +113,7 @@ fn handle(mut req: tiny_http::Request, state: Arc<McpState>, app: AppHandle) {
     let id = state.next_id.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = mpsc::channel::<String>();
     state.pending.lock().unwrap().insert(id, tx);
-    if app.emit("mcp-request", json!({"id": id, "body": parsed})).is_err() {
+    if app.emit("mcp-request", json!({"id": id, "body": parsed, "client": client})).is_err() {
         state.pending.lock().unwrap().remove(&id);
         return respond(req, 500, &rpc_error(&rpc_id, -32603, "Duet is not ready"));
     }
@@ -494,12 +513,12 @@ pub fn bridge() {
         serde_json::from_str(&std::fs::read_to_string(file).ok()?).ok()
     };
     // The answer from the running Duet, or nothing if it is closed or something else took its place.
-    let forward = |line: &str| -> Option<String> {
+    let forward = |line: &str, client: &str| -> Option<String> {
         let session = read_json(duet_dir()?.join("session.json"))?;
         let (port, token) = (session["port"].as_u64()? as u16, session["token"].as_str()?.to_string());
         let mut conn = TcpStream::connect(("127.0.0.1", port)).ok()?;
         let req = format!(
-            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{line}",
+            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {token}\r\n{CLIENT_HEADER}: {client}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{line}",
             line.len()
         );
         conn.write_all(req.as_bytes()).ok()?;
@@ -512,12 +531,20 @@ pub fn bridge() {
 
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
+    // The AI tool says who it is once, when it connects. The bridge passes that on with every request.
+    let mut client = String::new();
     for line in stdin.lock().lines().map_while(Result::ok) {
         if line.trim().is_empty() {
             continue;
         }
         let request: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
-        let answer = forward(&line).or_else(|| {
+        if request["method"] == "initialize" {
+            let said = client_name(request["params"]["clientInfo"]["name"].as_str().unwrap_or(""));
+            if !said.is_empty() {
+                client = said;
+            }
+        }
+        let answer = forward(&line, &client).or_else(|| {
             let left_behind = duet_dir().and_then(|d| read_json(d.join("agent-workspace").join("bridge.json")));
             offline_answer(&request, left_behind.as_ref())
         });

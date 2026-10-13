@@ -77,7 +77,7 @@ export default function HistoryStrip() {
                 const words = wordsBehind(said, e) ?? wordsBehind(earlier, e);
                 const asked = words ? ` · You asked: “${words.length > 90 ? `${words.slice(0, 89).trimEnd()}…` : words}”` : "";
                 setTip({
-                  text: `${e.version ? `Version: ${e.version}. ` : ""}${e.label} · ${e.actor === "ai" ? "Duet" : "You"} · ${timeText(e.time)}${asked}`,
+                  text: `${e.version ? `Version: ${e.version}. ` : ""}${e.label} · ${e.actor === "ai" ? (e.by ?? "Duet") : "You"} · ${timeText(e.time)}${asked}`,
                   x: r.left + r.width / 2,
                   y: r.top,
                 });

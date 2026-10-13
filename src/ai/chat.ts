@@ -7,6 +7,8 @@ export interface Proposal {
   args: unknown;
   summary: string;
   status: "open" | "applied" | "dismissed";
+  /** The AI tool that suggested it, when it said who it is. */
+  by?: string;
 }
 
 export interface Approval {

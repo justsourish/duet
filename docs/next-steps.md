@@ -73,6 +73,10 @@ Since 13 October 2026 the main AI starts the helper itself, with `scripts/helper
 - One helper at a time, twenty minutes unless told otherwise. A fix of a few lines is quicker done directly and is not handed over.
 - Not for tasks that need the app run by the helper, or a drag on the canvas checked. Those still need a person, or better builder tools.
 
+### Which AI is working (issue 39)
+
+Done on 13 October 2026, not yet in a version: every step an AI makes keeps the name of the AI tool that made it, it is saved with the project, the history says it on hover, and the chat says who is working from its own window. See "Which AI tool made a step" in `docs/ai-bridge.md`. Outside tools connect through the bridge of the installed app, so the installed app has to be rebuilt before they send their names. Still open from the issue: the words asked in the other tool's window, and the larger picture in the creator's comment there (the whole process around a design, shown in the lower panel).
+
 ### Builder tools, so an AI can check the interface itself
 
 Done on 13 October 2026 (issue 41), not yet in a version. An AI that works on Duet can start a clean test design, read the panels as words, press things and read errors, through the same bridge as the design tools. Only the build Duet is developed with has them. See "Builder tools" in `docs/ai-bridge.md`, and `src/ai/builder.ts`. The test design is `startTestDesign` in `src/project/project.ts`. Use them to check interface work, including a helper's, before asking the creator to click. Still open: dragging on the canvas and in the layers, and a picture of the whole window.

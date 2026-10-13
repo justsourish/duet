@@ -1,6 +1,7 @@
 import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
 import { inTestDesign, leaveTestDesign, startTestDesign } from "../project/project";
+import { getState } from "../state/store";
 import type { ToolDef, ToolResult } from "./tools";
 
 /**
@@ -28,7 +29,7 @@ How to check a change:
 3. dev_read_interface says what the panels show, as numbered lines of words. Pass filter to see only lines with a word in them.
 4. dev_press presses something by its name or by its line number. dev_type writes in a box. dev_key presses a key.
 5. Read the interface again to see what changed. Line numbers are only good until the next read.
-6. dev_errors lists what went wrong since the last look.
+6. dev_history lists the last steps and who made each one. dev_errors lists what went wrong since the last look.
 7. After Duet's code changes, dev_reload loads the interface again. Wait three seconds after it: a call made while it loads is lost. The test design is lost too, so start a new one.
 8. dev_leave_test_design throws the test design away and brings the project back. Always finish with it.
 
@@ -62,6 +63,11 @@ export const BUILDER_TOOLS: ToolDef[] = [
     name: "dev_key",
     description: "Builder tool. Press a key, such as f, Escape, Delete or ArrowLeft, as if the canvas had the attention.",
     inputSchema: { type: "object", properties: { key: str, keys: held }, required: ["key"] },
+  },
+  {
+    name: "dev_history",
+    description: "Builder tool. The last steps in the history: what each one is called, who made it, and where the design is now.",
+    inputSchema: { type: "object", properties: { last: { ...num, description: "How many steps, counting back from the newest. 12 if left out." } } },
   },
   { name: "dev_reload", description: "Builder tool. Load the interface again, so a change to Duet's code is surely the one running. A test design does not survive it: the project that was open comes back.", inputSchema: { type: "object", properties: {} } },
   {
@@ -327,6 +333,11 @@ export async function callBuilderTool(name: string, raw: unknown): Promise<ToolR
   if (name === "dev_press") return press(a);
   if (name === "dev_type") return type(a);
   if (name === "dev_key") return key(a);
+  if (name === "dev_history") {
+    const s = getState();
+    const from = Math.max(0, s.timeline.length - (typeof a.last === "number" && a.last > 0 ? Math.floor(a.last) : 12));
+    return { text: s.timeline.slice(from).map((e, i) => `${from + i + 1} ${e.actor === "ai" ? (e.by ?? "an AI") : "you"}: ${e.label}${from + i === s.cursor ? "  <- now" : ""}`).join("\n") };
+  }
   if (name === "dev_reload") {
     // answer first: the answer cannot be sent from an interface that is already gone
     setTimeout(() => window.location.reload(), 150);

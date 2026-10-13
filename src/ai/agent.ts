@@ -18,6 +18,7 @@ import {
 } from "./chat";
 import { brief, carryOn, keepable } from "../memory/thread";
 import type { AgentId } from "./chat";
+import { FROM_CHAT } from "./who";
 import { chatRules } from "./rules";
 
 /** Runs the AI tool the designer already has, and shows what it says as chat. */
@@ -277,7 +278,8 @@ export async function sendToAgent(text: string) {
     const info = await invoke<{ port: number; token: string }>("mcp_info");
     const home = await invoke<string>("duet_home");
     const url = `http://127.0.0.1:${info.port}/mcp`;
-    const headers = { Authorization: `Bearer ${info.token}` };
+    // the name goes with every request, so each step can say which AI tool made it
+    const headers = { Authorization: `Bearer ${info.token}`, "X-Duet-Client": `${FROM_CHAT}${AGENTS.find((x) => x.id === agent)?.name ?? agent}` };
     const session = getChat().sessionId;
     let args: string[];
 

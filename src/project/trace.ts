@@ -17,7 +17,7 @@ const r4 = (n: number) => Math.round(n * 10000) / 10000;
  * Trace a picture on the canvas into flat drawn shapes, laid exactly over it. The picture stays.
  * One step in the history. Returns the ids of what was made, or a sentence saying why it could not be done.
  */
-export async function tracePicture(id: string, actor: Actor = "you"): Promise<{ ids: string[]; groupId: string | null } | { why: string }> {
+export async function tracePicture(id: string, actor: Actor = "you", by?: string): Promise<{ ids: string[]; groupId: string | null } | { why: string }> {
   const before = currentDoc();
   const el = before.elements[id];
   if (!el || el.type !== "image" || !el.src) return { why: "Choose one picture to trace." };
@@ -94,7 +94,7 @@ export async function tracePicture(id: string, actor: Actor = "you"): Promise<{ 
   }
   const list = now.parentId ? doc.elements[now.parentId].childIds : doc.rootIds;
   doc = runCommand(doc, "reparent_elements", { ids: [top1], parentId: now.parentId, index: list.indexOf(id) + 1 });
-  restoreDoc(doc, "Trace picture into shapes", actor);
+  restoreDoc(doc, "Trace picture into shapes", actor, by);
   select([top1]);
   return { ids: made, groupId };
 }

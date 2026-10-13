@@ -325,6 +325,8 @@ struct HistoryItem {
     time: i64,
     label: String,
     actor: String,
+    /// Which AI tool made the step, when it said who it is.
+    by: Option<String>,
     doc: String,
     versions: Vec<String>,
     /// The names of the steps saved here, its own name last. Empty for steps saved before they had names.
@@ -395,6 +397,7 @@ fn git_history(path: String, limit: usize) -> Result<Vec<HistoryItem>, String> {
             time: commit.time().seconds(),
             label,
             actor: actor.to_string(),
+            by: message.lines().find_map(|l| l.trim().strip_prefix("By:")).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
             doc,
             versions: named.get(&oid).cloned().unwrap_or_default(),
             steps: message.lines().find_map(|l| l.trim().strip_prefix("Steps:")).map(|s| s.split_whitespace().map(String::from).collect()).unwrap_or_default(),
@@ -506,7 +509,7 @@ mod tests {
         git_prepare(p.clone()).unwrap();
         assert!(git_commit(p.clone(), "Start of project\n\nActor: you".into()).unwrap());
         write(&p, "{\"n\":2}");
-        assert!(git_commit(p.clone(), "Add rectangle\n\nActor: ai".into()).unwrap());
+        assert!(git_commit(p.clone(), "Add rectangle\n\nActor: ai\nBy: Claude Code".into()).unwrap());
 
         let h = git_history(p.clone(), 50).unwrap();
         assert_eq!(h.len(), 2);
@@ -515,6 +518,8 @@ mod tests {
         assert_eq!(h[0].doc, "{\"n\":1}");
         assert_eq!(h[1].label, "Add rectangle");
         assert_eq!(h[1].actor, "ai");
+        assert_eq!(h[1].by.as_deref(), Some("Claude Code"));
+        assert_eq!(h[0].by, None);
         assert_eq!(h[1].doc, "{\"n\":2}");
     }
 

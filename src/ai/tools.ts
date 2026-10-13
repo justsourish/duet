@@ -404,7 +404,7 @@ async function ensureSaved() {
 const PICTURE_SIDE = 640;
 
 /** Read a picture file from the computer, keep it in the project, and put it on the canvas. */
-async function placeImage(args: Args): Promise<ToolResult> {
+async function placeImage(args: Args, by?: string): Promise<ToolResult> {
   const file = String(args.path).split(/[\\/]/).pop() ?? "Image";
   let pic: { src: string; width: number; height: number };
   try {
@@ -435,7 +435,7 @@ async function placeImage(args: Args): Promise<ToolResult> {
   height = Math.max(8, Math.round(height));
   const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : file.replace(/\.[^.]+$/, "") || "Image";
   await ensureSaved();
-  dispatch("create_element", { type: "image", id: String(args.id), parentId: args.parentId as string | null, x: Number(args.x), y: Number(args.y), width, height, props: { src: pic.src, name } }, "ai");
+  dispatch("create_element", { type: "image", id: String(args.id), parentId: args.parentId as string | null, x: Number(args.x), y: Number(args.y), width, height, props: { src: pic.src, name } }, "ai", by);
   if (!currentDoc().elements[String(args.id)]) return fail("The picture could not be placed there.");
   addMsg({ role: "note", text: `Brought in the picture ${file}`, ...stepNow() });
   void saveNow();
@@ -449,10 +449,10 @@ function stepNow() {
 }
 
 /** Trace a picture into shapes, as one step the designer can undo. */
-async function traceImage(args: Args): Promise<ToolResult> {
+async function traceImage(args: Args, by?: string): Promise<ToolResult> {
   await ensureSaved();
   const name = nameOf(args.id);
-  const result = await tracePicture(String(args.id), "ai");
+  const result = await tracePicture(String(args.id), "ai", by);
   if ("why" in result) return fail(result.why);
   addMsg({ role: "note", text: `Traced ${name} into shapes`, ...stepNow() });
   void saveNow();
@@ -460,12 +460,12 @@ async function traceImage(args: Args): Promise<ToolResult> {
   return { text: `Made ${result.ids.length} ${result.ids.length === 1 ? "path" : "paths"}: ${result.ids.join(", ")}${where}. They sit exactly over the picture, which is still there. Change their fill with set_props.` };
 }
 
-async function apply(tool: string, args: Args): Promise<ToolResult> {
-  if (tool === "place_image") return placeImage(args);
-  if (tool === "trace_image") return traceImage(args);
+async function apply(tool: string, args: Args, by?: string): Promise<ToolResult> {
+  if (tool === "place_image") return placeImage(args, by);
+  if (tool === "trace_image") return traceImage(args, by);
   await ensureSaved();
   const label = commandLabel(tool as CommandName, args as never);
-  dispatch(tool as CommandName, args as never, "ai");
+  dispatch(tool as CommandName, args as never, "ai", by);
   addMsg({ role: "note", text: summarise(tool, args), ...stepNow() });
   void saveNow();
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
@@ -492,7 +492,7 @@ export async function applyProposal(msgId: number) {
     return;
   }
   updateMsg(msgId, { proposal: { ...msg.proposal, status: "applied" } });
-  await apply(msg.proposal.tool, check.args);
+  await apply(msg.proposal.tool, check.args, msg.proposal.by);
 }
 
 /** Take back an AI change, if nothing happened after it. */
@@ -531,8 +531,8 @@ function context(): string {
   );
 }
 
-/** Run one tool call from an agent. */
-export async function callTool(name: string, raw: unknown): Promise<ToolResult> {
+/** Run one tool call from an agent. `by` is the name of the AI tool that asked, when it said who it is. */
+export async function callTool(name: string, raw: unknown, by?: string): Promise<ToolResult> {
   const a = (raw && typeof raw === "object" ? raw : {}) as Args;
   const mode = getChat().mode;
 
@@ -559,7 +559,7 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
   const summary = summarise(name, check.args);
 
   if (mode === "suggest") {
-    addMsg({ role: "note", text: "", proposal: { tool: name, args: check.args, summary, status: "open" } });
+    addMsg({ role: "note", text: "", proposal: { tool: name, args: check.args, summary, status: "open", by } });
     setMinimized(false);
     return { text: "Suggestion shown to the designer. Nothing has been changed yet. Do not repeat it. Tell the designer in plain words what you suggested." };
   }
@@ -567,5 +567,5 @@ export async function callTool(name: string, raw: unknown): Promise<ToolResult> 
     const ok = await askDesigner(summary);
     if (!ok) return fail(name === "place_image" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
   }
-  return apply(name, check.args);
+  return apply(name, check.args, by);
 }

@@ -2,7 +2,9 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { outsideRules } from "./rules";
+import { outsideWorking } from "./outside";
 import { TOOLS, callTool } from "./tools";
+import { fromChat, toolName } from "./who";
 
 /** Answers the questions agents ask over MCP. Duet owns the design, so the answers come from here. */
 
@@ -17,7 +19,8 @@ let version = "";
 /** Tools for building Duet itself. Only the build Duet is developed with loads them. */
 let builder: typeof import("./builder") | null = null;
 
-async function answer(rpc: Rpc): Promise<unknown> {
+/** `client` is what the AI tool calls itself, passed on by the bridge or set by Duet's own chat. */
+async function answer(rpc: Rpc, client?: string | null): Promise<unknown> {
   switch (rpc.method) {
     case "initialize":
       return {
@@ -33,7 +36,9 @@ async function answer(rpc: Rpc): Promise<unknown> {
       return { tools: builder ? [...TOOLS, ...builder.BUILDER_TOOLS] : TOOLS };
     case "tools/call": {
       const name = String(rpc.params?.name ?? "");
-      const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments) : await callTool(name, rpc.params?.arguments);
+      const by = toolName(client);
+      if (by && !fromChat(client)) outsideWorking(by);
+      const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments) : await callTool(name, rpc.params?.arguments, by);
       const content: Record<string, unknown>[] = [{ type: "text", text: result.text }];
       if (result.image) content.push({ type: "image", data: result.image.data, mimeType: result.image.mime });
       return { content, isError: !!result.isError };
@@ -52,11 +57,11 @@ export async function startMcp(): Promise<() => void> {
   // The bridge answers from this while Duet is closed, so an outside AI tool that starts first
   // still learns what Duet can do, and only has to be told to open Duet.
   void invoke("write_agent_file", { name: "bridge.json", body: JSON.stringify({ version, instructions: outsideRules(), tools: TOOLS }) }).catch(() => undefined);
-  const stop = await listen<{ id: number; body: Rpc }>("mcp-request", async (e) => {
-    const { id, body } = e.payload;
+  const stop = await listen<{ id: number; body: Rpc; client?: string | null }>("mcp-request", async (e) => {
+    const { id, body, client } = e.payload;
     let response: unknown;
     try {
-      response = { jsonrpc: "2.0", id: body.id, result: await answer(body) };
+      response = { jsonrpc: "2.0", id: body.id, result: await answer(body, client) };
     } catch (err) {
       const code = (err as { code?: number }).code ?? -32603;
       response = { jsonrpc: "2.0", id: body.id, error: { code, message: (err as Error).message } };

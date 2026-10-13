@@ -226,10 +226,12 @@ async function writeDesign(path: string, doc: Doc) {
 }
 
 /** The text stored with each saved step. The first line is what the history strip shows. */
-export function stepMessage(entry: Pick<HistoryEntry, "label" | "actor">, wentBack: boolean, names: string[] = []) {
+export function stepMessage(entry: Pick<HistoryEntry, "label" | "actor" | "by">, wentBack: boolean, names: string[] = []) {
   const label = wentBack ? `Went back to: ${entry.label}` : entry.label;
   const steps = stepsLine(names);
-  return `${label}\n\nActor: ${entry.actor}${steps ? `\n${steps}` : ""}`;
+  // one line, so a name can never start a line of its own meaning
+  const by = entry.actor === "ai" && entry.by ? `\nBy: ${entry.by.replace(/\s+/g, " ").trim()}` : "";
+  return `${label}\n\nActor: ${entry.actor}${by}${steps ? `\n${steps}` : ""}`;
 }
 
 /** Names of steps that are already kept in a saved step of the open project. */
@@ -435,6 +437,7 @@ interface HistoryItem {
   time: number;
   label: string;
   actor: string;
+  by?: string | null;
   doc: string;
   versions: string[];
   steps?: string[];
@@ -452,6 +455,7 @@ async function readHistory(path: string): Promise<HistoryEntry[]> {
           doc: parseDoc(i.doc),
           label: i.label,
           actor: i.actor === "ai" ? "ai" : "you",
+          ...(i.actor === "ai" && i.by ? { by: i.by } : {}),
           time: i.time * 1000,
           version: i.versions[0],
           // a step saved before steps had names is known by what its saved step is called

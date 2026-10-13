@@ -12,6 +12,8 @@ export interface HistoryEntry {
   doc: Doc;
   label: string;
   actor: Actor;
+  /** Which AI tool made this step, when one did and said who it is. */
+  by?: string;
   /** Milliseconds since 1970, when this step happened. */
   time: number;
   /** Set when this moment has been given a name, like "Client round 1". */
@@ -113,13 +115,13 @@ function cleanSelection(sel: string[], doc: Doc): string[] {
   return sel.filter((id) => doc.elements[id]);
 }
 
-function commit(doc: Doc, label: string, actor: Actor) {
+function commit(doc: Doc, label: string, actor: Actor, by?: string) {
   const base = state.timeline[state.cursor].doc;
   if (doc === base) {
     set({ transientDoc: null });
     return;
   }
-  const timeline = state.timeline.slice(0, state.cursor + 1).concat({ doc, label, actor, time: Date.now(), step: newStepId() });
+  const timeline = state.timeline.slice(0, state.cursor + 1).concat({ doc, label, actor, ...(by ? { by } : {}), time: Date.now(), step: newStepId() });
   set({
     timeline,
     cursor: timeline.length - 1,
@@ -133,9 +135,9 @@ function commit(doc: Doc, label: string, actor: Actor) {
 type ArgsOf<N extends CommandName> = Parameters<typeof runCommand<N>>[2];
 
 /** Run a command and record it as one step in history. */
-export function dispatch<N extends CommandName>(name: N, args: ArgsOf<N>, actor: Actor = "you") {
+export function dispatch<N extends CommandName>(name: N, args: ArgsOf<N>, actor: Actor = "you", by?: string) {
   const doc = runCommand(currentDoc(), name, args);
-  commit(doc, commandLabel(name, args), actor);
+  commit(doc, commandLabel(name, args), actor, by);
 }
 
 /** Arrow presses closer together than this count as one step. Shorter than the wait before saving. */
@@ -215,8 +217,8 @@ export function setEntryVersion(index: number, name: string) {
 }
 
 /** Bring an old design back as a new step. Nothing is lost. */
-export function restoreDoc(doc: Doc, label: string, actor: Actor = "you") {
-  commit(doc, label, actor);
+export function restoreDoc(doc: Doc, label: string, actor: Actor = "you", by?: string) {
+  commit(doc, label, actor, by);
 }
 
 // ---- history ----
