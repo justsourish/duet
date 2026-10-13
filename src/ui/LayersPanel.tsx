@@ -139,7 +139,7 @@ function Row({ doc, id, depth, dnd, folded, onToggleFold }: RowProps) {
           window.dispatchEvent(new CustomEvent("duet:context", { detail: { x: e.clientX, y: e.clientY } }));
         }}
       >
-        {hasChildren && (
+        {hasChildren ? (
           <span
             className={`fold-arrow ${isFolded ? "folded" : ""}`}
             title={isFolded ? "Unfold" : "Fold"}
@@ -158,6 +158,8 @@ function Row({ doc, id, depth, dnd, folded, onToggleFold }: RowProps) {
           >
             <Icon name="arrow" size={12} />
           </span>
+        ) : (
+          <span className="fold-arrow-gap" />
         )}
         <LayerIcon el={el} />
         {renaming ? (

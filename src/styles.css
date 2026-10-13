@@ -146,6 +146,12 @@ button {
 .fold-arrow.folded {
   transform: rotate(0deg);
 }
+.fold-arrow-gap {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-right: -4px;
+}
 .pop-title {
   display: flex;
   align-items: center;
