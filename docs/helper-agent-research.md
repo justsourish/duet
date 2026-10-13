@@ -38,6 +38,7 @@ Keep it fair: same task text, a fresh branch from the same starting point, no ex
 | 13 Oct 2026 | 12, video cut | gemini-3.8-flash-high | 9 min | Passed | Yes | Checked by the main AI in Duet dev: bring in, trim, reorder and export worked. Playing was not checked | None | Kept | 590 lines for a brief of about 350 words. Started by the main AI with `scripts/helper.py`. 398,220 helper tokens. Branch `helper/12-video-cut`. |
 | 13 Oct 2026 | 44, settings screen | gemini-3.8-flash-high | 12 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 517,709 helper tokens. Branch `helper/44-settings-screen`. |
 | 13 Oct 2026 | 45, mode switch | gemini-3.8-flash-high | 12 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 330,811 helper tokens. Branch `helper/45-mode-switch`. |
+| 13 Oct 2026 | 50, cut look | gemini-3.8-flash-high | 17 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 455,799 helper tokens. Branch `helper/50-cut-look`. |
 
 ## What has been learned
 
