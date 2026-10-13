@@ -3117,16 +3117,48 @@ button {
   user-select: none;
 }
 
-/* the chat's foot: who answers sits on its own slim line, and the box to type in gets the full width */
+/* The chat's foot is one soft box: the words on top with room to breathe, and a quiet row under them
+   for pictures, who answers, and sending. */
 .cfoot {
   flex-wrap: wrap;
+  align-items: center;
   row-gap: 6px;
+  margin: 0 10px 10px;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-2);
 }
-.cfoot .agent-anchor {
-  flex: 0 0 100%;
-  order: -1;
+.cfoot:focus-within {
+  border-color: var(--accent);
 }
 .cfoot textarea {
-  flex: 1 1 0;
-  min-width: 0;
+  order: -1;
+  flex: 0 0 100%;
+  min-height: 46px;
+  max-height: 180px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.cfoot .attach {
+  order: 0;
+  border: 0;
+  background: transparent;
+}
+.cfoot .agent-anchor {
+  order: 1;
+  flex: none;
+}
+.cfoot .agent-btn {
+  background: transparent;
+}
+.cfoot > button.primary {
+  order: 2;
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 5px 14px;
 }

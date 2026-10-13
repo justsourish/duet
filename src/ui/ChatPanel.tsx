@@ -825,7 +825,7 @@ export default function ChatPanel() {
       {!minimized && (
         <>
           <div className={`csize ${growX > 0 ? "r" : "l"} ${growY > 0 ? "b" : "t"}`} onPointerDown={resize} title="Pull to make the chat bigger or smaller" />
-          <div className="cbody" ref={list} style={{ maxHeight: big ? undefined : (room === null ? h : Math.min(h, room)) }}>
+          <div className="cbody" ref={list} style={{ height: big ? undefined : (room === null ? h : Math.min(h, room)) }}>
             {connecting && <ConnectAi />}
             {found === false && (
               <div className="m">
