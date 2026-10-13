@@ -2460,3 +2460,114 @@ button {
   flex: none;
 }
 
+/* Agents row in the chat */
+.agents-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+.agents-label {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1;
+}
+.agent-chip {
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px 0 3px;
+  box-sizing: border-box;
+  flex: none;
+}
+.agent-chip-badge {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: #141315;
+  font-size: 10px;
+  line-height: 1;
+  flex: none;
+}
+.agent-chip-name {
+  font-size: 11px;
+  line-height: 1;
+}
+.agent-chip.active {
+  background: var(--duet-soft);
+  border: 1px solid var(--duet);
+  color: var(--text);
+}
+.agent-chip.outside {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  opacity: 0.6;
+  color: var(--muted);
+}
+.agent-chip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1;
+}
+.agent-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* AI badges and message states */
+.m.ai {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.m.ai .m-body {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.m-badge {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 9px;
+  color: #141315;
+  line-height: 1;
+  flex: none;
+  margin-top: 2px;
+}
+.m.note.outside-ai {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.m.note.outside-ai .m-badge {
+  margin-top: 1px;
+}
+.m.note.outside-ai .m-body {
+  flex: 1;
+  min-width: 0;
+}
+.m.lit {
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 10px var(--accent-soft);
+}
+.m.later {
+  opacity: 0.4;
+}

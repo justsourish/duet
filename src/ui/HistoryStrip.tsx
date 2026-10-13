@@ -130,7 +130,10 @@ export default function HistoryStrip() {
                     className={`req-dot ${i > cursor ? "future" : ""}`}
                     style={{ left: ringX, top: dotTop }}
                     title="A request started here"
-                    onClick={() => goTo(i)}
+                    onClick={() => {
+                      goTo(i);
+                      window.dispatchEvent(new CustomEvent("duet:show-request", { detail: e.step }));
+                    }}
                   />
                 )}
                 <button

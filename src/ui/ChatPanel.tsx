@@ -15,6 +15,8 @@ import Rich from "./rich";
 import Icon from "./Icons";
 import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
+import { agentColour, whoColour } from "../ai/colours";
+import { busyOutside } from "../ai/outside";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
   { mode: "suggest", label: "Suggest", hint: "Duet only suggests. Nothing changes until you tap Apply." },
@@ -162,6 +164,54 @@ export default function ChatPanel() {
   // a new message, such as an AI asking for a yes, matters more than the setup steps
   useEffect(() => setConnecting(false), [messages.length]);
 
+  const [busyName, setBusyName] = useState<string | null>(() => busyOutside());
+  useEffect(() => {
+    const timer = setInterval(() => setBusyName(busyOutside()), 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const [litStep, setLitStep] = useState<string | null>(null);
+  const litTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const onShowRequest = (ev: Event) => {
+      const step = (ev as CustomEvent<string | undefined>).detail;
+      if (!step) return;
+      setMinimized(false);
+      setLitStep(step);
+      if (litTimer.current) clearTimeout(litTimer.current);
+      litTimer.current = setTimeout(() => {
+        setLitStep(null);
+      }, 1500);
+      const scrollAndLight = () => {
+        const el = list.current?.querySelector<HTMLElement>(`[data-step="${step}"]`);
+        if (el) {
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+          el.classList.add("lit");
+          setTimeout(() => el.classList.remove("lit"), 1500);
+        }
+      };
+      setTimeout(scrollAndLight, 50);
+    };
+    window.addEventListener("duet:show-request", onShowRequest);
+    return () => {
+      window.removeEventListener("duet:show-request", onShowRequest);
+      if (litTimer.current) clearTimeout(litTimer.current);
+    };
+  }, []);
+
+  const chosenAgentObj = AGENTS.find((a) => a.id === agent);
+  const activeToolName = chosenAgentObj
+    ? (!installed[chosenAgentObj.id] ? `${chosenAgentObj.name} (not found)` : !chosenAgentObj.runnable ? `${chosenAgentObj.name} (coming soon)` : chosenAgentObj.name)
+    : "AI";
+  const chatToolLetter = (chosenAgentObj?.name || activeToolName || "Duet").charAt(0);
+
+  const outsideAgents: string[] = [];
+  for (const e of timeline) {
+    if (e.actor === "ai" && e.by && !outsideAgents.includes(e.by)) {
+      outsideAgents.push(e.by);
+    }
+  }
+
   const send = (t: string) => {
     if ((!t.trim() && !waiting.length) || running) return;
     setText("");
@@ -209,6 +259,35 @@ export default function ChatPanel() {
       {!minimized && (
         <>
           <div className={`csize ${growX > 0 ? "r" : "l"} ${growY > 0 ? "b" : "t"}`} onPointerDown={resize} title="Pull to make the chat bigger or smaller" />
+          <div className="agents-row">
+            <span className="agents-label">Agents</span>
+            <div className="agent-chip active" title="Answers when you write here">
+              <span className="agent-chip-badge" style={{ backgroundColor: whoColour("ai") }}>
+                {activeToolName.charAt(0)}
+              </span>
+              <span className="agent-chip-name">{activeToolName}</span>
+            </div>
+            {outsideAgents.map((by) => {
+              const col = agentColour(by);
+              const isWorking = busyName === by;
+              return (
+                <div
+                  key={by}
+                  className={`agent-chip outside ${isWorking ? "working" : ""}`}
+                  title="Works from its own window. It cannot be asked from here."
+                >
+                  <span className="agent-chip-badge" style={{ backgroundColor: col }}>
+                    {by.charAt(0)}
+                  </span>
+                  <span className="agent-chip-name">{by}</span>
+                  <span className="agent-chip-status">
+                    {isWorking && <span className="agent-chip-dot" style={{ backgroundColor: col }} />}
+                    {isWorking ? "working" : "outside"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
           <div className="tool-row">
             <span>AI tool</span>
             <select value={agent} disabled={running} onChange={(e) => setAgent(e.target.value as AgentId)}>
@@ -262,10 +341,29 @@ export default function ChatPanel() {
               <div className="m">Hi. Tell me what you want to do, or tap an idea. I can see what is selected on your canvas.</div>
             )}
             {messages.map((m) => {
-              if (m.role === "working") return <div key={m.id} className="m working">{m.text}</div>;
+              const isLater = m.undoStep !== undefined && m.undoStep > cursor;
+              const isLit = litStep === m.step;
+              const laterTitle = isLater ? "This comes after the moment you are looking at" : undefined;
+
+              if (m.role === "working")
+                return (
+                  <div
+                    key={m.id}
+                    data-step={m.step}
+                    className={`m working ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+                    title={laterTitle}
+                  >
+                    {m.text}
+                  </div>
+                );
               if (m.role === "you")
                 return (
-                  <div key={m.id} className="m you">
+                  <div
+                    key={m.id}
+                    data-step={m.step}
+                    className={`m you ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+                    title={laterTitle}
+                  >
                     {m.pictures && (
                       <div className="pics">
                         {m.pictures.map((n) => {
@@ -277,10 +375,25 @@ export default function ChatPanel() {
                     {m.text}
                   </div>
                 );
-              if (m.role === "error") return <div key={m.id} className="m err">{m.text}</div>;
+              if (m.role === "error")
+                return (
+                  <div
+                    key={m.id}
+                    data-step={m.step}
+                    className={`m err ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+                    title={laterTitle}
+                  >
+                    {m.text}
+                  </div>
+                );
               if (m.proposal)
                 return (
-                  <div key={m.id} className="m card">
+                  <div
+                    key={m.id}
+                    data-step={m.step}
+                    className={`m card ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+                    title={laterTitle}
+                  >
                     <div className="tagline">Suggestion</div>
                     {m.proposal.summary}
                     <div className="act">
@@ -297,7 +410,12 @@ export default function ChatPanel() {
                 );
               if (m.approval)
                 return (
-                  <div key={m.id} className="m card warn">
+                  <div
+                    key={m.id}
+                    data-step={m.step}
+                    className={`m card warn ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+                    title={laterTitle}
+                  >
                     <div className="tagline">Duet is asking</div>
                     {m.approval.summary}
                     <div className="act">
@@ -312,29 +430,76 @@ export default function ChatPanel() {
                     </div>
                   </div>
                 );
-              if (m.role === "note")
+              if (m.role === "note") {
+                const noteStepIndex = findStep(timeline, m.step);
+                const noteAgent = (m as any).by || (m as any).name || (noteStepIndex >= 0 ? timeline[noteStepIndex]?.by : undefined) || (m.undoStep !== undefined ? timeline[m.undoStep]?.by : undefined);
+                const col = noteAgent ? agentColour(noteAgent) : undefined;
                 return (
-                  <div key={m.id} className="m note">
-                    {m.text}
-                    {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
-                      <span className="undo" onClick={() => undoAiStep(m.id)}>
-                        Undo
+                  <div
+                    key={m.id}
+                    data-step={m.step}
+                    className={`m note ${noteAgent ? "outside-ai" : ""} ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+                    title={laterTitle}
+                    style={col ? { color: col } : undefined}
+                  >
+                    {noteAgent && (
+                      <span className="m-badge" style={{ backgroundColor: col }}>
+                        {noteAgent.charAt(0)}
                       </span>
                     )}
-                    {m.undone && <em> Undone</em>}
-                    {(() => {
-                      const at = findStep(timeline, m.step);
-                      return at >= 0 && at !== cursor && !m.undone ? (
-                        <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
-                          Show this step
-                        </span>
-                      ) : null;
-                    })()}
+                    {noteAgent ? (
+                      <span className="m-body">
+                        {m.text}
+                        {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
+                          <span className="undo" onClick={() => undoAiStep(m.id)}>
+                            Undo
+                          </span>
+                        )}
+                        {m.undone && <em> Undone</em>}
+                        {(() => {
+                          const at = findStep(timeline, m.step);
+                          return at >= 0 && at !== cursor && !m.undone ? (
+                            <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
+                              Show this step
+                            </span>
+                          ) : null;
+                        })()}
+                      </span>
+                    ) : (
+                      <>
+                        {m.text}
+                        {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
+                          <span className="undo" onClick={() => undoAiStep(m.id)}>
+                            Undo
+                          </span>
+                        )}
+                        {m.undone && <em> Undone</em>}
+                        {(() => {
+                          const at = findStep(timeline, m.step);
+                          return at >= 0 && at !== cursor && !m.undone ? (
+                            <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
+                              Show this step
+                            </span>
+                          ) : null;
+                        })()}
+                      </>
+                    )}
                   </div>
                 );
+              }
               return (
-                <div key={m.id} className="m">
-                  <Rich text={m.text} />
+                <div
+                  key={m.id}
+                  data-step={m.step}
+                  className={`m ai ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+                  title={laterTitle}
+                >
+                  <span className="m-badge" style={{ backgroundColor: whoColour("ai") }}>
+                    {chatToolLetter}
+                  </span>
+                  <div className="m-body">
+                    <Rich text={m.text} />
+                  </div>
                 </div>
               );
             })}
