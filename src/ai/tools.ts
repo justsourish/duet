@@ -400,6 +400,14 @@ async function ensureSaved() {
   if (p.path && p.status !== "saved") await saveNow();
 }
 
+/**
+ * Save after an AI change, but only a project that already has a file. Work with no file yet stays
+ * unsaved: an AI's change must never put a Save window in front of the designer.
+ */
+function saveIfHome() {
+  if (getState().project.path) void saveNow();
+}
+
 /** Longest side of a picture the AI brings in, unless it asks for a size. Same as a picture the designer drops in. */
 const PICTURE_SIDE = 640;
 
@@ -438,7 +446,7 @@ async function placeImage(args: Args, by?: string): Promise<ToolResult> {
   dispatch("create_element", { type: "image", id: String(args.id), parentId: args.parentId as string | null, x: Number(args.x), y: Number(args.y), width, height, props: { src: pic.src, name } }, "ai", by);
   if (!currentDoc().elements[String(args.id)]) return fail("The picture could not be placed there.");
   addMsg({ role: "note", text: `Brought in the picture ${file}`, ...stepNow() });
-  void saveNow();
+  saveIfHome();
   return { text: `Placed the picture as ${String(args.id)} named "${name}", ${width} by ${height} (the file is ${pic.width} by ${pic.height}). Call look_at_image to see it.` };
 }
 
@@ -455,7 +463,7 @@ async function traceImage(args: Args, by?: string): Promise<ToolResult> {
   const result = await tracePicture(String(args.id), "ai", by);
   if ("why" in result) return fail(result.why);
   addMsg({ role: "note", text: `Traced ${name} into shapes`, ...stepNow() });
-  void saveNow();
+  saveIfHome();
   const where = result.groupId ? `, together in the group ${result.groupId}` : "";
   return { text: `Made ${result.ids.length} ${result.ids.length === 1 ? "path" : "paths"}: ${result.ids.join(", ")}${where}. They sit exactly over the picture, which is still there. Change their fill with set_props.` };
 }
@@ -467,7 +475,7 @@ async function apply(tool: string, args: Args, by?: string): Promise<ToolResult>
   const label = commandLabel(tool as CommandName, args as never);
   dispatch(tool as CommandName, args as never, "ai", by);
   addMsg({ role: "note", text: summarise(tool, args), ...stepNow() });
-  void saveNow();
+  saveIfHome();
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
   if (tool === "make_mask") {
     if (!currentDoc().elements[String(args.groupId)]) return fail("That mask could not be made.");

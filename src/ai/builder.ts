@@ -2,6 +2,7 @@ import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
 import { inTestDesign, leaveTestDesign, startTestDesign } from "../project/project";
 import { getState } from "../state/store";
+import { busyOutside } from "./outside";
 import type { ToolDef, ToolResult } from "./tools";
 
 /**
@@ -320,6 +321,9 @@ export async function callBuilderTool(name: string, raw: unknown): Promise<ToolR
   const a = (raw && typeof raw === "object" ? raw : {}) as Args;
   if (name === "dev_guide") return { text: GUIDE };
   if (name === "dev_test_design") {
+    // the design on screen may be someone's real work in progress: never take it away from an AI that is using it
+    const busy = inTestDesign() ? null : busyOutside();
+    if (busy) return fail(`${busy} changed this project less than two minutes ago and may still be working on it. A test design would take the project away from it. Wait, or check in another copy of Duet.`);
     const why = await startTestDesign(a.sample ? sampleDoc() : emptyDoc());
     if (why) return fail(why);
     await settle();
