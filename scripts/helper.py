@@ -10,7 +10,8 @@ The helper works in its own copy of the code, beside this folder in duet-helpers
 branch, so it cannot disturb the work here. Everything it does is written, as it happens, to
 duet-helpers/logs/<issue>-<words>.log. Watch it with: tail -f <that file>.
 The rules it follows are in AGENTS.md ("If you are a helper agent"), so a task stays short.
-One helper at a time, with a time limit, so it cannot use up a day of the subscription.
+Two helpers at most at a time, each with a time limit, so they cannot use up a day of the subscription.
+Give two helpers that work side by side different files, or keeping the second will clash with the first.
 """
 
 import argparse
@@ -50,14 +51,20 @@ def names(issue, words):
     return f"helper/{slug}", HOME / slug, LOGS / f"{slug}.log"
 
 
+AT_ONCE = 2
+
+
 def working():
-    """The run that is going on now, or None."""
-    try:
-        run = json.loads(LOCK.read_text())
-        os.kill(run["pid"], 0)
-        return run
-    except (OSError, ValueError, KeyError):
-        return None
+    """The runs that are going on now. Each has its own note beside the logs, cleared when it ends."""
+    runs = []
+    for note in sorted(HOME.glob("working*.json")):
+        try:
+            run = json.loads(note.read_text())
+            os.kill(run["pid"], 0)
+            runs.append(run)
+        except (OSError, ValueError, KeyError):
+            note.unlink(missing_ok=True)
+    return runs
 
 
 def passes(cmd, cwd):
@@ -112,9 +119,10 @@ def run(a):
     if not task:
         sys.exit("No task. Give --task, or pipe it in.")
     busy = working()
-    if busy:
-        sys.exit(f"A helper is already working on {busy['branch']}. One at a time.")
+    if len(busy) >= AT_ONCE:
+        sys.exit(f"{len(busy)} helpers are already working: {', '.join(b['branch'] for b in busy)}. No more than {AT_ONCE} at a time.")
     branch, copy, logfile = names(a.issue, a.words)
+    lock = HOME / f"working-{a.issue}-{a.words}.json"
     if copy.exists() or git("branch", "--list", branch):
         sys.exit(f"{branch} is already there. Keep it or drop it first.")
     LOGS.mkdir(parents=True, exist_ok=True)
@@ -133,12 +141,12 @@ def run(a):
             ["agy", "--print", PROMPT.format(branch=branch, issue=a.issue, task=task), "--model", a.model, "--mode", "accept-edits", "--print-timeout", f"{a.minutes}m", "--output-format", "stream-json"],
             cwd=copy, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
-        LOCK.write_text(json.dumps({"pid": proc.pid, "branch": branch, "log": str(logfile)}))
+        lock.write_text(json.dumps({"pid": proc.pid, "branch": branch, "log": str(logfile)}))
         try:
             last, used, status = follow(proc, log)
             proc.wait()
         finally:
-            LOCK.unlink(missing_ok=True)
+            lock.unlink(missing_ok=True)
 
         minutes = max(1, round((time.time() - start) / 60))
         saves = git("log", "--format=%an <%ae>", f"main..{branch}").splitlines()
@@ -195,7 +203,10 @@ def drop(a):
 
 def status(_):
     busy = working()
-    print(f"Working on {busy['branch']}. Watch: tail -f {busy['log']}" if busy else "No helper is working.")
+    for b in busy:
+        print(f"Working on {b['branch']}. Watch: tail -f {b['log']}")
+    if not busy:
+        print("No helper is working.")
     waiting = [b.strip() for b in git("branch", "--list", "helper/*").splitlines()]
     if waiting:
         print("Waiting to be kept or dropped: " + ", ".join(waiting))
