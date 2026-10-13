@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { currentDoc, dispatch, select, useStore } from "../state/store";
+import { workDoc, dispatch, select, useStore } from "../state/store";
 import type { El, Layout } from "../document/types";
 import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
@@ -147,7 +147,7 @@ function FontInput({ value, onCommit }: { value: string; onCommit: (v: string) =
 }
 
 function TextSection({ els }: { els: El[] }) {
-  const doc = currentDoc();
+  const doc = workDoc();
   const ids = els.map((e) => e.id);
   const first = els[0];
   const styles = Object.entries(doc.styles ?? {});
@@ -251,7 +251,7 @@ function TextSection({ els }: { els: El[] }) {
 }
 
 function ComponentSection({ el, copies }: { el: El; copies: number }) {
-  const doc = currentDoc();
+  const doc = workDoc();
   if (el.component) {
     return (
       <div className="sec">
@@ -292,7 +292,10 @@ export default function PropertiesPanel() {
   const selection = useStore((s) => s.selection);
   useStore((s) => s.timeline[s.cursor]);
   useStore((s) => s.transientDoc);
-  const doc = currentDoc();
+  // the values are the ones at the moment the clock is on, and they stand still while it plays
+  useStore((s) => (s.clock.playing ? -1 : s.clock.t));
+  useStore((s) => s.clock.scene);
+  const doc = workDoc();
   const els = selection.map((id) => doc.elements[id]).filter(Boolean) as El[];
 
   if (els.length === 0) {

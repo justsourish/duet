@@ -3,7 +3,7 @@ import type { AbsNode } from "../document/path";
 import { useSyncExternalStore } from "react";
 import { commandLabel, runCommand } from "../commands";
 import type { Actor, CommandName } from "../commands";
-import { docAt } from "../document/time";
+import { docAt, poseAt, settle } from "../document/time";
 import { emptyDoc } from "../document/types";
 import type { Doc, ElementType, Rect } from "../document/types";
 
@@ -127,6 +127,30 @@ export function seenDoc(s: State = state): Doc {
   return seen.out;
 }
 
+/** Changes that are about time itself. They are made to the design as it is, not as it looks at one moment. */
+const ABOUT_TIME = new Set<CommandName>(["set_duration", "set_timing", "set_key", "set_keys", "key_now", "remove_key", "set_entrance", "split_at", "ripple_delete"]);
+
+let posedCache: { doc: Doc; scene: string; t: number; out: Doc } | null = null;
+function pose(doc: Doc): Doc {
+  const { scene, t } = state.clock;
+  if (!scene || !doc.elements[scene]?.duration) return doc;
+  if (!posedCache || posedCache.doc !== doc || posedCache.scene !== scene || posedCache.t !== t) posedCache = { doc, scene, t, out: poseAt(doc, scene, t) };
+  return posedCache.out;
+}
+
+/**
+ * The design to work on by hand. While a frame that plays is open, things are where they are at the
+ * moment the clock is on, so what is picked and dragged is what is seen. Otherwise it is the design itself.
+ */
+export const workDoc = (s: State = state): Doc => pose(currentDoc(s));
+
+/** Run a change on what is seen at this moment, and put the result where it belongs in time. */
+function runAtNow<N extends CommandName>(real: Doc, name: N, args: Parameters<typeof runCommand<N>>[2]): Doc {
+  if (ABOUT_TIME.has(name)) return runCommand(real, name, args);
+  const posed = pose(real);
+  return posed === real ? runCommand(real, name, args) : settle(real, posed, runCommand(posed, name, args), state.clock.scene as string, state.clock.t);
+}
+
 /** Test helper: reset everything. */
 export function resetStore() {
   state = initial();
@@ -159,7 +183,7 @@ type ArgsOf<N extends CommandName> = Parameters<typeof runCommand<N>>[2];
 
 /** Run a command and record it as one step in history. */
 export function dispatch<N extends CommandName>(name: N, args: ArgsOf<N>, actor: Actor = "you", by?: string) {
-  const doc = runCommand(currentDoc(), name, args);
+  const doc = runAtNow(currentDoc(), name, args);
   commit(doc, commandLabel(name, args), actor, by);
 }
 
@@ -170,7 +194,7 @@ let lastNudge: { entry: HistoryEntry; ids: string } | null = null;
 /** Move with the arrow keys. Holding a key, or tapping quickly, is one step in history, not one per press. */
 export function nudge(ids: string[], dx: number, dy: number) {
   const args = { ids, dx, dy };
-  const doc = runCommand(currentDoc(), "move_elements", args);
+  const doc = runAtNow(currentDoc(), "move_elements", args);
   const here = state.timeline[state.cursor];
   const key = ids.join(",");
   const now = Date.now();
@@ -186,16 +210,20 @@ export function nudge(ids: string[], dx: number, dy: number) {
 
 // ---- drags: preview without history, commit once at the end ----
 
+/** The design a drag starts from, as it is seen at the moment the clock is on. */
 export function dragBase(): Doc {
-  return state.timeline[state.cursor].doc;
+  return pose(state.timeline[state.cursor].doc);
 }
 
 export function dragPreview<N extends CommandName>(name: N, args: ArgsOf<N>) {
-  set({ transientDoc: runCommand(dragBase(), name, args) });
+  set({ transientDoc: runAtNow(state.timeline[state.cursor].doc, name, args) });
 }
 
+/** Show a design that was worked out from `dragBase` or `workDoc`. */
 export function dragPreviewDoc(doc: Doc) {
-  set({ transientDoc: doc });
+  const real = state.timeline[state.cursor].doc;
+  const posed = pose(real);
+  set({ transientDoc: posed === real ? doc : settle(real, posed, doc, state.clock.scene as string, state.clock.t) });
 }
 
 export function dragCommit(label: string, actor: Actor = "you") {

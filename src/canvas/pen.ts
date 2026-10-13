@@ -2,7 +2,7 @@ import { newId } from "../commands";
 import { fromAbs } from "../document/path";
 import type { AbsNode } from "../document/path";
 import { frameAt, worldPos } from "../document/geometry";
-import { currentDoc, dispatch, getState, select, setOverlay, setTool } from "../state/store";
+import { workDoc, dispatch, getState, select, setOverlay, setTool } from "../state/store";
 
 /**
  * The pen. Click to place a corner point. Click and drag to pull out a smooth curve.
@@ -64,7 +64,7 @@ export function penFinish(closed: boolean, backToMove = true) {
   // a double-click leaves two points on the same spot
   const nodes = d.nodes.filter((n, i, all) => i === 0 || Math.hypot(n.x - all[i - 1].x, n.y - all[i - 1].y) > 0.5);
   if (nodes.length < 2) return;
-  const doc = currentDoc();
+  const doc = workDoc();
   const parentId = frameAt(doc, nodes[0].x, nodes[0].y);
   const parent = parentId ? worldPos(doc, parentId) : { x: 0, y: 0 };
   const shape = fromAbs(nodes);

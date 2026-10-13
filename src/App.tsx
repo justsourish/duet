@@ -16,6 +16,7 @@ import Home from "./ui/Home";
 import VideoCut from "./ui/VideoCut";
 import TimeStrip from "./ui/TimeStrip";
 import { wireClips } from "./video/play";
+import { wireKeys } from "./video/keys";
 import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
@@ -58,6 +59,7 @@ function Grip({ side }: { side: "l" | "r" }) {
 }
 
 wireClips();
+wireKeys();
 
 export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);

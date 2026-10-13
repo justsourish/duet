@@ -5,7 +5,7 @@ import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstan
 import { orderByPosition, relayout } from "../document/layout";
 import { MOVING } from "../document/types";
 import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../document/types";
-import { ENTRANCES, entranceKeys, sceneOf, spanOf, withKey } from "../document/time";
+import { ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } from "../document/time";
 import type { Entrance } from "../document/time";
 
 /**
@@ -903,11 +903,43 @@ const setKeys: CommandDef<SetKeysArgs> = {
   },
 };
 
+// ---- key_now ----
+export interface KeyNowArgs {
+  ids: string[];
+  props: Moving[];
+  /** Seconds from the start of the frame it plays in. */
+  t: number;
+}
+
+/** Mark the value things have at one moment, so they can be given another value at another moment. */
+const keyNow: CommandDef<KeyNowArgs> = {
+  label: (a) => `Mark ${propName[a.props[0]] ?? "a value"} at ${round(a.t)}s`,
+  run: (doc, a) => {
+    const next = clone(doc);
+    let changed = false;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      const scene = sceneOf(next, id);
+      if (!el || !scene || scene.id === id) continue;
+      const t = Math.max(0, Math.min(scene.duration, round(a.t)));
+      for (const prop of a.props) {
+        if (!MOVING.includes(prop)) continue;
+        const keys = el.keys[prop] ?? [];
+        el.keys[prop] = withKey(keys, { t, v: keys.length ? valueAt(keys, t) : el[prop], ease: "in-out" });
+        changed = true;
+      }
+    }
+    return changed ? next : doc;
+  },
+};
+
 // ---- remove_key ----
 export interface RemoveKeyArgs {
   ids: string[];
   /** Leave out to clear every change over time on these things. */
   prop?: Moving;
+  /** Several properties at once, instead of prop. */
+  props?: Moving[];
   /** Leave out to clear every moment of that property. */
   t?: number;
 }
@@ -919,7 +951,7 @@ const removeKey: CommandDef<RemoveKeyArgs> = {
     for (const id of a.ids) {
       const el = next.elements[id];
       if (!el) continue;
-      for (const prop of a.prop ? [a.prop] : MOVING) {
+      for (const prop of a.props ?? (a.prop ? [a.prop] : MOVING)) {
         const keys = el.keys[prop];
         if (!keys) continue;
         const left = a.t === undefined ? [] : keys.filter((k) => Math.abs(k.t - a.t!) > 0.004);
@@ -1079,6 +1111,7 @@ export const commands = {
   set_timing: setTiming,
   set_key: setKey,
   set_keys: setKeys,
+  key_now: keyNow,
   remove_key: removeKey,
   set_entrance: setEntrance,
   split_at: splitAt,

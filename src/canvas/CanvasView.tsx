@@ -23,7 +23,7 @@ import { canBeComponent } from "../document/components";
 import type { Doc, ElementType, Rect } from "../document/types";
 import {
   clearOverlay,
-  currentDoc,
+  workDoc,
   dispatch,
   dragBase,
   dragCancel,
@@ -85,7 +85,7 @@ let inMemoryClip: ClipPayload | null = null;
 /** Paste a payload where it makes sense: inside a selected frame, otherwise next to the original. */
 export function pastePayload(payload: ClipPayload, duplicate = false) {
   const s = getState();
-  const doc = currentDoc(s);
+  const doc = workDoc(s);
   const sel = s.selection.filter((i) => doc.elements[i]);
   let parentId: string | null = null;
   if (sel.length === 1) {
@@ -118,7 +118,7 @@ function fitBox(box: Rect, width: number, height: number, maxZoom: number, pad =
 
 /** Show everything on the page. */
 export function zoomToFit(width: number, height: number) {
-  const doc = currentDoc();
+  const doc = workDoc();
   const box = unionRect(doc.rootIds.map((id) => worldBounds(doc, id)));
   if (!box) return setViewport({ x: 160, y: 100, zoom: 1 });
   fitBox(box, width, height, 2);
@@ -126,7 +126,7 @@ export function zoomToFit(width: number, height: number) {
 
 /** Jump to whatever is selected, or to the given elements. */
 export function zoomToElements(ids: string[], width: number, height: number) {
-  const doc = currentDoc();
+  const doc = workDoc();
   const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldBounds(doc, id)));
   if (!box) return;
   fitBox(box, width, height, 4);
@@ -134,7 +134,7 @@ export function zoomToElements(ids: string[], width: number, height: number) {
 
 /** Bring things into view only if they are off screen, keeping the zoom when they fit. */
 export function revealElements(ids: string[], width: number, height: number) {
-  const doc = currentDoc();
+  const doc = workDoc();
   const box = unionRect(ids.filter((i) => doc.elements[i]).map((id) => worldBounds(doc, id)));
   if (!box) return;
   const vp = getState().viewport;
@@ -250,7 +250,7 @@ export default function CanvasView() {
 
   const handleAt = (sx: number, sy: number): HandleKey | null => {
     const s = getState();
-    const doc = currentDoc(s);
+    const doc = workDoc(s);
     if (editing() || s.selection.length !== 1 || !doc.elements[s.selection[0]]) return null;
     const r = screenRect(s, worldRect(doc, s.selection[0]));
     // the handles of a turned shape are turned with it, so turn the pointer back to meet them
@@ -266,7 +266,7 @@ export default function CanvasView() {
   /** Just outside a corner of the selected thing, dragging turns it. */
   const turnAt = (sx: number, sy: number): string | null => {
     const s = getState();
-    const doc = currentDoc(s);
+    const doc = workDoc(s);
     const id = s.selection[0];
     if (editing() || s.selection.length !== 1 || !doc.elements[id] || !canTurn(doc, id)) return null;
     const r = screenRect(s, worldRect(doc, id));
@@ -280,7 +280,7 @@ export default function CanvasView() {
 
   const labelAt = (sx: number, sy: number): string | null => {
     const s = getState();
-    const doc = currentDoc(s);
+    const doc = workDoc(s);
     for (let i = doc.rootIds.length - 1; i >= 0; i--) {
       const id = doc.rootIds[i];
       if (doc.elements[id]?.type !== "frame" && doc.elements[id]?.type !== "instance") continue;
@@ -319,13 +319,13 @@ export default function CanvasView() {
 
     if (CREATE_TOOLS.includes(s.tool)) {
       const type = s.tool as ElementType;
-      const parentId = frameAt(currentDoc(s), p.x, p.y);
+      const parentId = frameAt(workDoc(s), p.x, p.y);
       dragRef.current = { kind: "create", type, start: { x: p.x, y: p.y }, parentId, sx: p.sx, sy: p.sy };
       return;
     }
 
     // move tool
-    const doc = currentDoc(s);
+    const doc = workDoc(s);
     const ne = editing();
     if (ne) {
       const nh = hitNode(p.sx, p.sy);
@@ -391,10 +391,10 @@ export default function CanvasView() {
       if (CREATE_TOOLS.includes(s.tool)) return setCursor(s.tool === "text" ? "text" : "crosshair");
       if (s.tool === "zoom") return setCursor(e.altKey ? "zoom-out" : "zoom-in");
       const h = handleAt(p.sx, p.sy);
-      if (h) return setCursor(handleCursor(h, turnOf(currentDoc(s).elements[s.selection[0]])));
+      if (h) return setCursor(handleCursor(h, turnOf(workDoc(s).elements[s.selection[0]])));
       if (turnAt(p.sx, p.sy)) return setCursor(TURN_CURSOR);
       setCursor("default");
-      const doc = currentDoc(s);
+      const doc = workDoc(s);
       const hover = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y);
       if (hover !== s.overlay.hoverId) setOverlay({ hoverId: hover });
       return;
@@ -482,7 +482,7 @@ export default function CanvasView() {
 
     if (d.kind === "marquee") {
       const rect = normalize(d.start.x, d.start.y, p.x, p.y);
-      const doc = currentDoc(s);
+      const doc = workDoc(s);
       const inside = d.scope.filter((id) => doc.elements[id] && !doc.elements[id].locked && rectsIntersect(rect, worldBounds(doc, id)));
       setOverlay({ marquee: rect });
       select(d.additive ? Array.from(new Set([...d.prev, ...inside])) : inside);
@@ -524,7 +524,7 @@ export default function CanvasView() {
       const world = dragged
         ? normalize(d.start.x, d.start.y, p.x, p.y)
         : { x: d.start.x, y: d.start.y, width: size.w, height: size.h };
-      const doc = currentDoc();
+      const doc = workDoc();
       const parent = d.parentId ? worldPos(doc, d.parentId) : { x: 0, y: 0 };
       const id = newId(d.type);
       dispatch("create_element", {
@@ -554,7 +554,7 @@ export default function CanvasView() {
           if (changing.length > 0) {
             const name = target ? doc.elements[target].name : null;
             label = name ? `Move into ${name}` : "Move out of frame";
-            dragPreviewDoc(runCommand(currentDoc(), "reparent_elements", { ids: changing, parentId: target, label }));
+            dragPreviewDoc(runCommand(workDoc(), "reparent_elements", { ids: changing, parentId: target, label }));
           }
         }
         dragCommit(label);
@@ -585,7 +585,7 @@ export default function CanvasView() {
       return;
     }
     const p = point(e);
-    const doc = currentDoc();
+    const doc = workDoc();
     if (editing()) {
       if (doubleClickNode(p.x, p.y, hitNode(p.sx, p.sy))) return;
     }
@@ -672,7 +672,7 @@ export default function CanvasView() {
     const onCopy = (e: ClipboardEvent, cut: boolean) => {
       if (typing(e.target)) return;
       const s = getState();
-      const payload = extractPayload(currentDoc(s), s.selection);
+      const payload = extractPayload(workDoc(s), s.selection);
       if (!payload) return;
       e.preventDefault();
       inMemoryClip = payload;
@@ -773,7 +773,7 @@ export default function CanvasView() {
       }
       if (mod && key === "a") {
         e.preventDefault();
-        const doc = currentDoc(s);
+        const doc = workDoc(s);
         const only = s.selection.length === 1 ? doc.elements[s.selection[0]] : undefined;
         const parents = new Set(s.selection.map((i) => doc.elements[i]?.parentId ?? null));
         let pool: string[];
@@ -785,20 +785,20 @@ export default function CanvasView() {
       }
       if (mod && e.altKey && e.code === "KeyK") {
         e.preventDefault();
-        const doc = currentDoc(s);
+        const doc = workDoc(s);
         const ids = s.selection.filter((i) => canBeComponent(doc.elements[i]));
         for (const id of ids) dispatch("create_component", { id });
         return;
       }
       if (mod && e.altKey && e.code === "KeyB") {
         e.preventDefault();
-        const doc = currentDoc(s);
+        const doc = workDoc(s);
         for (const id of s.selection.filter((i) => doc.elements[i]?.type === "instance")) dispatch("detach_instance", { id });
         return;
       }
       if (mod && key === "g") {
         e.preventDefault();
-        const doc = currentDoc(s);
+        const doc = workDoc(s);
         if (e.shiftKey) {
           const kids = s.selection.flatMap((i) => (doc.elements[i]?.type === "group" ? doc.elements[i].childIds : []));
           dispatch("ungroup", { ids: s.selection });
@@ -806,13 +806,13 @@ export default function CanvasView() {
         } else if (s.selection.length) {
           const id = newId("group");
           dispatch("group_elements", { ids: s.selection, groupId: id });
-          if (currentDoc().elements[id]) select([id]);
+          if (workDoc().elements[id]) select([id]);
         }
         return;
       }
       if (mod && e.shiftKey && key === "l") {
         e.preventDefault();
-        const doc = currentDoc(s);
+        const doc = workDoc(s);
         const els = s.selection.map((i) => doc.elements[i]).filter(Boolean);
         if (els.length) {
           const lock = !els.every((x) => x.locked);
@@ -822,15 +822,15 @@ export default function CanvasView() {
       }
       if (e.shiftKey && !mod && key === "a") {
         e.preventDefault();
-        const sel = s.selection.filter((id) => currentDoc(s).elements[id]);
-        const doc = currentDoc(s);
+        const sel = s.selection.filter((id) => workDoc(s).elements[id]);
+        const doc = workDoc(s);
         if (sel.length === 1 && doc.elements[sel[0]].type === "frame") {
           const f = doc.elements[sel[0]];
           dispatch("set_layout", { id: f.id, layout: f.layout ? null : defaultLayout() });
         } else if (sel.length >= 1) {
           const id = newId("frame");
           dispatch("wrap_in_layout", { ids: sel, frameId: id });
-          if (currentDoc().elements[id]) select([id]);
+          if (workDoc().elements[id]) select([id]);
         }
         return;
       }
@@ -841,7 +841,7 @@ export default function CanvasView() {
       }
       if (mod && key === "d") {
         e.preventDefault();
-        const payload = extractPayload(currentDoc(s), s.selection);
+        const payload = extractPayload(workDoc(s), s.selection);
         if (payload) pastePayload(payload, true);
         return;
       }
@@ -865,7 +865,7 @@ export default function CanvasView() {
       if (e.key === "Delete" || e.key === "Backspace") {
         if (s.selection.length) {
           e.preventDefault();
-          dispatch("delete_elements", { ids: topLevelOnly(currentDoc(s), s.selection) });
+          dispatch("delete_elements", { ids: topLevelOnly(workDoc(s), s.selection) });
           select([]);
         }
         return;
@@ -875,8 +875,8 @@ export default function CanvasView() {
         setTool("move");
         return;
       }
-      if (e.key === "Enter" && s.selection.length === 1 && ["frame", "group"].includes(currentDoc(s).elements[s.selection[0]]?.type ?? "") && !e.shiftKey) {
-        const doc = currentDoc(s);
+      if (e.key === "Enter" && s.selection.length === 1 && ["frame", "group"].includes(workDoc(s).elements[s.selection[0]]?.type ?? "") && !e.shiftKey) {
+        const doc = workDoc(s);
         const kids = doc.elements[s.selection[0]].childIds.filter((c) => !doc.elements[c].locked);
         if (kids.length) {
           e.preventDefault();
@@ -885,7 +885,7 @@ export default function CanvasView() {
         }
       }
       if (e.key === "Enter" && e.shiftKey && s.selection.length) {
-        const doc = currentDoc(s);
+        const doc = workDoc(s);
         const parent = doc.elements[s.selection[0]]?.parentId;
         if (parent) {
           e.preventDefault();
@@ -893,7 +893,7 @@ export default function CanvasView() {
           return;
         }
       }
-      if (e.key === "Enter" && s.selection.length === 1 && currentDoc(s).elements[s.selection[0]]?.type === "text") {
+      if (e.key === "Enter" && s.selection.length === 1 && workDoc(s).elements[s.selection[0]]?.type === "text") {
         e.preventDefault();
         setEditing(s.selection[0]);
         return;
@@ -903,7 +903,7 @@ export default function CanvasView() {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
         const [ax, ay] = arrows[e.key];
-        nudge(topLevelOnly(currentDoc(s), s.selection), ax * step, ay * step);
+        nudge(topLevelOnly(workDoc(s), s.selection), ax * step, ay * step);
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -977,7 +977,7 @@ export default function CanvasView() {
         onContextMenu={(e) => {
           e.preventDefault();
           const p = point(e);
-          const doc = currentDoc();
+          const doc = workDoc();
           const hit = hitTest(doc, p.x, p.y, new Set(), e.metaKey || e.ctrlKey);
           const sel = getState().selection;
           if (hit && !sel.includes(hit)) select([hit]);
@@ -1006,7 +1006,7 @@ const EDIT_EDGE = 3.5;
 function TextEditor({ id, zoom, vx, vy }: { id: string; zoom: number; vx: number; vy: number }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const cancelled = useRef(false);
-  const doc = currentDoc();
+  const doc = workDoc();
   const el = doc.elements[id];
   const [value, setValue] = useState(el?.text ?? "");
 

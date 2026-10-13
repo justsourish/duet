@@ -150,3 +150,60 @@ export function entranceOf(el: El, scene: El, when: "in" | "out"): Entrance {
   if (y !== null) return y > el.y ? "slide-up" : "slide-down";
   return edge("opacity") !== null ? "fade" : "none";
 }
+
+/** Everything inside a frame, at any depth. */
+function inside(doc: Doc, sceneId: string): string[] {
+  const out: string[] = [];
+  const walk = (id: string) => {
+    for (const c of doc.elements[id]?.childIds ?? []) {
+      out.push(c);
+      walk(c);
+    }
+  };
+  walk(sceneId);
+  return out;
+}
+
+/**
+ * The design with everything that changes over time set to its value at one moment. Nothing is
+ * hidden. This is the design as a person meets it on the canvas while the clock is on that moment,
+ * so it is the one a change by hand is made to. `settle` then puts that change where it belongs.
+ */
+export function poseAt(doc: Doc, sceneId: string, t: number): Doc {
+  const scene = doc.elements[sceneId];
+  if (!scene || !(scene.duration > 0)) return doc;
+  let elements: Doc["elements"] | null = null;
+  for (const id of inside(doc, sceneId)) {
+    const el = doc.elements[id];
+    if (!moves(el)) continue;
+    elements ??= { ...doc.elements };
+    elements[id] = elAt(el, t);
+  }
+  return elements ? { ...doc, elements } : doc;
+}
+
+/**
+ * Put a change that was made at one moment where it belongs. `real` is the design before, `posed`
+ * is what the change was made to, `out` is the result. A property that changes over time gets a
+ * key at that moment and keeps its resting value. Everything else is kept as the change left it.
+ */
+export function settle(real: Doc, posed: Doc, out: Doc, sceneId: string, t: number): Doc {
+  if (out === posed) return real;
+  if (posed === real) return out;
+  const at = Math.round(t * 1000) / 1000;
+  const elements = { ...out.elements };
+  for (const id of inside(real, sceneId)) {
+    const was = real.elements[id];
+    const shown = posed.elements[id];
+    const now = out.elements[id];
+    if (!now || !moves(was)) continue;
+    const el = { ...now, keys: { ...now.keys } };
+    for (const p of MOVING) {
+      if (!was.keys[p]?.length) continue;
+      if (now[p] !== shown[p] && el.keys[p]?.length) el.keys[p] = withKey(el.keys[p]!, { t: at, v: now[p], ease: "in-out" });
+      el[p] = was[p];
+    }
+    elements[id] = el;
+  }
+  return { ...out, elements };
+}

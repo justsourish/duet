@@ -2,7 +2,7 @@ import { keepInPlace, turnOf, turnPoint, turnVector, worldPos, worldRect } from 
 import { fromAbs, isSmooth, nearestOnLine, removeNode, splitSegment, toAbs, toggleSmooth } from "../document/path";
 import type { AbsNode } from "../document/path";
 import type { Doc } from "../document/types";
-import { currentDoc, dispatch, dragBase, dragPreviewDoc, getState, select, setOverlay } from "../state/store";
+import { workDoc, dispatch, dragBase, dragPreviewDoc, getState, select, setOverlay } from "../state/store";
 import { runCommand } from "../commands";
 
 /** Editing the points of a drawn line: move points, pull handles, add and remove points. */
@@ -64,10 +64,10 @@ export function hitNode(sx: number, sy: number): NodeHit | null {
   const s = getState();
   const e = s.overlay.nodeEdit;
   if (!e) return null;
-  const nodes = nodesOf(currentDoc(s), e.id);
+  const nodes = nodesOf(workDoc(s), e.id);
   const z = s.viewport.zoom;
   // where the pointer is on the page, turned back to meet the points
-  const at = upright(currentDoc(s), e.id, (sx - s.viewport.x) / z, (sy - s.viewport.y) / z);
+  const at = upright(workDoc(s), e.id, (sx - s.viewport.x) / z, (sy - s.viewport.y) / z);
   const near = (x: number, y: number) => Math.hypot(at.x - x, at.y - y) * z <= GRAB;
   if (e.selected !== null && nodes[e.selected]) {
     const n = nodes[e.selected];
@@ -118,14 +118,14 @@ export function dragNode(hit: NodeHit, start: AbsNode[], dx: number, dy: number,
 function commitNodes(nodes: AbsNode[], label: string) {
   const e = editing();
   if (!e) return;
-  dispatch("set_props", { ids: [e.id], props: refit(currentDoc(), e.id, nodes), label });
+  dispatch("set_props", { ids: [e.id], props: refit(workDoc(), e.id, nodes), label });
 }
 
 /** Double-click: on a point it turns it smooth or sharp, on the line it adds a point. */
 export function doubleClickNode(wx: number, wy: number, hit: NodeHit | null): boolean {
   const e = editing();
   if (!e) return false;
-  const doc = currentDoc();
+  const doc = workDoc();
   const el = doc.elements[e.id];
   if (!el) return false;
   const nodes = nodesOf(doc, e.id);
@@ -150,7 +150,7 @@ export function doubleClickNode(wx: number, wy: number, hit: NodeHit | null): bo
 export function deleteSelectedNode(): boolean {
   const e = editing();
   if (!e || e.selected === null) return false;
-  const doc = currentDoc();
+  const doc = workDoc();
   const el = doc.elements[e.id];
   const nodes = nodesOf(doc, e.id);
   const next = removeNode(nodes, el.closed, e.selected);

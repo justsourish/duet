@@ -3,6 +3,7 @@ import { runCommand } from "../commands";
 import { parseDoc, serializeDoc } from "./serialize";
 import { docAt, entranceOf, valueAt } from "./time";
 import { emptyDoc } from "./types";
+import { currentDoc, dispatch, loadDoc, resetStore, seenDoc, setClock, workDoc } from "../state/store";
 
 function scene() {
   let doc = runCommand(emptyDoc(), "create_element", { type: "frame", id: "f", x: 0, y: 0, width: 1920, height: 1080 });
@@ -93,5 +94,31 @@ describe("time", () => {
     expect([doc.elements.a.start, doc.elements.a.end]).toEqual([0, 3]);
     expect([doc.elements.c.start, doc.elements.c.end]).toEqual([3, 7]);
     expect(doc.elements.f.duration).toBe(7);
+  });
+
+  it("a change by hand at another moment becomes a mark there, once a thing has been marked", () => {
+    resetStore();
+    loadDoc(scene());
+    setClock({ scene: "f", t: 1 });
+    // not marked yet: a move is a plain move
+    dispatch("move_elements", { ids: ["r"], dx: 10, dy: 0 });
+    expect(currentDoc().elements.r.x).toBe(110);
+    expect(currentDoc().elements.r.keys).toEqual({});
+    dispatch("key_now", { ids: ["r"], props: ["x", "y"], t: 1 });
+    setClock({ t: 3 });
+    dispatch("move_elements", { ids: ["r"], dx: 200, dy: 0 });
+    const r = currentDoc().elements.r;
+    expect(r.x).toBe(110);
+    expect(r.keys.x?.map((k) => [k.t, k.v])).toEqual([[1, 110], [3, 310]]);
+    // y did not change, so it has no new mark
+    expect(r.keys.y?.length).toBe(1);
+    expect(seenDoc().elements.r.x).toBe(310);
+    expect(workDoc().elements.r.x).toBe(310);
+    setClock({ t: 2 });
+    expect(seenDoc().elements.r.x).toBe(210);
+    // with the clock closed, the design is itself again
+    setClock({ scene: null });
+    expect(workDoc()).toBe(currentDoc());
+    resetStore();
   });
 });
