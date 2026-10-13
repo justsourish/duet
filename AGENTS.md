@@ -47,6 +47,19 @@ Restart `tauri dev` after installing a new npm package. Vite re-bundles dependen
 - Commits carry the author's identity only. No tool names or attribution lines.
 - No secrets in the repository. The agent token lives only in `~/.duet/session.json`.
 
+## If you are a helper agent
+
+Some tasks are handed to a smaller, cheaper agent. If your task came from an issue comment titled "Task for a helper agent", these rules are yours.
+
+- Do only what the task says. If something else looks wrong, write it in your report and leave it.
+- Work on a branch named `helper/<issue number>-<two words>`. Never on `main`. Never push.
+- Run `git config core.hooksPath .githooks` once. A check then runs before every save. If it refuses, fix the cause. Never skip it with `--no-verify`.
+- Do not touch: `src-tauri/`, `src/project/`, `src/memory/`, `src/state/`, `src/document/serialize.ts`, `src/ai/tools.ts`, `.github/`, `.githooks/`, `AGENTS.md`, `LICENSE`, `package.json`. If the task seems to need one of them, stop and say so.
+- No new packages. No renaming or moving files. No tidying code you were not asked to change.
+- Match the code around you. Read the file before you change it.
+- One save per task, with a message a designer would understand. Author identity only.
+- Finish with a short report: the branch name, the files you changed, what you could not do, and the click list from the task so the creator can test.
+
 ## Working with the person who started this
 
 - Short messages. One idea per line.

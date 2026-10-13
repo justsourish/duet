@@ -1,0 +1,27 @@
+#!/bin/sh
+# Runs by itself before every save of work. If a check fails, the save is refused.
+# Switch it on once in a fresh copy of the project: git config core.hooksPath .githooks
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+changed=$(git diff --cached --name-only)
+
+# A helper agent works on a branch that starts with "helper/". It may not touch the parts
+# that hold a designer's work: saving, history, the file format, memory, permissions.
+case "$branch" in
+  helper/*)
+    blocked=$(echo "$changed" | grep -E '^(src-tauri/|src/project/|src/memory/|src/state/|src/document/serialize|src/ai/tools\.ts|\.github/|\.githooks/|AGENTS\.md|LICENSE|package\.json|package-lock\.json)')
+    if [ -n "$blocked" ]; then
+      echo "Refused. A helper branch may not change these files:"
+      echo "$blocked"
+      echo "Stop and say so in your report. Do not work around it."
+      exit 1
+    fi
+    ;;
+esac
+
+npx tsc --noEmit || { echo "Refused. The type check failed."; exit 1; }
+npm test --silent || { echo "Refused. The tests failed."; exit 1; }
+
+if echo "$changed" | grep -q '^src-tauri/'; then
+  cargo test --quiet --manifest-path src-tauri/Cargo.toml || { echo "Refused. The history and file tests failed."; exit 1; }
+fi
