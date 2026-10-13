@@ -14,6 +14,7 @@ import { installMenu } from "./ui/menu";
 import { clampW, getLayout, setLayout, useLayout } from "./ui/layout";
 import Icon from "./ui/Icons";
 import Home from "./ui/Home";
+import VideoCut from "./ui/VideoCut";
 import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
@@ -61,6 +62,7 @@ export default function App() {
   useDismiss(zoomMenu, () => setZoomMenu(false), ".zoomwrap.zoomonly");
   const [presenting, setPresenting] = useState(false);
   const [home, setHome] = useState(false);
+  const [videoCut, setVideoCut] = useState(false);
   const [sending, setSending] = useState(false);
   const [check, setCheck] = useState(false);
   const dock = useLayout((d) => d);
@@ -175,6 +177,9 @@ export default function App() {
         <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
           Present
         </button>
+        <button className="pill" onClick={() => setVideoCut(true)} title="Cut and join video">
+          Video
+        </button>
         <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
           <Icon name="panel-left" size={15} />
         </button>
@@ -216,6 +221,7 @@ export default function App() {
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />
       {home && <Home onClose={() => setHome(false)} />}
+      {videoCut && <VideoCut onClose={() => setVideoCut(false)} />}
       {sending && <SendCopy onClose={() => setSending(false)} />}
     </div>
   );

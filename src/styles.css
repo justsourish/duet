@@ -1592,3 +1592,262 @@ button {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+/* video cutting screen */
+.vc-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.vc-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.vc-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.vc-top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.vc-select {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.vc-select:focus {
+  border-color: var(--accent);
+}
+
+.vc-total {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+}
+
+.vc-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vc-file {
+  font-weight: 600;
+  color: var(--text);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-error {
+  color: #f87171;
+  font-size: 11px;
+}
+
+.vc-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+  background: rgba(248, 113, 113, 0.1);
+  border-bottom: 1px solid var(--line);
+}
+
+.vc-problem {
+  color: #f87171;
+  font-size: 11px;
+}
+
+.vc-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 0;
+  background: var(--canvas);
+}
+
+.vc-left {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vc-left-title {
+  padding: 12px 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.vc-clips-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.vc-row:hover {
+  background: var(--panel-2);
+}
+
+.vc-row.vc-picked {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.vc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.vc-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.vc-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.vc-btn {
+  font-size: 11px;
+}
+
+.vc-middle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.vc-player-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 800px;
+  width: 100%;
+}
+
+.vc-player {
+  max-width: 100%;
+  max-height: calc(100vh - 280px);
+  border-radius: 12px;
+  background: #000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.vc-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vc-play-btn {
+  min-width: 80px;
+}
+
+.vc-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+  padding: 14px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.vc-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vc-slider-label {
+  width: 40px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.vc-slider {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.vc-slider-time {
+  width: 55px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vc-empty {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 40px;
+}
+
+.vc-notice {
+  margin: auto;
+  padding: 24px 32px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
