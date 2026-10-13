@@ -3,7 +3,7 @@ import type { ClipPayload } from "../document/clipboard";
 import { canMask, canTurn, descendants, tidyAngle, turnCentre, turnPoint, worldPos } from "../document/geometry";
 import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
-import { MOVING } from "../document/types";
+import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../document/types";
 import { ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } from "../document/time";
 import type { Entrance } from "../document/time";
@@ -37,6 +37,7 @@ const defaults: Record<ElementType, Partial<El>> = {
   group: { fill: "#00000000", radius: 0 },
   instance: { fill: "#ffffff", radius: 0 },
   video: { fill: "#000000", radius: 0 },
+  sound: { fill: "#00000000", radius: 0 },
 };
 
 const typeName: Record<ElementType, string> = {
@@ -49,6 +50,7 @@ const typeName: Record<ElementType, string> = {
   group: "Group",
   instance: "Component",
   video: "Clip",
+  sound: "Sound",
 };
 
 function nextName(doc: Doc, type: ElementType): string {
@@ -842,7 +844,7 @@ const setTiming: CommandDef<SetTimingArgs> = {
       if (a.start !== undefined) el.start = Math.max(0, Math.min(scene.duration, round(Number(a.start) || 0)));
       if (a.end !== undefined) el.end = Math.max(0, Math.min(scene.duration, round(Number(a.end) || 0)));
       if (el.end && el.end <= el.start) el.end = Math.min(scene.duration, round(el.start + 0.1));
-      if (a.clipFrom !== undefined && el.type === "video") el.clipFrom = Math.max(0, round(Number(a.clipFrom) || 0));
+      if (a.clipFrom !== undefined && playsFile(el)) el.clipFrom = Math.max(0, round(Number(a.clipFrom) || 0));
       // what it does over time moves along with it
       const by = el.start - was;
       if (by) for (const prop of MOVING) if (el.keys[prop]) el.keys[prop] = el.keys[prop]!.map((k) => ({ ...k, t: round(k.t + by) }));
@@ -1003,7 +1005,7 @@ const splitAt: CommandDef<SplitArgs> = {
       second.start = t;
       // one that stayed to the end still does
       second.end = first.end ? span.end : 0;
-      if (first.type === "video") second.clipFrom = round(first.clipFrom + (t - span.start));
+      if (playsFile(first)) second.clipFrom = round(first.clipFrom + (t - span.start));
       first.end = t;
       next.elements[second.id] = second;
       scene.childIds.splice(scene.childIds.indexOf(id) + 1, 0, second.id);

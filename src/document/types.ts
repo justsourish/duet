@@ -1,4 +1,4 @@
-export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path" | "group" | "instance" | "video";
+export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path" | "group" | "instance" | "video" | "sound";
 
 /** One point on a drawn line. All numbers are fractions of the element's box, so resizing just works. */
 export interface PathNode {
@@ -48,6 +48,9 @@ export interface Key {
   /** How it arrives at this value from the one before: at a steady pace, or easing in, out, or both. */
   ease: "linear" | "in" | "out" | "in-out";
 }
+
+/** A thing that plays a file: a video clip, or a sound with nothing to see. */
+export const playsFile = (el: { type: ElementType }) => el.type === "video" || el.type === "sound";
 
 /** The properties that can change over time. */
 export const MOVING = ["x", "y", "width", "height", "opacity", "rotation"] as const;
@@ -125,7 +128,7 @@ export interface El {
   end: number;
   /** Changes over time, by property. Each list is in order of time. Empty for something that stays as it is. */
   keys: Partial<Record<Moving, Key[]>>;
-  /** A video clip only: the second in its file where playing starts, and how loud it is from 0 to 1. For a clip, src is where the file is on the computer. */
+  /** A video clip or a sound only: the second in its file where playing starts, and how loud it is from 0 to 1. For these, src is where the file is on the computer. A sound has no place on the canvas: it is only heard. */
   clipFrom: number;
   volume: number;
   childIds: string[];

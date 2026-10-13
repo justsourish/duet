@@ -178,7 +178,8 @@ export function hitTest(doc: Doc, wx: number, wy: number, ignore: Set<string> = 
   const visit = (ids: string[], ox: number, oy: number, px: number, py: number): string | null => {
     for (let i = ids.length - 1; i >= 0; i--) {
       const el = doc.elements[ids[i]];
-      if (!el || ignore.has(el.id)) continue;
+      // a sound is only heard, so there is nothing of it to point at
+      if (!el || ignore.has(el.id) || el.type === "sound") continue;
       const r = { x: ox + el.x, y: oy + el.y, width: el.width, height: el.height };
       // for a turned thing, turn the pointer back the other way and test it as if it were upright
       const turn = turnOf(el);

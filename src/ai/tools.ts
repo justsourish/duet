@@ -12,6 +12,7 @@ import { MOVING } from "../document/types";
 import type { El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
 import { addPicture, mimeFor } from "../project/assets";
+import { fileLength } from "../video/clips";
 import { saveNow } from "../project/project";
 import { tracePicture } from "../project/trace";
 import { currentDoc, dispatch, getState, goTo, select } from "../state/store";
@@ -224,6 +225,12 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "place_sound",
+    description:
+      "Put a sound file from this computer into a frame that plays, such as music or a recorded voice. It is only heard, never seen. path is the full path to an MP3, WAV, M4A, AAC, AIFF, OGG or FLAC file (~ for the home folder works). It is heard from start (seconds, 0 if left out) until it ends or the frame ends. volume is 0 to 1, 1 if left out: use about 0.2 for music under a voice. Trim it with set_timing, change how loud it is with set_props. The designer is asked first.",
+    inputSchema: { type: "object", properties: { path: str, parentId: { ...str, description: "A frame that plays." }, start: num, volume: num, name: str }, required: ["path", "parentId"] },
+  },
+  {
     name: "delete_elements",
     description: "Delete elements and everything inside them. The designer may be asked to approve this.",
     inputSchema: { type: "object", properties: { ids }, required: ["ids"] },
@@ -232,7 +239,7 @@ export const TOOLS: ToolDef[] = [
 
 const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
-const RISKY = new Set(["delete_elements", "place_image", "place_video"]);
+const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound"]);
 
 type Args = Record<string, unknown>;
 
@@ -265,6 +272,8 @@ export function summarise(tool: string, a: Args): string {
       return `Bring in the picture at ${String(a.path)}`;
     case "place_video":
       return `Bring in the clip at ${String(a.path)}`;
+    case "place_sound":
+      return `Bring in the sound at ${String(a.path)}`;
     case "set_duration":
       return Number(a.seconds) > 0 ? `Make ${nameOf(a.id)} play for ${String(a.seconds)} seconds` : `Make ${nameOf(a.id)} a still design`;
     case "set_timing":
@@ -449,6 +458,18 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       }
       return { args: a };
     }
+    case "place_sound": {
+      const path = typeof a.path === "string" ? a.path.trim() : "";
+      if (!/^(~[\\/]|[\\/]|[a-zA-Z]:[\\/])/.test(path)) return { error: "Give the full path to the file, starting from the top folder or from ~ for the home folder." };
+      if (!/\.(mp3|wav|m4a|aac|aiff?|ogg|flac)$/i.test(path)) return { error: "That is not a sound Duet can use. It takes MP3, WAV, M4A, AAC, AIFF, OGG and FLAC files." };
+      const scene = doc.elements[String(a.parentId)];
+      if (!scene || scene.type !== "frame" || scene.parentId || !(scene.duration > 0)) return { error: "parentId must be a frame that plays. Use set_duration on a frame on the page first." };
+      if (a.start != null && typeof a.start !== "number") return { error: "start must be a number." };
+      if (a.volume != null && !(typeof a.volume === "number" && a.volume >= 0 && a.volume <= 1)) return { error: "volume must be a number from 0 to 1." };
+      a.path = path;
+      a.id = newId("sound");
+      return { args: a };
+    }
     case "place_video": {
       const path = typeof a.path === "string" ? a.path.trim() : "";
       if (!/^(~[\\/]|[\\/]|[a-zA-Z]:[\\/])/.test(path)) return { error: "Give the full path to the file, starting from the top folder or from ~ for the home folder." };
@@ -579,6 +600,31 @@ async function placeVideo(args: Args, by?: string): Promise<ToolResult> {
   return { text: `Placed the clip as ${String(args.id)} named "${name}", ${width} by ${height}, showing from ${start}s to ${end}s (the file is ${info.duration}s long, ${info.width} by ${info.height}, ${info.sound ? "with" : "without"} sound). The frame now plays for ${currentDoc().elements[sceneId].duration}s.` };
 }
 
+/** Put a sound file from the computer into a frame that plays. The file stays where it is. */
+async function placeSound(args: Args, by?: string): Promise<ToolResult> {
+  let path = String(args.path);
+  // Duet's own folder sits in the home folder, which is how the home folder is found
+  if (path.startsWith("~")) path = (await invoke<string>("duet_home")).replace(/[\\/]\.duet[^\\/]*[\\/]?$/, "") + path.slice(1);
+  let length: number;
+  try {
+    length = await fileLength(path);
+  } catch {
+    return fail(`The sound at ${String(args.path)} could not be played. Check the path, and that it is a sound file in a folder Duet can reach (not a hidden folder).`);
+  }
+  const sceneId = String(args.parentId);
+  const scene = currentDoc().elements[sceneId];
+  const start = Math.max(0, Math.min(scene.duration - 0.1, Number(args.start) || 0));
+  const end = Math.min(scene.duration, Math.round((start + length) * 1000) / 1000);
+  const file = path.split(/[\\/]/).pop() ?? "Sound";
+  const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : file;
+  await ensureSaved();
+  dispatch("create_element", { type: "sound", id: String(args.id), parentId: sceneId, x: 0, y: 0, width: 1, height: 1, props: { src: path, name, start, end, volume: typeof args.volume === "number" ? args.volume : 1 } }, "ai", by);
+  if (!currentDoc().elements[String(args.id)]) return fail("The sound could not be placed there.");
+  addMsg({ role: "note", text: `Brought in the sound ${file}`, ...stepNow() });
+  saveIfHome();
+  return { text: `Placed the sound as ${String(args.id)} named "${name}", heard from ${start}s to ${end}s (the file is ${Math.round(length * 10) / 10}s long, the frame plays for ${scene.duration}s).` };
+}
+
 /** The step a change has just made: where it is for Undo, and its name so the words stay tied to it. */
 function stepNow() {
   const s = getState();
@@ -600,6 +646,7 @@ async function traceImage(args: Args, by?: string): Promise<ToolResult> {
 async function apply(tool: string, args: Args, by?: string): Promise<ToolResult> {
   if (tool === "place_image") return placeImage(args, by);
   if (tool === "place_video") return placeVideo(args, by);
+  if (tool === "place_sound") return placeSound(args, by);
   if (tool === "trace_image") return traceImage(args, by);
   await ensureSaved();
   // changing a value over time is one tool for the AI and the set_keys command underneath
@@ -705,7 +752,7 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
   }
   if (RISKY.has(name) && mode === "ask") {
     const ok = await askDesigner(summary);
-    if (!ok) return fail(name === "place_image" || name === "place_video" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
+    if (!ok) return fail(name === "place_image" || name === "place_video" || name === "place_sound" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
   }
   return apply(name, check.args, by);
 }

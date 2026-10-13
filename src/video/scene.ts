@@ -2,9 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { drawElement } from "../canvas/render";
 import { docAt, spanOf } from "../document/time";
+import { playsFile } from "../document/types";
 import type { Doc } from "../document/types";
 import { currentDoc, dispatch, getState, select } from "../state/store";
-import { holdClips, seekClips } from "./clips";
+import { fileLength, holdClips, seekClips } from "./clips";
 import { pause } from "./play";
 
 /** A frame that plays: bringing clips into it, and making one video file out of it. */
@@ -57,6 +58,32 @@ export async function addClips(sceneId: string): Promise<string[]> {
   return problems;
 }
 
+const SOUNDS = ["mp3", "wav", "m4a", "aac", "aiff", "aif", "ogg", "flac"];
+
+/** Ask for sound files, such as music or a voice, and put them in the frame from the moment the clock is on. They are only heard. */
+export async function addSounds(sceneId: string): Promise<string[]> {
+  const picked = await open({ multiple: true, title: "Bring in sound", filters: [{ name: "Sound", extensions: SOUNDS }] });
+  const paths = picked === null ? [] : Array.isArray(picked) ? picked : [picked];
+  const problems: string[] = [];
+  for (const path of paths) {
+    try {
+      const length = await fileLength(path);
+      const scene = currentDoc().elements[sceneId];
+      if (!scene) break;
+      let at = getState().clock.t;
+      if (at >= scene.duration - 0.05) at = 0;
+      // music is usually longer than the video: it stops where the video stops, and does not make it longer
+      const end = Math.min(scene.duration, Math.round((at + length) * 1000) / 1000);
+      const id = `sound-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      dispatch("create_element", { type: "sound", id, parentId: sceneId, x: 0, y: 0, width: 1, height: 1, props: { src: path, name: fileName(path), start: at, end } });
+      select([id]);
+    } catch (e) {
+      problems.push(`${fileName(path)}: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+  return problems;
+}
+
 const FPS = 30;
 
 /** The sound of every clip in a frame: which file, from where in it, when it is heard, and how loud. */
@@ -72,7 +99,7 @@ export function soundsOf(doc: Doc, sceneId: string) {
       const start = Math.max(span.start, from);
       const end = Math.min(span.end, to);
       if (end <= start) continue;
-      if (el.type === "video" && el.src && el.volume > 0) out.push({ path: el.src, from: el.clipFrom + (start - span.start), at: start, length: end - start, volume: el.volume });
+      if (playsFile(el) && el.src && el.volume > 0) out.push({ path: el.src, from: el.clipFrom + (start - span.start), at: start, length: end - start, volume: el.volume });
       walk(c, start, end);
     }
   };

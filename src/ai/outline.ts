@@ -27,6 +27,7 @@ function describe(doc: Doc, el: El): string {
     if (el.radius) bits.push(`radius ${el.radius}`);
     if (el.shadow) bits.push("shadow");
   }
+  if (el.type === "sound") bits.push(`sound ${el.src}${el.clipFrom ? ` from ${el.clipFrom}s of the file` : ""}${el.volume !== 1 ? ` volume ${el.volume}` : ""} (only heard, its position and size mean nothing)`);
   if (el.type === "video") bits.push(`clip ${el.src}${el.clipFrom ? ` from ${el.clipFrom}s of the file` : ""}${el.volume !== 1 ? ` volume ${el.volume}` : ""}`);
   if (el.duration > 0) bits.push(`PLAYS ${el.duration}s`);
   if (el.start || el.end) bits.push(`shows ${el.start}s to ${el.end ? `${el.end}s` : "the end"}`);

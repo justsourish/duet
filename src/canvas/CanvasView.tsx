@@ -77,6 +77,7 @@ const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
   group: { w: 100, h: 100 },
   instance: { w: 100, h: 100 },
   video: { w: 320, h: 180 },
+  sound: { w: 1, h: 1 },
 };
 
 /** Copy of what was last copied inside this window, in case the system clipboard is unavailable. */

@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { spanOf } from "../document/time";
+import { playsFile } from "../document/types";
 import type { Doc } from "../document/types";
 import { logError } from "../errorLog";
 
@@ -43,6 +44,29 @@ export function clipPicture(src: string): HTMLVideoElement | null {
   return v.readyState >= 2 ? v : null;
 }
 
+/** How long a sound or video file is, in seconds. Waits until the file has said so. */
+export function fileLength(src: string): Promise<number> {
+  const v = player(src);
+  if (v.duration > 0 && Number.isFinite(v.duration)) return Promise.resolve(v.duration);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => done(false), 8000);
+    function done(ok: boolean) {
+      clearTimeout(timer);
+      v.removeEventListener("loadedmetadata", yes);
+      v.removeEventListener("error", no);
+      if (ok && v.duration > 0 && Number.isFinite(v.duration)) resolve(v.duration);
+      else {
+        players.delete(src);
+        reject(new Error("That file could not be played."));
+      }
+    }
+    const yes = () => done(true);
+    const no = () => done(false);
+    v.addEventListener("loadedmetadata", yes);
+    v.addEventListener("error", no);
+  });
+}
+
 /** How long a clip's file is, in seconds, or 0 while that is not known yet. */
 export const clipLength = (src: string) => (src ? player(src).duration || 0 : 0);
 
@@ -50,7 +74,8 @@ const clipsIn = (doc: Doc, sceneId: string) => {
   const out: string[] = [];
   const walk = (id: string) => {
     for (const c of doc.elements[id]?.childIds ?? []) {
-      if (doc.elements[c]?.type === "video") out.push(c);
+      const el = doc.elements[c];
+      if (el && playsFile(el)) out.push(c);
       walk(c);
     }
   };

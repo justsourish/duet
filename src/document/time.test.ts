@@ -3,6 +3,7 @@ import { runCommand } from "../commands";
 import { parseDoc, serializeDoc } from "./serialize";
 import { docAt, entranceOf, valueAt } from "./time";
 import { emptyDoc } from "./types";
+import { soundsOf } from "../video/scene";
 import { currentDoc, dispatch, loadDoc, resetStore, seenDoc, setClock, workDoc } from "../state/store";
 
 function scene() {
@@ -120,5 +121,14 @@ describe("time", () => {
     setClock({ scene: null });
     expect(workDoc()).toBe(currentDoc());
     resetStore();
+  });
+
+  it("a sound is saved, cut like a clip, and heard at its moment in the finished video", () => {
+    let doc = runCommand(scene(), "create_element", { type: "sound", id: "m", parentId: "f", x: 0, y: 0, width: 1, height: 1, props: { src: "/music.mp3", start: 2, end: 8, volume: 0.3 } });
+    const back = parseDoc(serializeDoc(doc));
+    expect([back.elements.m.src, back.elements.m.volume, back.elements.m.start]).toEqual(["/music.mp3", 0.3, 2]);
+    expect(soundsOf(doc, "f")).toEqual([{ path: "/music.mp3", from: 0, at: 2, length: 6, volume: 0.3 }]);
+    doc = runCommand(doc, "split_at", { sceneId: "f", t: 5, ids: ["m"], newIds: { m: "m2" } });
+    expect(soundsOf(doc, "f")[1]).toEqual({ path: "/music.mp3", from: 3, at: 5, length: 3, volume: 0.3 });
   });
 });

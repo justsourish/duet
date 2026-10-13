@@ -59,6 +59,16 @@ fn probe(path: &str) -> Result<VideoInfo, String> {
     })
 }
 
+/// Whether a file has sound in it. Works for a sound file too, which has no picture.
+fn has_sound(path: &str) -> Result<bool, String> {
+    let ffprobe = find("ffprobe").ok_or(MISSING)?;
+    let out = Command::new(ffprobe)
+        .args(["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", path])
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&out.stdout).contains("audio"))
+}
+
 /// What a clip is: how long, how big, and whether it has sound.
 #[tauri::command]
 pub async fn video_info(path: String) -> Result<VideoInfo, String> {
@@ -177,7 +187,7 @@ pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, sounds: Vec
         // a clip with no sound in it has nothing to add
         let mut heard = Vec::new();
         for s in sounds {
-            if probe(&s.path)?.sound {
+            if has_sound(&s.path)? {
                 heard.push(s);
             }
         }
