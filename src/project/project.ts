@@ -1,4 +1,4 @@
-import { flushPictures, preloadPictures } from "./assets";
+import { flushPictures, picturesIn, preloadPictures } from "./assets";
 import { renderPng } from "./exporter";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
@@ -123,15 +123,20 @@ async function oops(text: string) {
   else console.error(text);
 }
 
+/** A small picture of the first screen, as PNG data. Null when there is nothing to show. */
+async function previewPng(doc: Doc): Promise<string | null> {
+  const id = doc.rootIds.find((i) => doc.elements[i]?.type === "frame" || doc.elements[i]?.type === "instance") ?? doc.rootIds[0];
+  if (!id) return null;
+  const el = doc.elements[id];
+  await preloadPictures(doc);
+  return renderPng(doc, id, Math.min(1, 360 / Math.max(el.width, el.height, 1)));
+}
+
 /** A small picture of the first screen, kept with the project in the list of projects. */
 async function writePreview(path: string, doc: Doc) {
   try {
-    const id = doc.rootIds.find((i) => doc.elements[i]?.type === "frame" || doc.elements[i]?.type === "instance") ?? doc.rootIds[0];
-    if (!id) return;
-    const el = doc.elements[id];
-    await preloadPictures(doc);
-    const scale = Math.min(1, 360 / Math.max(el.width, el.height, 1));
-    const b64 = renderPng(doc, id, scale);
+    const b64 = await previewPng(doc);
+    if (!b64) return;
     await invoke("write_binary_file", { path: join(path, "preview.png"), dataBase64: b64 });
     const key = getState().project.file ?? path;
     const list = getRecents().map((r) => (r.path === key ? { ...r, thumb: `data:image/png;base64,${b64}` } : r));
@@ -485,6 +490,61 @@ export async function exportDesignData() {
   } catch (e) {
     await oops(String(e));
   }
+}
+
+/** What a copy carries besides the design as it is now. Both are left out unless asked for. */
+export interface CopyChoice {
+  /** The earlier steps and the named versions. */
+  history: boolean;
+  /** The conversation with the AI. */
+  conversation: boolean;
+}
+
+/** The name a copy starts with: the project's own name with "copy" after it, in the same folder. */
+export function copyNameFor(file: string): string {
+  return file.replace(/(\.duet)?$/i, " copy.duet");
+}
+
+/**
+ * Save a second project file to hand to someone else. The project you are working in is not changed
+ * and stays open. Returns where the copy went, why it could not be made, or null if you backed out.
+ */
+export async function sendCopy(choice: CopyChoice): Promise<{ saved: string } | { why: string } | null> {
+  if (!inTauri()) return { why: "Sending a copy works in the desktop app." };
+  const result = await once(() => sendCopyDialog(choice));
+  return result ?? null;
+}
+
+async function sendCopyDialog(choice: CopyChoice): Promise<{ saved: string } | { why: string } | null> {
+  const { path, file } = getState().project;
+  if (!path || !file) return { why: "Save your project first, then send a copy." };
+  const target = await save({ title: "Send a copy", defaultPath: copyNameFor(file), filters: [{ name: "Duet project", extensions: ["duet"] }] });
+  if (!target) return null;
+  const picked = withExt(target);
+  if (picked === file) return { why: "That is the project you are working in. Give the copy a different name." };
+  if ((await invoke<boolean>("is_directory", { path: picked })) === true) return { why: "There is an older project folder with that name. Pick a different name." };
+  // everything on the canvas is written into the working folder first, so the copy is made from what you see
+  await saveNow();
+  return enqueue(async () => {
+    if (getState().project.path !== path) return { why: "Another project was opened. Send the copy again." };
+    try {
+      if (choice.conversation) await flushThread();
+      const doc = committed();
+      await flushPictures(path, doc);
+      await invoke("pack_copy", {
+        dir: path,
+        file: picked,
+        design: serializeDoc(doc),
+        previewBase64: await previewPng(doc).catch(() => null),
+        pictures: picturesIn(doc),
+        history: choice.history,
+        conversation: choice.conversation,
+      });
+      return { saved: picked };
+    } catch (e) {
+      return { why: String(e) };
+    }
+  });
 }
 
 /** On launch, go back to where you were. */

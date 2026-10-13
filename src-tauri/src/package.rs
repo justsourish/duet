@@ -77,6 +77,78 @@ pub fn pack(dir: &Path, file: &Path) -> Result<(), String> {
     fs::rename(&tmp, file).map_err(err)
 }
 
+/// What a copy of a project carries besides the design as it is now.
+pub struct CopyChoice {
+    /// The earlier steps and the named versions.
+    pub history: bool,
+    /// The conversation with the AI.
+    pub conversation: bool,
+}
+
+/// A picture named by a design: one plain file inside `assets/`, nothing that climbs out.
+fn picture_name(src: &str) -> Option<&str> {
+    let name = src.strip_prefix("assets/")?;
+    let plain = !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', ':']);
+    plain.then_some(name)
+}
+
+fn add_file(zip: &mut ZipWriter<File>, rel: &str, bytes: &[u8]) -> Result<(), String> {
+    let method = if already_compressed(rel) { CompressionMethod::Stored } else { CompressionMethod::Deflated };
+    zip.start_file(rel, SimpleFileOptions::default().compression_method(method)).map_err(err)?;
+    zip.write_all(bytes).map_err(err)
+}
+
+/// Make a second project file to hand to someone else. It is built from a list of what to keep, so
+/// anything a project learns to hold later stays out until it is added here on purpose. The working
+/// folder is only read.
+pub fn pack_copy(dir: &Path, file: &Path, design: &str, preview: Option<&[u8]>, pictures: &[String], choice: &CopyChoice) -> Result<(), String> {
+    if file.starts_with(dir) {
+        return Err("A copy cannot be saved inside the project it is made from.".to_string());
+    }
+    let names: Vec<&str> = pictures.iter().map(|p| picture_name(p).ok_or_else(|| format!("{p} is not a picture of this project."))).collect::<Result<_, _>>()?;
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent).map_err(err)?;
+    }
+    let tmp = PathBuf::from(format!("{}.tmp", file.to_string_lossy()));
+    let write = || -> Result<(), String> {
+        let mut zip = ZipWriter::new(File::create(&tmp).map_err(err)?);
+        add_file(&mut zip, "design.json", design.as_bytes())?;
+        if let Some(bytes) = preview {
+            add_file(&mut zip, "preview.png", bytes)?;
+        }
+        if choice.history {
+            // earlier steps need the pictures they used, so every picture goes along
+            for part in [".git", "assets"] {
+                if dir.join(part).is_dir() {
+                    zip.add_directory(format!("{part}/"), SimpleFileOptions::default()).map_err(err)?;
+                    add_dir(&mut zip, dir, &dir.join(part))?;
+                }
+            }
+        } else if !names.is_empty() {
+            zip.add_directory("assets/", SimpleFileOptions::default()).map_err(err)?;
+            for name in &names {
+                // a picture that has gone missing leaves an empty box, the same as in the project itself
+                if let Ok(bytes) = fs::read(dir.join("assets").join(name)) {
+                    add_file(&mut zip, &format!("assets/{name}"), &bytes)?;
+                }
+            }
+        }
+        if choice.conversation {
+            if let Ok(bytes) = fs::read(dir.join("memory").join("thread.json")) {
+                zip.add_directory("memory/", SimpleFileOptions::default()).map_err(err)?;
+                add_file(&mut zip, "memory/thread.json", &bytes)?;
+            }
+        }
+        zip.finish().map_err(err)?;
+        Ok(())
+    };
+    if let Err(e) = write() {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    fs::rename(&tmp, file).map_err(err)
+}
+
 /// Unpack a project file into a folder, replacing what was there. Names that try to climb out of the
 /// folder are refused.
 pub fn unpack(file: &Path, dir: &Path) -> Result<(), String> {
@@ -144,6 +216,106 @@ mod tests {
         let f = temp("o2").join("e.duet");
         pack(&src, &f).unwrap();
         assert!(unpack(&f, &temp("dest2")).is_err());
+    }
+
+    /// A working folder with a history, a conversation, a picture in use and one from an earlier idea.
+    fn worked_on(name: &str) -> PathBuf {
+        let src = temp(name);
+        fs::write(src.join("design.json"), "{\"old\":1}").unwrap();
+        fs::write(src.join("preview.png"), [9u8, 9]).unwrap();
+        fs::create_dir_all(src.join("assets")).unwrap();
+        fs::write(src.join("assets/used.png"), [1u8, 2, 3]).unwrap();
+        fs::write(src.join("assets/earlier-idea.png"), [7u8, 7, 7]).unwrap();
+        fs::create_dir_all(src.join(".git/refs/tags")).unwrap();
+        fs::write(src.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        fs::write(src.join(".git/refs/tags/v1-client-round"), "abc\n").unwrap();
+        fs::create_dir_all(src.join("memory")).unwrap();
+        fs::write(src.join("memory/thread.json"), "{\"now\":[]}").unwrap();
+        fs::write(src.join("memory/notes.json"), "{\"notes\":[]}").unwrap();
+        src
+    }
+
+    /// Every file under a folder, as sorted relative names with their contents.
+    fn listing(root: &Path) -> Vec<(String, Vec<u8>)> {
+        fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+            for e in fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(root, &p, out);
+                } else {
+                    out.push((p.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"), fs::read(&p).unwrap()));
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(root, root, &mut out);
+        out.sort();
+        out
+    }
+
+    fn names(root: &Path) -> Vec<String> {
+        listing(root).into_iter().map(|(n, _)| n).collect()
+    }
+
+    const CLEAN: CopyChoice = CopyChoice { history: false, conversation: false };
+
+    #[test]
+    fn a_copy_holds_the_design_as_it_is_now_and_nothing_of_how_it_was_made() {
+        let src = worked_on("copy-src");
+        let before = listing(&src);
+        let file = temp("copy-out").join("for client.duet");
+        pack_copy(&src, &file, "{\"now\":2}", Some(&[5u8, 5]), &["assets/used.png".to_string()], &CLEAN).unwrap();
+        // it opens like any project
+        let back = temp("copy-back");
+        unpack(&file, &back).unwrap();
+        assert_eq!(names(&back), vec!["assets/used.png", "design.json", "preview.png"]);
+        assert_eq!(fs::read_to_string(back.join("design.json")).unwrap(), "{\"now\":2}");
+        assert_eq!(fs::read(back.join("preview.png")).unwrap(), vec![5u8, 5]);
+        assert_eq!(fs::read(back.join("assets/used.png")).unwrap(), vec![1u8, 2, 3]);
+        // and the project it came from is exactly as it was
+        assert_eq!(listing(&src), before);
+    }
+
+    #[test]
+    fn a_copy_can_carry_the_history_or_the_conversation_when_asked() {
+        let src = worked_on("copy-full-src");
+        let pics = ["assets/used.png".to_string()];
+        let with_history = temp("copy-h").join("h.duet");
+        pack_copy(&src, &with_history, "{}", None, &pics, &CopyChoice { history: true, conversation: false }).unwrap();
+        let h = temp("copy-h-back");
+        unpack(&with_history, &h).unwrap();
+        assert_eq!(names(&h), vec![".git/HEAD", ".git/refs/tags/v1-client-round", "assets/earlier-idea.png", "assets/used.png", "design.json"]);
+
+        let with_talk = temp("copy-c").join("c.duet");
+        pack_copy(&src, &with_talk, "{}", None, &pics, &CopyChoice { history: false, conversation: true }).unwrap();
+        let c = temp("copy-c-back");
+        unpack(&with_talk, &c).unwrap();
+        // the conversation only: nothing else kept in memory goes along
+        assert_eq!(names(&c), vec!["assets/used.png", "design.json", "memory/thread.json"]);
+    }
+
+    #[test]
+    fn a_copy_refuses_names_that_reach_outside_the_pictures() {
+        let src = worked_on("copy-bad-src");
+        let out = temp("copy-bad-out");
+        for bad in ["../secret.txt", "assets/../.git/HEAD", "memory/thread.json", "assets/", "/etc/hosts", "assets/a/b.png"] {
+            let file = out.join("bad.duet");
+            assert!(pack_copy(&src, &file, "{}", None, &[bad.to_string()], &CLEAN).is_err(), "{bad}");
+            assert!(!file.exists());
+        }
+        assert!(names(&out).is_empty());
+        // and it is never written into the project it is made from
+        assert!(pack_copy(&src, &src.join("inside.duet"), "{}", None, &[], &CLEAN).is_err());
+    }
+
+    #[test]
+    fn a_copy_with_a_missing_picture_is_still_made() {
+        let src = worked_on("copy-missing-src");
+        let file = temp("copy-missing-out").join("m.duet");
+        pack_copy(&src, &file, "{}", None, &["assets/gone.png".to_string()], &CLEAN).unwrap();
+        let back = temp("copy-missing-back");
+        unpack(&file, &back).unwrap();
+        assert_eq!(names(&back), vec!["design.json"]);
     }
 
     #[test]

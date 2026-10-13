@@ -51,6 +51,7 @@ export async function installMenu() {
       await line(),
       await item("Save", () => void saveNow(), "CmdOrCtrl+S"),
       await item("Save a version…", () => send("duet:versions"), "CmdOrCtrl+Shift+S"),
+      await item("Send a copy…", () => send("duet:send-copy")),
       await line(),
       await item("Export as PNG…", () => void exportDesign("png", 2)),
       await item("Export as SVG…", () => void exportDesign("svg", 1)),

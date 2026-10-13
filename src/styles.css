@@ -1465,3 +1465,76 @@ button {
 .chead {
   touch-action: none;
 }
+
+/* send a copy: a small window over the app */
+.sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+.sheet {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+.sheet-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.sheet-lead,
+.sheet-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.sheet-note.warn {
+  color: var(--duet);
+}
+.sheet-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  margin: 0 -8px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sheet-choice:hover {
+  background: var(--panel-2);
+}
+.sheet-choice input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.sheet-choice span {
+  color: var(--muted);
+  line-height: 1.4;
+}
+.sheet-choice b {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+}
+.sheet-path {
+  margin-bottom: 14px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}

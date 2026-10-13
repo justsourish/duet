@@ -18,6 +18,7 @@ import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
 import PresentView from "./ui/PresentView";
+import SendCopy from "./ui/SendCopy";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
 import Toolbar from "./ui/Toolbar";
@@ -60,6 +61,7 @@ export default function App() {
   useDismiss(zoomMenu, () => setZoomMenu(false), ".zoomwrap.zoomonly");
   const [presenting, setPresenting] = useState(false);
   const [home, setHome] = useState(false);
+  const [sending, setSending] = useState(false);
   const dock = useLayout((d) => d);
   const hasFrames = useStore((s) => Object.values(s.timeline[s.cursor].doc.elements).some((e) => e.type === "frame"));
 
@@ -90,9 +92,11 @@ export default function App() {
     // the menu bar and other parts of the app ask for these
     const openHome = () => setHome(true);
     const openPresent = () => setPresenting(true);
+    const openSend = () => setSending(true);
     const rebuildMenu = () => void installMenu();
     window.addEventListener("duet:home", openHome);
     window.addEventListener("duet:present", openPresent);
+    window.addEventListener("duet:send-copy", openSend);
     window.addEventListener("duet:recents", rebuildMenu);
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -122,6 +126,7 @@ export default function App() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("duet:home", openHome);
       window.removeEventListener("duet:present", openPresent);
+      window.removeEventListener("duet:send-copy", openSend);
       window.removeEventListener("duet:recents", rebuildMenu);
     };
   }, []);
@@ -208,6 +213,7 @@ export default function App() {
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />
       {home && <Home onClose={() => setHome(false)} />}
+      {sending && <SendCopy onClose={() => setSending(false)} />}
     </div>
   );
 }

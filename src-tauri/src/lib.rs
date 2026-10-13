@@ -106,6 +106,17 @@ fn pack_project(dir: String, file: String) -> Result<(), String> {
     package::pack(Path::new(&dir), Path::new(&file))
 }
 
+/// Make a second project file to hand to someone else. The working folder is only read.
+#[tauri::command]
+fn pack_copy(dir: String, file: String, design: String, preview_base64: Option<String>, pictures: Vec<String>, history: bool, conversation: bool) -> Result<(), String> {
+    use base64::Engine;
+    let preview = match preview_base64 {
+        Some(text) => Some(base64::engine::general_purpose::STANDARD.decode(text.trim()).map_err(|e| format!("The picture data was not valid: {e}"))?),
+        None => None,
+    };
+    package::pack_copy(Path::new(&dir), Path::new(&file), &design, preview.as_deref(), &pictures, &package::CopyChoice { history, conversation })
+}
+
 /// Unpack a project file into its working folder, and say where it went.
 #[tauri::command]
 fn unpack_project(file: String) -> Result<String, String> {
@@ -421,6 +432,7 @@ pub fn run() {
             work_dir_for,
             fresh_work_dir,
             pack_project,
+            pack_copy,
             unpack_project,
             is_directory,
             launch_file,

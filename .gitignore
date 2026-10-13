@@ -1,5 +1,7 @@
 # Pinterest and other inspiration. Kept local, not shared.
 ref/
+# Files made while testing the app. Kept local, not shared.
+scratch/
 .DS_Store
 node_modules/
 target/

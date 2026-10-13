@@ -86,10 +86,14 @@ export function getPicture(src: string): HTMLImageElement | null {
   return null;
 }
 
+/** The pictures a design uses, each named once. */
+export function picturesIn(doc: Doc): string[] {
+  return [...new Set(Object.values(doc.elements).flatMap((e) => (e.type === "image" && e.src ? [e.src] : [])))];
+}
+
 /** Wait until every picture used by this design can be drawn. Used before exporting. */
 export async function preloadPictures(doc: Doc): Promise<void> {
-  const srcs = new Set(Object.values(doc.elements).filter((e) => e.type === "image" && e.src).map((e) => e.src));
-  for (const src of srcs) {
+  for (const src of picturesIn(doc)) {
     for (let i = 0; i < 100 && !getPicture(src); i++) {
       if (pictures.get(src) === "failed") break;
       await new Promise((r) => setTimeout(r, 30));
@@ -135,6 +139,5 @@ async function writePicture(src: string, dir: string) {
 
 /** Put every picture the design uses into the project folder. Safe to call as often as you like. */
 export async function flushPictures(dir: string, doc: Doc) {
-  const srcs = new Set(Object.values(doc.elements).filter((e) => e.type === "image" && e.src).map((e) => e.src));
-  for (const src of srcs) await writePicture(src, dir).catch((e) => console.warn("Could not save a picture:", e));
+  for (const src of picturesIn(doc)) await writePicture(src, dir).catch((e) => console.warn("Could not save a picture:", e));
 }

@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../commands";
 import { descendants, frameAt, hitTest, snapRect, topLevelOnly, worldPos, worldRect } from "../document/geometry";
 import { emptyDoc } from "../document/types";
+import { picturesIn } from "../project/assets";
+import { copyNameFor } from "../project/project";
+import { leftOut } from "../ui/SendCopy";
 import { defaultLayout, relayout } from "../document/layout";
 import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
 import { resizeRect } from "../canvas/handles";
@@ -1947,5 +1950,34 @@ describe("a conversation that comes back with its project", () => {
     expect(getChat().sessionId).toBeNull();
     expect(getChat().sessionMessages).toBe(0);
     dropSession();
+  });
+});
+
+describe("send a copy", () => {
+  it("lists the pictures a design uses, each one once, and nothing else", () => {
+    let doc = emptyDoc();
+    doc = runCommand(doc, "create_element", { id: "a", type: "image", x: 0, y: 0, width: 10, height: 10 });
+    doc = runCommand(doc, "set_props", { ids: ["a"], props: { src: "assets/one.png" } });
+    doc = runCommand(doc, "create_element", { id: "b", type: "image", x: 0, y: 0, width: 10, height: 10 });
+    doc = runCommand(doc, "set_props", { ids: ["b"], props: { src: "assets/one.png" } });
+    doc = runCommand(doc, "create_element", { id: "c", type: "image", x: 0, y: 0, width: 10, height: 10 });
+    doc = runCommand(doc, "set_props", { ids: ["c"], props: { src: "assets/two.jpg" } });
+    doc = runCommand(doc, "create_element", { id: "d", type: "rect", x: 0, y: 0, width: 10, height: 10 });
+    expect(picturesIn(doc).sort()).toEqual(["assets/one.png", "assets/two.jpg"]);
+    // a picture that was deleted is no longer named, so a copy does not carry it
+    expect(picturesIn(runCommand(doc, "delete_elements", { ids: ["c"] }))).toEqual(["assets/one.png"]);
+    expect(picturesIn(emptyDoc())).toEqual([]);
+  });
+
+  it("names the copy after the project, in the same folder", () => {
+    expect(copyNameFor("/Users/me/Documents/Duet/Burger Barn.duet")).toBe("/Users/me/Documents/Duet/Burger Barn copy.duet");
+    expect(copyNameFor("C:\\work\\Menu.DUET")).toBe("C:\\work\\Menu copy.duet");
+  });
+
+  it("says plainly what the copy leaves out", () => {
+    expect(leftOut(false, false)).toBe("This copy leaves out the earlier steps, your versions and your conversation with the AI.");
+    expect(leftOut(true, false)).toContain("leaves out your conversation");
+    expect(leftOut(false, true)).toContain("leaves out the earlier steps");
+    expect(leftOut(true, true)).not.toContain("leaves out");
   });
 });
