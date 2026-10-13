@@ -29,7 +29,7 @@ How to check a change:
 4. dev_press presses something by its name or by its line number. dev_type writes in a box. dev_key presses a key.
 5. Read the interface again to see what changed. Line numbers are only good until the next read.
 6. dev_errors lists what went wrong since the last look.
-7. After Duet's code changes, dev_reload loads the interface again. The test design is lost, so start a new one.
+7. After Duet's code changes, dev_reload loads the interface again. Wait three seconds after it: a call made while it loads is lost. The test design is lost too, so start a new one.
 8. dev_leave_test_design throws the test design away and brings the project back. Always finish with it.
 
 A line reads: number, kind, "name", then its marks. The marks are the style names on it (sel is selected, on is switched on, folded is folded shut), its value if it is a box, and off if it cannot be pressed. Lines pushed in are inside the line above.
@@ -246,6 +246,7 @@ async function press(a: Args): Promise<ToolResult> {
   const el = find(a);
   if (typeof el === "string") return fail(el);
   if ((el as HTMLButtonElement).disabled) return fail(`"${nameOf(el)}" is switched off and cannot be pressed.`);
+  const called = nameOf(el); // a press can change what it is called, such as Fold to Unfold
   const r = el.getBoundingClientRect();
   const at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: a.right ? 2 : 0, ...heldKeys(a.keys) };
   el.dispatchEvent(new PointerEvent("pointerdown", at));
@@ -262,7 +263,7 @@ async function press(a: Args): Promise<ToolResult> {
     }
   }
   await settle();
-  return { text: `Pressed "${nameOf(el)}".${errors.length ? ` ${errors.length} errors or warnings are waiting in dev_errors.` : ""}` };
+  return { text: `Pressed "${called}".${errors.length ? ` ${errors.length} errors or warnings are waiting in dev_errors.` : ""}` };
 }
 
 async function type(a: Args): Promise<ToolResult> {

@@ -380,6 +380,8 @@ async function newProjectDialog() {
 // ---- a test design, for building Duet ----
 
 const TEST_NAME = "Test design";
+/** The project being opened right now, if any. */
+let opening: Promise<unknown> = Promise.resolve();
 /** The project file that was put away when a test design started. */
 let leftForTest: string | null = null;
 let inTest = false;
@@ -391,6 +393,8 @@ export const inTestDesign = () => inTest;
  * Returns a short message if it could not be done.
  */
 export async function startTestDesign(doc: Doc = emptyDoc()): Promise<string | null> {
+  // a project still being opened, such as the last one at launch, would land on top of the test design
+  await opening.catch(() => undefined);
   const s = getState();
   if (!inTest) {
     if (!s.project.path && s.timeline.length > 1) return "There is work here that has not been saved. Save it first.";
@@ -404,9 +408,11 @@ export async function startTestDesign(doc: Doc = emptyDoc()): Promise<string | n
   }
   inTest = true;
   showConversationFor(TEST_NAME, true);
+  // the project lets go first, so the test design is never taken for a change to it
+  setProject({ path: null, file: null, name: TEST_NAME, status: "unsaved", error: null });
   loadDoc(doc, TEST_NAME);
   lastSaved = committed();
-  setProject({ path: null, file: null, name: TEST_NAME, status: "unsaved", error: null });
+  clearTimeout(timer);
   return null;
 }
 
@@ -416,9 +422,10 @@ export async function leaveTestDesign(): Promise<string | null> {
   inTest = false;
   const back = leftForTest;
   leftForTest = null;
+  setProject({ path: null, file: null, name: "Untitled", status: "unsaved", error: null });
   loadDoc(emptyDoc(), "New file");
   lastSaved = committed();
-  setProject({ path: null, file: null, name: "Untitled", status: "unsaved", error: null });
+  clearTimeout(timer);
   if (back && inTauri() && !(await openAny(back, true))) return `The project at ${back} could not be opened again.`;
   return null;
 }
@@ -515,7 +522,13 @@ export async function openProjectAt(path: string): Promise<boolean> {
 }
 
 /** Open a project file. */
-async function openAny(path: string, quiet = false): Promise<boolean> {
+function openAny(path: string, quiet = false): Promise<boolean> {
+  const job = openFile(path, quiet);
+  opening = job;
+  return job;
+}
+
+async function openFile(path: string, quiet: boolean): Promise<boolean> {
   try {
     if ((await invoke<boolean>("is_directory", { path })) === true) {
       if (!quiet) await oops("Duet projects are single .duet files now. Choose a file that ends in .duet.");
