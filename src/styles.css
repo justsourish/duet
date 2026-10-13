@@ -3117,3 +3117,16 @@ button {
   user-select: none;
 }
 
+/* the chat's foot: who answers sits on its own slim line, and the box to type in gets the full width */
+.cfoot {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.cfoot .agent-anchor {
+  flex: 0 0 100%;
+  order: -1;
+}
+.cfoot textarea {
+  flex: 1 1 0;
+  min-width: 0;
+}
