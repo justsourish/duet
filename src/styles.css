@@ -126,6 +126,26 @@ button {
   background: var(--accent-soft);
   outline: 1px solid var(--accent);
 }
+.fold-arrow {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  color: var(--muted);
+  flex: none;
+  cursor: pointer;
+  margin-right: -4px;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+.fold-arrow:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.fold-arrow.folded {
+  transform: rotate(0deg);
+}
 .pop-title {
   display: flex;
   align-items: center;

@@ -1,10 +1,50 @@
 import AssetsPanel from "./AssetsPanel";
 import Icon from "./Icons";
-import { useRef, useState } from "react";
-import { descendants, topLevelOnly } from "../document/geometry";
+import { useEffect, useRef, useState } from "react";
+import { ancestors, descendants, topLevelOnly } from "../document/geometry";
 import type { Doc, El } from "../document/types";
 import { currentDoc, dispatch, getState, select, useStore } from "../state/store";
 import SkillsPanel from "./SkillsPanel";
+
+/** Which parent IDs are currently folded and need to be unfolded for this selection. */
+export function idsToUnfoldForSelection(
+  doc: Doc,
+  selection: readonly string[],
+  folded?: ReadonlySet<string>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const id of selection) {
+    for (const a of ancestors(doc, id)) {
+      if (!folded || folded.has(a)) {
+        out.add(a);
+      }
+    }
+  }
+  return out;
+}
+
+/** Fold or unfold an element, optionally including all its descendants (e.g. Option click). */
+export function toggleFold(
+  folded: ReadonlySet<string>,
+  id: string,
+  deep: boolean,
+  doc: Doc,
+): Set<string> {
+  const next = new Set(folded);
+  const isFolded = folded.has(id);
+  const targets = deep ? [id, ...descendants(doc, id)] : [id];
+
+  if (isFolded) {
+    for (const t of targets) next.delete(t);
+  } else {
+    for (const t of targets) {
+      if ((doc.elements[t]?.childIds.length ?? 0) > 0) {
+        next.add(t);
+      }
+    }
+  }
+  return next;
+}
 
 type Zone = "before" | "after" | "inside";
 interface Drop {
@@ -26,13 +66,24 @@ interface DndProps {
   canDrop: (targetId: string) => boolean;
 }
 
-function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd: DndProps }) {
+interface RowProps {
+  doc: Doc;
+  id: string;
+  depth: number;
+  dnd: DndProps;
+  folded: ReadonlySet<string>;
+  onToggleFold: (id: string, deep: boolean) => void;
+}
+
+function Row({ doc, id, depth, dnd, folded, onToggleFold }: RowProps) {
   const el = doc.elements[id];
   const selection = useStore((s) => s.selection);
   const [renaming, setRenaming] = useState(false);
   if (!el) return null;
   const selected = selection.includes(id);
   const over = dnd.drop?.id === id ? dnd.drop.zone : null;
+  const hasChildren = el.childIds.length > 0;
+  const isFolded = folded.has(id);
 
   const commitName = (value: string) => {
     setRenaming(false);
@@ -88,6 +139,26 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
           window.dispatchEvent(new CustomEvent("duet:context", { detail: { x: e.clientX, y: e.clientY } }));
         }}
       >
+        {hasChildren && (
+          <span
+            className={`fold-arrow ${isFolded ? "folded" : ""}`}
+            title={isFolded ? "Unfold" : "Fold"}
+            draggable={false}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleFold(id, e.altKey);
+            }}
+          >
+            <Icon name="arrow" size={12} />
+          </span>
+        )}
         <LayerIcon el={el} />
         {renaming ? (
           <input
@@ -116,9 +187,18 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
           <Icon name={el.locked ? "lock" : "unlock"} size={13} />
         </span>
       </div>
-      {[...el.childIds].reverse().map((c) => (
-        <Row key={c} doc={doc} id={c} depth={depth + 1} dnd={dnd} />
-      ))}
+      {!isFolded &&
+        [...el.childIds].reverse().map((c) => (
+          <Row
+            key={c}
+            doc={doc}
+            id={c}
+            depth={depth + 1}
+            dnd={dnd}
+            folded={folded}
+            onToggleFold={onToggleFold}
+          />
+        ))}
     </>
   );
 }
@@ -126,10 +206,27 @@ function Row({ doc, id, depth, dnd }: { doc: Doc; id: string; depth: number; dnd
 export default function LayersPanel() {
   useStore((s) => s.timeline[s.cursor]);
   useStore((s) => s.transientDoc);
+  const selection = useStore((s) => s.selection);
   const doc = currentDoc();
   const [drop, setDrop] = useState<Drop | null>(null);
   const [tab, setTab] = useState<"layers" | "assets" | "skills">("layers");
+  const [folded, setFolded] = useState<Set<string>>(() => new Set());
   const dragging = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (selection.length === 0) return;
+    setFolded((prev) => {
+      const toUnfold = idsToUnfoldForSelection(doc, selection, prev);
+      if (toUnfold.size === 0) return prev;
+      const next = new Set(prev);
+      for (const id of toUnfold) next.delete(id);
+      return next;
+    });
+  }, [selection, doc]);
+
+  const onToggleFold = (id: string, deep: boolean) => {
+    setFolded((prev) => toggleFold(prev, id, deep, doc));
+  };
 
   const end = () => {
     dragging.current = [];
@@ -219,7 +316,15 @@ export default function LayersPanel() {
       >
         {doc.rootIds.length === 0 && <div className="empty">Nothing here yet.</div>}
         {[...doc.rootIds].reverse().map((id) => (
-          <Row key={id} doc={doc} id={id} depth={0} dnd={dnd} />
+          <Row
+            key={id}
+            doc={doc}
+            id={id}
+            depth={0}
+            dnd={dnd}
+            folded={folded}
+            onToggleFold={onToggleFold}
+          />
         ))}
         <div
           className={`tail ${drop?.id === null && drop ? "drop-end" : ""}`}
