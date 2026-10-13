@@ -1417,7 +1417,7 @@ describe("what the AI can ask for", () => {
     addPictures([{ name: "feedback.png", data: "QUJD", mime: "image/jpeg", width: 800, height: 600, thumb: "data:image/jpeg;base64,QQ==" }]);
     const waiting = getChat().pictures[0];
     expect(waiting.sent).toBe(false);
-    expect(JSON.parse((await callTool("get_context", {})).text).attachedPictures).toEqual([{ number: waiting.n, name: "feedback.png", waiting: true }]);
+    expect(JSON.parse((await callTool("get_context", {})).text).attachedPictures).toEqual([{ number: waiting.n, name: "feedback.png", kind: "picture", waiting: true }]);
     const sent = sendPictures();
     expect(sent.map((p) => p.n)).toEqual([waiting.n]);
     expect(sendPictures()).toEqual([]);
@@ -1427,6 +1427,14 @@ describe("what the AI can ask for", () => {
     expect((await callTool("look_at_attachment", { number: 999 })).isError).toBe(true);
     expect(Object.keys(currentDoc().elements)).toHaveLength(0);
     expect(getState().timeline).toHaveLength(1);
+    // a written brief goes the same way, and the AI reads its words
+    addPictures([{ name: "brief.md", data: "", mime: "text/plain", width: 0, height: 0, thumb: "", text: "# Launch poster\nWarm colours." }]);
+    const brief = getChat().pictures[1];
+    expect(JSON.parse((await callTool("get_context", {})).text).attachedPictures[1]).toEqual({ number: brief.n, name: "brief.md", kind: "text", waiting: true });
+    const read = await callTool("look_at_attachment", { number: brief.n });
+    expect(read.text).toContain("Warm colours.");
+    expect(read.image).toBeUndefined();
+    removePicture(brief.n);
     // a waiting picture can be taken out, a sent one stays with its message until the conversation is cleared
     addPictures([{ name: "b.png", data: "QQ==", mime: "image/jpeg", width: 1, height: 1, thumb: "" }]);
     removePicture(getChat().pictures[1].n);

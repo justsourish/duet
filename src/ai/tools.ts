@@ -81,7 +81,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "look_at_attachment",
     description:
-      "See a picture the designer attached to a chat message, such as a screenshot of feedback or a reference. get_context lists them as attachedPictures, each with a number. They are not on the canvas. Look at each new one once, before you act on the message it came with.",
+      "See a picture, or read a text file, the designer attached to a chat message, such as a screenshot of feedback, a reference or a written brief. get_context lists them as attachedPictures, each with a number. They are not on the canvas. Look at each new one once, before you act on the message it came with.",
     inputSchema: { type: "object", properties: { number: { type: "number", description: "The picture's number from attachedPictures." } }, required: ["number"] },
   },
   {
@@ -712,7 +712,7 @@ function context(): string {
       units: "pixels. x and y are relative to the parent frame, or to the page for top-level things.",
       skillsLoaded: getSkills().filter((k) => k.enabled).map((k) => k.name),
       // pictures given with chat messages; "waiting" ones sit in the message box and have not been sent yet
-      attachedPictures: getChat().pictures.map((p) => ({ number: p.n, name: p.name, waiting: !p.sent })),
+      attachedPictures: getChat().pictures.map((p) => ({ number: p.n, name: p.name, kind: p.text === undefined ? "picture" : "text", waiting: !p.sent })),
     },
     null,
     2,

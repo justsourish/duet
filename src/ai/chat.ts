@@ -52,7 +52,7 @@ export function mentioned(text: string, installed: Partial<Record<AgentId, boole
   return null;
 }
 
-/** A picture the designer gave the AI with a message. It is never part of the design. */
+/** A picture or a written brief the designer gave the AI with a message. It is never part of the design. */
 export interface Picture {
   /** The number the AI asks for it by. Counts up through the conversation. */
   n: number;
@@ -64,6 +64,8 @@ export interface Picture {
   height: number;
   /** A tiny copy to show in the chat. */
   thumb: string;
+  /** The words, when this is a written brief and not a picture. */
+  text?: string;
   /** False while it waits in the message box. */
   sent: boolean;
 }

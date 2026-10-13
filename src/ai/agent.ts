@@ -269,8 +269,9 @@ export async function sendToAgent(text: string) {
   addMsg({ role: "you", text: said, pictures: pictures.length ? pictures.map((p) => p.n) : undefined });
   // The pictures do not travel inside the message. The AI is told they are there and asks to see each one,
   // the same way it looks at the canvas, so every AI tool gets them the same way.
+  const what = pictures.every((p) => p.text === undefined) ? "picture" : pictures.every((p) => p.text !== undefined) ? "text file" : "file";
   const attached = pictures.length
-    ? `\n\n(The designer attached ${pictures.length === 1 ? "a picture" : `${pictures.length} pictures`} to this message: ${pictures.map((p) => `number ${p.n}`).join(", ")}. Look at ${pictures.length === 1 ? "it" : "each one"} with look_at_attachment before you do anything else.)`
+    ? `\n\n(The designer attached ${pictures.length === 1 ? `a ${what}` : `${pictures.length} ${what}s`} to this message: ${pictures.map((p) => `number ${p.n}`).join(", ")}. Look at ${pictures.length === 1 ? "it" : "each one"} with look_at_attachment before you do anything else.)`
     : "";
   const prompt = `${said || "Look at what I attached."}${attached}`;
   sessionUsed(true);

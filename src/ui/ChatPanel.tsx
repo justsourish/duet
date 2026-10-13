@@ -908,6 +908,7 @@ export default function ChatPanel() {
                       <div className="pics">
                         {m.pictures.map((n) => {
                           const p = pictures.find((x) => x.n === n);
+                          if (p && p.text !== undefined) return <span key={n} className="pic-text" title={p.name}>{p.name}</span>;
                           return p ? <img key={n} src={p.thumb} alt={p.name} title={p.name} /> : <span key={n} className="pic-gone" title="This picture is no longer kept" />;
                         })}
                       </div>
@@ -1009,8 +1010,8 @@ export default function ChatPanel() {
             <div className="waiting">
               {waiting.map((p) => (
                 <span key={p.n} className="pic" title={p.name}>
-                  <img src={p.thumb} alt={p.name} />
-                  <b onClick={() => removePicture(p.n)} title="Take this picture out">
+                  {p.text !== undefined ? <span className="pic-text">{p.name}</span> : <img src={p.thumb} alt={p.name} />}
+                  <b onClick={() => removePicture(p.n)} title="Take this out">
                     ×
                   </b>
                 </span>
@@ -1022,7 +1023,7 @@ export default function ChatPanel() {
             <input
               ref={picker}
               type="file"
-              accept="image/*"
+              accept="image/*,.md,.markdown,.txt,text/plain,text/markdown"
               multiple
               hidden
               onChange={(e) => {
@@ -1084,7 +1085,7 @@ export default function ChatPanel() {
                 </div>
               )}
             </div>
-            <button className="mini attach" disabled={found === false} title="Add pictures for the AI to look at. You can also paste or drop them here." onClick={() => picker.current?.click()}>
+            <button className="mini attach" disabled={found === false} title="Add pictures or a written brief for the AI to look at. You can also paste or drop them here." onClick={() => picker.current?.click()}>
               <Icon name="image" size={16} />
             </button>
             {showMentions && (

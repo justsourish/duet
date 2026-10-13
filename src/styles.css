@@ -3283,3 +3283,58 @@ button.agent-perm:hover {
 .time:has(.export-pop) {
   overflow: visible;
 }
+
+/* the chat's pages are laid over the whole chat, so they hang from the chat and not from its title */
+.chat:has(.chat-settings) .chead,
+.chat:has(.agent-card) .chead {
+  position: static;
+}
+.chat .chat-settings,
+.chat .agent-card {
+  top: 43px;
+  border-top: 0;
+}
+/* the badge in the greeting is the same round one as everywhere else */
+.m.greeting .member-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #141315;
+  line-height: 1;
+}
+/* how much agents may do is a button, like who answers beside it */
+button.agent-perm {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text);
+}
+button.agent-perm.auto {
+  border-color: var(--duet);
+  color: var(--duet);
+}
+button.agent-perm:hover {
+  border-color: var(--accent);
+  background: transparent;
+}
+/* a written brief that goes with a message shows as its name */
+.pic-text {
+  display: block;
+  max-width: 150px;
+  height: 44px;
+  line-height: 42px;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 11px;
+  color: var(--text);
+}
