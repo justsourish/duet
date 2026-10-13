@@ -2,6 +2,17 @@
 
 Written 8 October 2026 for whoever picks this up next, human or agent. Read `AGENTS.md` first, then this.
 
+## 0. Where things stand (13 October 2026, afternoon)
+
+Read this first. It is the short version of a long working day.
+
+- **How we work now.** The creator is the first user and decides what matters. The main AI is architect and manager: short replies, concepts not technicalities. Antigravity does the big writing, started by the main AI with `scripts/helper.py`. The creator works in the Duet in Applications (purple icon). The main AI checks only in Duet dev (orange icon, `scripts/dev-duet.sh`), with the builder tools.
+- **Not pushed.** 26 or more saves are on the creator's computer only. Do not push until he says so, and remind him first that some of them show how the memory works.
+- **Built today:** fold arrows in Layers, builder tools, Duet dev, the helper runner, which AI made a step (issue 39, first part), no Save window from an AI's change, and the first slice of cutting video. Each has its own section below.
+- **Waiting for the creator:** to try the video cutter with real clips (does a clip play in the screen), and his reaction to the mockup `scratch/mockups/the-whole-story-v1.duet` (also in his Documents, Duet folder). First reaction: the one line history is fine, the opened view with a line for each AI is not clear to him, and the real history strip looks different. A second version should grow out of the real strip (the You line and the Duet line).
+- **Next, in the order he was weighing:** video (cutting, then motion graphics), the view of who did what, references (issue 19, first slice: mark a picture as a reference). Also open: New without a window (42), several projects open (40), workspaces (43), drawing many things in one call as a real tool.
+- **Mockups** are drawn in Duet dev from a short list with `scripts/draw-mockup.py` and kept as Duet files. Show him a mockup before building anything he says he does not understand.
+
 ## 1. Decided but not done: swap Gemini CLI for Antigravity
 
 **Decision (the creator, 8 Oct 2026):** remove Gemini CLI from Duet. Add only Antigravity (`agy`). Claude Code stays.
