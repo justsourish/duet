@@ -8,7 +8,6 @@ import { findProjects, flushPack, inTauri, newProject, openProject, openProjectA
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import ContextMenu from "./ui/ContextMenu";
 import { installMenu } from "./ui/menu";
 import { clampW, getLayout, setLayout, useLayout } from "./ui/layout";
@@ -104,11 +103,13 @@ export default function App() {
     const openPresent = () => setPresenting(true);
     const openSend = () => setSending(true);
     const openSettings = () => setSettings(true);
+    const openVideoCut = () => setVideoCut(true);
     const rebuildMenu = () => void installMenu();
     window.addEventListener("duet:home", openHome);
     window.addEventListener("duet:present", openPresent);
     window.addEventListener("duet:send-copy", openSend);
     window.addEventListener("duet:settings", openSettings);
+    window.addEventListener("duet:video-cut", openVideoCut);
     window.addEventListener("duet:recents", rebuildMenu);
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -128,6 +129,15 @@ export default function App() {
       } else if (k === "n") {
         e.preventDefault();
         newProject();
+      } else if (k === "1" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setLayout({ mode: "design" });
+      } else if (k === "2" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setLayout({ mode: "motion" });
+      } else if (k === ",") {
+        e.preventDefault();
+        setSettings(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -140,6 +150,7 @@ export default function App() {
       window.removeEventListener("duet:present", openPresent);
       window.removeEventListener("duet:send-copy", openSend);
       window.removeEventListener("duet:settings", openSettings);
+      window.removeEventListener("duet:video-cut", openVideoCut);
       window.removeEventListener("duet:recents", rebuildMenu);
     };
   }, []);
@@ -160,37 +171,30 @@ export default function App() {
           {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
         </span>
         <button className="pill" onClick={() => setHome(true)} title="All your projects">
-          Projects
+          {project.name}
         </button>
-        <span className="crumb">/ {project.name}</span>
-        {project.path && (
-          <span className="crumb-path" title={`${project.file ?? project.path}\nClick to show it in Finder`} onClick={() => void revealItemInDir((project.file ?? project.path) as string)}>
-            {(project.file ?? project.path).replace(/^\/Users\/[^/]+/, "~")}
-          </span>
-        )}
         <span className={`status ${project.status}`} title={project.error ?? undefined}>
           {project.path ? STATUS[project.status] : "Not saved yet"}
         </span>
-        <span className="spacer" />
-        <button className="pill" onClick={newProject} title="New project (Cmd or Ctrl N)">
-          New
-        </button>
-        <button className="pill" onClick={openProject} title="Open project (Cmd or Ctrl O)">
-          Open
-        </button>
-        {!project.path && (
-          <button className="pill primary" onClick={saveNow} title="Save (Cmd or Ctrl S)">
-            Save
+        <div className="pill mode-switch">
+          <button
+            className={dock.mode === "design" ? "active" : ""}
+            data-name="mode-design"
+            onClick={() => setLayout({ mode: "design" })}
+          >
+            Design
           </button>
-        )}
+          <button
+            className={dock.mode === "motion" ? "active" : ""}
+            data-name="mode-motion"
+            onClick={() => setLayout({ mode: "motion" })}
+          >
+            Motion
+          </button>
+        </div>
+        <span className="spacer" />
         <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
           Present
-        </button>
-        <button className="pill" onClick={() => setVideoCut(true)} title="Cut and join video">
-          Video
-        </button>
-        <button className="pill" onClick={() => setSettings(true)} title="Settings">
-          Settings
         </button>
         <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
           <Icon name="panel-left" size={15} />

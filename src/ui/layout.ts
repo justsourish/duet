@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 /** Where the panels and the chat sit. Kept per person, on this computer. */
 
 export type Corner = "tl" | "tr" | "bl" | "br";
+export type Mode = "design" | "motion";
 
 export interface Dock {
   leftW: number;
@@ -11,6 +12,8 @@ export interface Dock {
   rightHidden: boolean;
   /** Layers on the right and the design panel on the left. */
   swapped: boolean;
+  /** Whether we are designing or animating. */
+  mode: Mode;
   /** The chat sits in a corner, or wherever it was dropped. */
   chat: { corner: Corner } | { x: number; y: number };
   /** How wide the chat is, and how tall its message area is. */
@@ -21,14 +24,17 @@ export interface Dock {
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, chat: { corner: "br" }, chatW: 320, chatH: 340 });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", chat: { corner: "br" }, chatW: 320, chatH: 340 });
 export const CHAT_MIN = { w: 280, h: 140 };
 export const CHAT_MAX = { w: 720, h: 900 };
 
 function load(): Dock {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Dock> | null;
-    if (raw && typeof raw === "object") return { ...defaults(), ...raw };
+    if (raw && typeof raw === "object") {
+      const mode: Mode = raw.mode === "motion" ? "motion" : "design";
+      return { ...defaults(), ...raw, mode };
+    }
   } catch {
     /* start fresh */
   }

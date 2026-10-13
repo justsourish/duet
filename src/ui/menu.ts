@@ -33,6 +33,8 @@ export async function installMenu() {
     items: [
       await PredefinedMenuItem.new({ item: { About: { name: "Duet", version: await getVersion().catch(() => undefined) } } }),
       await line(),
+      await item("Settings...", () => send("duet:settings"), "CmdOrCtrl+,"),
+      await line(),
       await PredefinedMenuItem.new({ item: "Hide" }),
       await PredefinedMenuItem.new({ item: "HideOthers" }),
       await PredefinedMenuItem.new({ item: "ShowAll" }),
@@ -52,6 +54,8 @@ export async function installMenu() {
       await item("Save", () => void saveNow(), "CmdOrCtrl+S"),
       await item("Save a version…", () => send("duet:versions"), "CmdOrCtrl+Shift+S"),
       await item("Send a copy…", () => send("duet:send-copy")),
+      await line(),
+      await item("Cut and join clips", () => send("duet:video-cut")),
       await line(),
       await item("Export as PNG…", () => void exportDesign("png", 2)),
       await item("Export as SVG…", () => void exportDesign("svg", 1)),
@@ -97,6 +101,9 @@ export async function installMenu() {
   const view = await Submenu.new({
     text: "View",
     items: [
+      await item("Design", () => setLayout({ mode: "design" }), "CmdOrCtrl+1"),
+      await item("Motion", () => setLayout({ mode: "motion" }), "CmdOrCtrl+2"),
+      await line(),
       await item("Zoom in", () => zoomBy(1.25), "CmdOrCtrl+="),
       await item("Zoom out", () => zoomBy(0.8), "CmdOrCtrl+-"),
       await item("Actual size", () => send("duet:zoom", 1), "CmdOrCtrl+0"),

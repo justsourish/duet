@@ -7,6 +7,7 @@ import { currentDoc, dispatch, dragCommit, dragPreview, select, useStore } from 
 import { clipLength } from "../video/clips";
 import { openScene, pause, seek, togglePlay } from "../video/play";
 import { addClips, exportScene, stopExport } from "../video/scene";
+import { useLayout } from "./layout";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
 
@@ -33,6 +34,7 @@ function pageFrame(doc: Doc, id: string | undefined): El | null {
 }
 
 export default function TimeStrip() {
+  const mode = useLayout((d) => d.mode);
   const doc = useStore((s) => currentDoc(s));
   const selection = useStore((s) => s.selection);
   const clock = useStore((s) => s.clock);
@@ -41,10 +43,9 @@ export default function TimeStrip() {
   const [making, setMaking] = useState<number | null>(null);
   const [note, setNote] = useState("");
 
-  // what is selected decides which frame is open, and with nothing selected the open one stays
-  const frame = pageFrame(doc, selection[0]) ?? (clock.scene ? (doc.elements[clock.scene] ?? null) : null);
+  const frame = pageFrame(doc, selection[0]);
   const plays = !!frame && frame.duration > 0;
-  const sceneId = plays ? frame.id : null;
+  const sceneId = mode === "motion" && plays ? frame.id : null;
   useEffect(() => openScene(sceneId), [sceneId]);
 
   useEffect(() => {
@@ -55,15 +56,20 @@ export default function TimeStrip() {
     return () => see.disconnect();
   }, [plays]);
 
-  if (!frame) return null;
+  if (mode !== "motion") return null;
   if (!plays) {
-    // offered only when the frame itself is selected, so a still design is left in peace
-    if (selection.length !== 1 || selection[0] !== frame.id) return null;
+    if (frame && selection.length === 1 && selection[0] === frame.id) {
+      return (
+        <section className="time still">
+          <button className="pill" data-name="make-video" onClick={() => dispatch("set_duration", { id: frame.id, seconds: 10 })} title="Give this frame a length, so what is in it can appear, move and leave">
+            Make this frame a video
+          </button>
+        </section>
+      );
+    }
     return (
       <section className="time still">
-        <button className="pill" data-name="make-video" onClick={() => dispatch("set_duration", { id: frame.id, seconds: 10 })} title="Give this frame a length, so what is in it can appear, move and leave">
-          Make this frame a video
-        </button>
+        <span className="time-quiet">Select a frame to give it a length.</span>
       </section>
     );
   }
