@@ -131,3 +131,22 @@ export function entranceKeys(el: El, scene: El, when: "in" | "out", kind: Entran
   for (const p of MOVING) if (keys[p]?.length === 1 && keys[p]![0].v === el[p]) delete keys[p];
   return keys;
 }
+
+/** Which ready-made way a thing arrives or leaves, read back from what it does at that end of its time. */
+export function entranceOf(el: El, scene: El, when: "in" | "out"): Entrance {
+  const { start, end } = spanOf(el, scene);
+  // the value a property has at the very edge, when it differs from where it rests
+  const edge = (p: Moving): number | null => {
+    const keys = el.keys[p];
+    if (!keys || keys.length < 2) return null;
+    const k = when === "in" ? keys[0] : keys[keys.length - 1];
+    const at = when === "in" ? start : end;
+    return Math.abs(k.t - at) < 0.01 && Math.abs(k.v - el[p]) > 0.001 ? k.v : null;
+  };
+  if (edge("width") !== null) return "grow";
+  const x = edge("x");
+  if (x !== null) return x > el.x ? "slide-left" : "slide-right";
+  const y = edge("y");
+  if (y !== null) return y > el.y ? "slide-up" : "slide-down";
+  return edge("opacity") !== null ? "fade" : "none";
+}

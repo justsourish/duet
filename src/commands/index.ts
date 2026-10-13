@@ -5,7 +5,7 @@ import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstan
 import { orderByPosition, relayout } from "../document/layout";
 import { MOVING } from "../document/types";
 import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../document/types";
-import { ENTRANCES, entranceKeys, sceneOf, withKey } from "../document/time";
+import { ENTRANCES, entranceKeys, sceneOf, spanOf, withKey } from "../document/time";
 import type { Entrance } from "../document/time";
 
 /**
@@ -931,6 +931,101 @@ const removeKey: CommandDef<RemoveKeyArgs> = {
   },
 };
 
+// ---- split_at ----
+export interface SplitArgs {
+  /** The frame that plays. */
+  sceneId: string;
+  /** The second to cut at. */
+  t: number;
+  /** The things to cut. Leave out to cut everything that is showing at that second. */
+  ids?: string[];
+  /** Names for the second halves, by the thing they were cut from. Made up when left out. */
+  newIds?: Record<string, string>;
+}
+
+/** The things in a frame that are showing at one second, with room on both sides to be cut there. */
+export function cuttable(doc: Doc, sceneId: string, t: number, ids?: string[]): string[] {
+  const scene = doc.elements[sceneId];
+  if (!scene || !(scene.duration > 0)) return [];
+  return scene.childIds.filter((id) => {
+    const el = doc.elements[id];
+    if (!el || el.childIds.length || el.type === "instance" || (ids && !ids.includes(id))) return false;
+    const span = spanOf(el, scene);
+    return t > span.start + 0.03 && t < span.end - 0.03;
+  });
+}
+
+const splitAt: CommandDef<SplitArgs> = {
+  label: () => "Cut at the playhead",
+  run: (doc, a) => {
+    const list = cuttable(doc, a.sceneId, a.t, a.ids);
+    if (!list.length) return doc;
+    const next = clone(doc);
+    const scene = next.elements[a.sceneId];
+    const t = round(a.t);
+    for (const id of list) {
+      const first = next.elements[id];
+      const span = spanOf(first, scene);
+      const second: El = structuredClone(first);
+      second.id = a.newIds?.[id] ?? newId(first.type);
+      second.start = t;
+      // one that stayed to the end still does
+      second.end = first.end ? span.end : 0;
+      if (first.type === "video") second.clipFrom = round(first.clipFrom + (t - span.start));
+      first.end = t;
+      next.elements[second.id] = second;
+      scene.childIds.splice(scene.childIds.indexOf(id) + 1, 0, second.id);
+    }
+    return next;
+  },
+};
+
+// ---- ripple_delete ----
+export interface RippleDeleteArgs {
+  ids: string[];
+}
+
+const rippleDelete: CommandDef<RippleDeleteArgs> = {
+  label: () => "Delete and close the gap",
+  run: (doc, a) => {
+    // only things that sit straight in a frame that plays have a place in time to close
+    const ids = a.ids.filter((id) => doc.elements[id] && sceneOf(doc, id)?.id === doc.elements[id].parentId);
+    if (!ids.length) return doc;
+    const scenes = new Map<string, { start: number; end: number }[]>();
+    for (const id of ids) {
+      const scene = sceneOf(doc, id)!;
+      scenes.set(scene.id, (scenes.get(scene.id) ?? []).concat(spanOf(doc.elements[id], scene)));
+    }
+    const next = deleteElements.run(doc, { ids });
+    for (const [sceneId, spans] of scenes) {
+      // stretches of time taken out, joined where they touch, so a gap is closed once
+      const gaps: { start: number; end: number }[] = [];
+      for (const s of spans.sort((x, y) => x.start - y.start)) {
+        const last = gaps[gaps.length - 1];
+        if (last && s.start <= last.end + 0.004) last.end = Math.max(last.end, s.end);
+        else gaps.push({ ...s });
+      }
+      const frame = next.elements[sceneId];
+      for (const c of frame.childIds) {
+        const el = next.elements[c];
+        const by = round(gaps.filter((g) => g.end <= el.start + 0.004).reduce((sum, g) => sum + (g.end - g.start), 0));
+        if (!by) continue;
+        el.start = round(el.start - by);
+        if (el.end) el.end = round(el.end - by);
+        for (const prop of MOVING) if (el.keys[prop]) el.keys[prop] = el.keys[prop]!.map((k) => ({ ...k, t: round(k.t - by) }));
+      }
+      // the video is shorter by what was taken out
+      frame.duration = Math.max(0.1, round(frame.duration - gaps.reduce((sum, g) => sum + (g.end - g.start), 0)));
+      for (const c of frame.childIds) {
+        const el = next.elements[c];
+        if (el.end > frame.duration) el.end = frame.duration;
+        if (el.start > frame.duration - 0.05) el.start = Math.max(0, round(frame.duration - 0.1));
+      }
+    }
+    return next;
+  },
+};
+
 // ---- set_entrance ----
 export interface SetEntranceArgs {
   ids: string[];
@@ -986,6 +1081,8 @@ export const commands = {
   set_keys: setKeys,
   remove_key: removeKey,
   set_entrance: setEntrance,
+  split_at: splitAt,
+  ripple_delete: rippleDelete,
 } as const;
 
 export type CommandName = keyof typeof commands;

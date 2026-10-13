@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ENTRANCES, spanOf } from "../document/time";
+import { cuttable, newId, runCommand } from "../commands";
+import { ENTRANCES, entranceOf, spanOf } from "../document/time";
 import type { Entrance } from "../document/time";
 import { MOVING } from "../document/types";
 import type { Doc, El } from "../document/types";
-import { currentDoc, dispatch, dragCommit, dragPreview, select, useStore } from "../state/store";
+import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, getState, restoreDoc, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
-import { openScene, pause, seek, togglePlay } from "../video/play";
+import { openScene, pause, play, seek, togglePlay } from "../video/play";
 import { addClips, exportScene, stopExport } from "../video/scene";
 import { useLayout } from "./layout";
 
@@ -43,7 +44,8 @@ export default function TimeStrip() {
   const [making, setMaking] = useState<number | null>(null);
   const [note, setNote] = useState("");
 
-  const frame = pageFrame(doc, selection[0]);
+  // what is selected decides which frame is open, and with nothing selected the open one stays
+  const frame = pageFrame(doc, selection[0]) ?? (clock.scene ? (doc.elements[clock.scene] ?? null) : null);
   const plays = !!frame && frame.duration > 0;
   const sceneId = mode === "motion" && plays ? frame.id : null;
   useEffect(() => openScene(sceneId), [sceneId]);
@@ -55,6 +57,48 @@ export default function TimeStrip() {
     see.observe(el);
     return () => see.disconnect();
   }, [plays]);
+
+  // cutting keys, the ones video editors already have in their hands
+  useEffect(() => {
+    if (!sceneId) return;
+    const key = (e: KeyboardEvent) => {
+      const on = document.activeElement as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
+      const k = e.key.toLowerCase();
+      if (!["s", "d", "q", "w", "k", "l"].includes(k)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (k === "l") return play();
+      if (k === "k") return pause();
+      const s = getState();
+      const now = currentDoc(s);
+      const t = s.clock.t;
+      const mine = s.selection.filter((id) => now.elements[id]?.parentId === sceneId);
+      // what is selected is cut, and with nothing selected under the playhead, everything there is
+      let under = cuttable(now, sceneId, t, mine.length ? mine : undefined);
+      if (!under.length) under = cuttable(now, sceneId, t);
+      if (k === "s") {
+        if (under.length) dispatch("split_at", { sceneId, t, ids: under });
+        return;
+      }
+      if (k === "d") {
+        if (mine.length) dispatch("ripple_delete", { ids: mine });
+        return;
+      }
+      if (!under.length) return;
+      // Q takes away what comes before the playhead, W what comes after, and the gap closes
+      const newIds = Object.fromEntries(under.map((id) => [id, newId(now.elements[id].type)]));
+      const cut = runCommand(now, "split_at", { sceneId, t, ids: under, newIds });
+      const out = runCommand(cut, "ripple_delete", { ids: k === "q" ? under : Object.values(newIds) });
+      restoreDoc(out, k === "q" ? "Cut away what comes before" : "Cut away what comes after");
+      if (k === "q") {
+        seek(Math.min(...under.map((id) => now.elements[id].start)));
+        select(Object.values(newIds));
+      }
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [sceneId]);
 
   if (mode !== "motion") return null;
   if (!plays) {
@@ -107,8 +151,10 @@ export default function TimeStrip() {
       if (Math.abs(ev.clientX - from) < 2 && !moved) return;
       moved = true;
       if (part === "all") {
-        const start = Math.max(0, Math.min(length - long, span.start + by));
-        dragPreview("set_timing", { ids: [el.id], start, end: start + long });
+        const start = Math.max(0, span.start + by);
+        // dragged past the end, the frame grows to hold it
+        const base = start + long > length ? runCommand(dragBase(), "set_duration", { id: frame.id, seconds: start + long }) : dragBase();
+        dragPreviewDoc(runCommand(base, "set_timing", { ids: [el.id], start, end: start + long }));
       } else if (part === "start") {
         const least = el.type === "video" ? span.start - el.clipFrom : 0;
         const start = Math.max(0, least, Math.min(span.end - SHORTEST, span.start + by));
@@ -168,11 +214,11 @@ export default function TimeStrip() {
             type="number"
             min={0}
             step={0.5}
-            defaultValue={length}
+            defaultValue={Math.round(length * 10) / 10}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             onBlur={(e) => {
               const n = Number(e.currentTarget.value);
-              if (Number.isFinite(n) && n !== length) dispatch("set_duration", { id: frame.id, seconds: n });
+              if (Number.isFinite(n) && n !== Math.round(length * 10) / 10) dispatch("set_duration", { id: frame.id, seconds: n });
             }}
           />
         </label>
@@ -181,10 +227,12 @@ export default function TimeStrip() {
         </button>
         {picked && (
           <>
+            <b className="time-picked" title="What is selected">
+              {picked.name}
+            </b>
             <label title="How it arrives when it appears">
               Arrives
-              <select data-name="arrives" value="" onChange={(e) => e.target.value && dispatch("set_entrance", { ids: [picked.id], when: "in", kind: e.target.value as Entrance })}>
-                <option value="">Choose</option>
+              <select data-name="arrives" value={entranceOf(picked, frame, "in")} onChange={(e) => dispatch("set_entrance", { ids: [picked.id], when: "in", kind: e.target.value as Entrance })}>
                 {ENTRANCES.map((k) => (
                   <option key={k} value={k}>
                     {ENTRANCE_NAMES[k]}
@@ -194,8 +242,7 @@ export default function TimeStrip() {
             </label>
             <label title="How it goes when it leaves">
               Leaves
-              <select data-name="leaves" value="" onChange={(e) => e.target.value && dispatch("set_entrance", { ids: [picked.id], when: "out", kind: e.target.value as Entrance })}>
-                <option value="">Choose</option>
+              <select data-name="leaves" value={entranceOf(picked, frame, "out")} onChange={(e) => dispatch("set_entrance", { ids: [picked.id], when: "out", kind: e.target.value as Entrance })}>
                 {ENTRANCES.map((k) => (
                   <option key={k} value={k}>
                     {ENTRANCE_NAMES[k]}

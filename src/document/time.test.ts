@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runCommand } from "../commands";
 import { parseDoc, serializeDoc } from "./serialize";
-import { docAt, valueAt } from "./time";
+import { docAt, entranceOf, valueAt } from "./time";
 import { emptyDoc } from "./types";
 
 function scene() {
@@ -63,5 +63,35 @@ describe("time", () => {
     expect(back.elements.f.duration).toBe(10);
     expect(back.elements.t.start).toBe(2);
     expect(back.elements.t.keys).toEqual(doc.elements.t.keys);
+  });
+
+  it("says which ready-made arrival a thing has", () => {
+    let doc = runCommand(scene(), "set_timing", { ids: ["t"], start: 2, end: 6 });
+    expect(entranceOf(doc.elements.t, doc.elements.f, "in")).toBe("none");
+    doc = runCommand(doc, "set_entrance", { ids: ["t"], when: "in", kind: "slide-up" });
+    doc = runCommand(doc, "set_entrance", { ids: ["t"], when: "out", kind: "fade" });
+    expect(entranceOf(doc.elements.t, doc.elements.f, "in")).toBe("slide-up");
+    expect(entranceOf(doc.elements.t, doc.elements.f, "out")).toBe("fade");
+  });
+
+  it("cuts a clip in two at one second, and the second half carries on from where the first stopped", () => {
+    let doc = runCommand(scene(), "create_element", { type: "video", id: "v", parentId: "f", x: 0, y: 0, width: 100, height: 100, props: { src: "/a.mp4", start: 1, end: 9, clipFrom: 2 } });
+    doc = runCommand(doc, "split_at", { sceneId: "f", t: 4, ids: ["v"], newIds: { v: "v2" } });
+    expect([doc.elements.v.start, doc.elements.v.end, doc.elements.v.clipFrom]).toEqual([1, 4, 2]);
+    expect([doc.elements.v2.start, doc.elements.v2.end, doc.elements.v2.clipFrom]).toEqual([4, 9, 5]);
+    expect(doc.elements.f.childIds).toEqual(["r", "t", "v", "v2"]);
+    // nothing to cut where nothing shows
+    expect(runCommand(doc, "split_at", { sceneId: "f", t: 0.5, ids: ["v"] })).toBe(doc);
+  });
+
+  it("deletes a part and closes the gap it leaves", () => {
+    let doc = runCommand(emptyDoc(), "create_element", { type: "frame", id: "f", x: 0, y: 0, width: 100, height: 100 });
+    doc = runCommand(doc, "set_duration", { id: "f", seconds: 9 });
+    for (const [id, start, end] of [["a", 0, 3], ["b", 3, 5], ["c", 5, 9]] as const) doc = runCommand(doc, "create_element", { type: "video", id, parentId: "f", x: 0, y: 0, width: 10, height: 10, props: { src: "/a.mp4", start, end } });
+    doc = runCommand(doc, "ripple_delete", { ids: ["b"] });
+    expect(doc.elements.b).toBeUndefined();
+    expect([doc.elements.a.start, doc.elements.a.end]).toEqual([0, 3]);
+    expect([doc.elements.c.start, doc.elements.c.end]).toEqual([3, 7]);
+    expect(doc.elements.f.duration).toBe(7);
   });
 });
