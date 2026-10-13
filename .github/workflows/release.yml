@@ -54,7 +54,9 @@ jobs:
 
             This app is not signed with a paid certificate, so Mac and Windows will ask you to confirm the first time you open it. The guide shows exactly how.
 
-            The AI chat works with Claude Code today. Windows builds are new and less tested than Mac.
+            This is early access: some things are unfinished and you may meet bugs. Save versions of work that matters.
+
+            The AI chat works with Claude Code and the Antigravity CLI. Video and motion are experimental, need ffmpeg on your computer, and have only been tried on a Mac. Windows builds are less tested than Mac.
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
