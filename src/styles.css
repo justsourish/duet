@@ -2002,3 +2002,153 @@ button {
   pointer-events: none;
   z-index: 3;
 }
+
+/* settings screen */
+.settings-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.settings-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.settings-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.settings-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-left {
+  width: 200px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-nav-btn {
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.settings-nav-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.settings-nav-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-right {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.settings-content {
+  max-width: 680px;
+}
+
+.settings-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.settings-meta {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 20px 0 10px;
+  color: var(--muted);
+}
+
+.settings-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.settings-row span {
+  color: var(--muted);
+}
+
+.settings-row b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.settings-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-tool-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.settings-tool-name {
+  font-weight: 600;
+  font-size: 13px;
+  font-family: monospace;
+  color: var(--accent);
+}
+
+.settings-tool-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+

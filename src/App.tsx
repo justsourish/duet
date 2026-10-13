@@ -22,6 +22,7 @@ import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
 import PresentView from "./ui/PresentView";
 import SendCopy from "./ui/SendCopy";
+import Settings from "./ui/Settings";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
 import Toolbar from "./ui/Toolbar";
@@ -68,6 +69,7 @@ export default function App() {
   const [home, setHome] = useState(false);
   const [videoCut, setVideoCut] = useState(false);
   const [sending, setSending] = useState(false);
+  const [settings, setSettings] = useState(false);
   const [check, setCheck] = useState(false);
   const dock = useLayout((d) => d);
   const hasFrames = useStore((s) => Object.values(s.timeline[s.cursor].doc.elements).some((e) => e.type === "frame"));
@@ -101,10 +103,12 @@ export default function App() {
     const openHome = () => setHome(true);
     const openPresent = () => setPresenting(true);
     const openSend = () => setSending(true);
+    const openSettings = () => setSettings(true);
     const rebuildMenu = () => void installMenu();
     window.addEventListener("duet:home", openHome);
     window.addEventListener("duet:present", openPresent);
     window.addEventListener("duet:send-copy", openSend);
+    window.addEventListener("duet:settings", openSettings);
     window.addEventListener("duet:recents", rebuildMenu);
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -135,6 +139,7 @@ export default function App() {
       window.removeEventListener("duet:home", openHome);
       window.removeEventListener("duet:present", openPresent);
       window.removeEventListener("duet:send-copy", openSend);
+      window.removeEventListener("duet:settings", openSettings);
       window.removeEventListener("duet:recents", rebuildMenu);
     };
   }, []);
@@ -184,6 +189,9 @@ export default function App() {
         <button className="pill" onClick={() => setVideoCut(true)} title="Cut and join video">
           Video
         </button>
+        <button className="pill" onClick={() => setSettings(true)} title="Settings">
+          Settings
+        </button>
         <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
           <Icon name="panel-left" size={15} />
         </button>
@@ -228,6 +236,7 @@ export default function App() {
       {home && <Home onClose={() => setHome(false)} />}
       {videoCut && <VideoCut onClose={() => setVideoCut(false)} />}
       {sending && <SendCopy onClose={() => setSending(false)} />}
+      {settings && <Settings check={check} onClose={() => setSettings(false)} />}
     </div>
   );
 }
