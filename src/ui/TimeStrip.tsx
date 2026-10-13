@@ -9,6 +9,7 @@ import { clipLength } from "../video/clips";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
 import { addClips, addSounds, exportScene, stopExport } from "../video/scene";
 import { setLayout, useLayout } from "./layout";
+import { useDismiss } from "./useDismiss";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
 
@@ -47,6 +48,9 @@ export default function TimeStrip() {
   const [note, setNote] = useState("");
   // set while a keyframe mark is being dragged, so letting go is not taken for a click
   const draggedMark = useRef(false);
+  const [snap, setSnap] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; el: El } | null>(null);
+  useDismiss(!!menu, () => setMenu(null), ".ctx");
 
   // what is selected decides which frame is open, and with nothing selected the open one stays
   const frame = pageFrame(doc, selection[0]) ?? (clock.scene ? (doc.elements[clock.scene] ?? null) : null);
@@ -155,7 +159,7 @@ export default function TimeStrip() {
   if (!plays) {
     if (frame && selection.length === 1 && selection[0] === frame.id) {
       return (
-        <section className="time still">
+        <section className="time still" onContextMenu={(e) => e.preventDefault()}>
           <button className="pill" data-name="make-video" onClick={() => dispatch("set_duration", { id: frame.id, seconds: 10 })} title="Give this frame a length, so what is in it can appear, move and leave">
             Make this frame a scene
           </button>
@@ -163,7 +167,7 @@ export default function TimeStrip() {
       );
     }
     return (
-      <section className="time still">
+      <section className="time still" onContextMenu={(e) => e.preventDefault()}>
         <span className="time-quiet">Select a frame to make it a scene.</span>
       </section>
     );
@@ -244,7 +248,35 @@ export default function TimeStrip() {
     window.addEventListener("pointerup", up);
   };
 
+  const getSnapTargets = (excludeId?: string) => {
+    if (!frame) return [];
+    const ts = [0, length, clock.t];
+    for (const id of frame.childIds) {
+      if (id === excludeId) continue;
+      const other = doc.elements[id];
+      if (other) {
+        const s = spanOf(other, frame);
+        ts.push(s.start, s.end);
+      }
+    }
+    return [...new Set(ts)];
+  };
+
+  const findSnap = (cand: number, targets: number[]) => {
+    let bestTarget: number | null = null;
+    let bestDist = Infinity;
+    for (const t of targets) {
+      const dist = Math.abs((cand - t) * pps);
+      if (dist <= 8 && dist < bestDist) {
+        bestDist = dist;
+        bestTarget = t;
+      }
+    }
+    return bestTarget !== null ? { time: bestTarget, dist: bestDist } : null;
+  };
+
   const drag = (e: React.PointerEvent, el: El, part: "all" | "start" | "end") => {
+    if (e.button !== 0) return;
     e.stopPropagation();
     select([el.id]);
     const from = e.clientX;
@@ -252,29 +284,84 @@ export default function TimeStrip() {
     const long = span.end - span.start;
     // a clip cannot show more than its file holds
     const file = playsFile(el) ? clipLength(el.src) : 0;
+    const targets = getSnapTargets(el.id);
     let moved = false;
     const move = (ev: PointerEvent) => {
       const by = (ev.clientX - from) / pps;
       if (Math.abs(ev.clientX - from) < 2 && !moved) return;
       moved = true;
+      const noSnap = ev.metaKey || ev.ctrlKey;
       if (part === "all") {
-        const start = Math.max(0, span.start + by);
+        const rawStart = span.start + by;
+        const rawEnd = rawStart + long;
+        let start = rawStart;
+        let snapTime: number | null = null;
+        if (!noSnap) {
+          const snapS = findSnap(rawStart, targets);
+          const snapE = findSnap(rawEnd, targets);
+          if (snapS && snapE) {
+            if (snapS.dist <= snapE.dist) {
+              start = snapS.time;
+              snapTime = snapS.time;
+            } else {
+              start = snapE.time - long;
+              snapTime = snapE.time;
+            }
+          } else if (snapS) {
+            start = snapS.time;
+            snapTime = snapS.time;
+          } else if (snapE) {
+            start = snapE.time - long;
+            snapTime = snapE.time;
+          }
+        }
+        start = Math.max(0, start);
+        if (snapTime !== null) {
+          const edgeHolding = Math.abs((start - snapTime) * pps) <= 0.5 || Math.abs((start + long - snapTime) * pps) <= 0.5;
+          if (!edgeHolding) snapTime = null;
+        }
+        setSnap(snapTime);
         // dragged past the end, the frame grows to hold it
         const base = start + long > length ? runCommand(dragBase(), "set_duration", { id: frame.id, seconds: start + long }) : dragBase();
         dragPreviewDoc(runCommand(base, "set_timing", { ids: [el.id], start, end: start + long }));
       } else if (part === "start") {
         const least = playsFile(el) ? span.start - el.clipFrom : 0;
-        const start = Math.max(0, least, Math.min(span.end - SHORTEST, span.start + by));
+        const rawStart = span.start + by;
+        let start = rawStart;
+        let snapTime: number | null = null;
+        if (!noSnap) {
+          const s = findSnap(rawStart, targets);
+          if (s) {
+            start = s.time;
+            snapTime = s.time;
+          }
+        }
+        start = Math.max(0, least, Math.min(span.end - SHORTEST, start));
+        if (snapTime !== null && Math.abs((start - snapTime) * pps) > 0.5) snapTime = null;
+        setSnap(snapTime);
         dragPreview("set_timing", { ids: [el.id], start, end: span.end, ...(playsFile(el) ? { clipFrom: el.clipFrom + (start - span.start) } : {}) });
       } else {
         const most = file ? span.start + file - el.clipFrom : length;
-        const end = Math.max(span.start + SHORTEST, Math.min(length, most, span.end + by));
+        const rawEnd = span.end + by;
+        let end = rawEnd;
+        let snapTime: number | null = null;
+        if (!noSnap) {
+          const s = findSnap(rawEnd, targets);
+          if (s) {
+            end = s.time;
+            snapTime = s.time;
+          }
+        }
+        end = Math.max(span.start + SHORTEST, Math.min(length, most, end));
+        if (snapTime !== null && Math.abs((end - snapTime) * pps) > 0.5) snapTime = null;
+        setSnap(snapTime);
         dragPreview("set_timing", { ids: [el.id], start: span.start, end });
       }
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      setSnap(null);
       if (moved) dragCommit("Change when it shows");
     };
     window.addEventListener("pointermove", move);
@@ -306,20 +393,35 @@ export default function TimeStrip() {
 
 
   const dragMark = (e: React.PointerEvent, el: El, t: number) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
     select([el.id]);
     const from = e.clientX;
+    const targets = getSnapTargets(el.id);
     let moved = false;
     const move = (ev: PointerEvent) => {
       const by = (ev.clientX - from) / pps;
       if (Math.abs(ev.clientX - from) < 2 && !moved) return;
       moved = true;
       draggedMark.current = true;
-      dragPreview("move_key", { id: el.id, from: t, to: t + by });
+      const noSnap = ev.metaKey || ev.ctrlKey;
+      const rawT = t + by;
+      let to = rawT;
+      let snapTime: number | null = null;
+      if (!noSnap) {
+        const s = findSnap(rawT, targets);
+        if (s) {
+          to = s.time;
+          snapTime = s.time;
+        }
+      }
+      setSnap(snapTime);
+      dragPreview("move_key", { id: el.id, from: t, to });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      setSnap(null);
       if (moved) {
         dragCommit("Move a moment");
       } else {
@@ -341,6 +443,12 @@ export default function TimeStrip() {
         data-name={`span-${el.name}`}
         style={{ left: span.start * pps, width: Math.max(4, (span.end - span.start) * pps) }}
         onPointerDown={(e) => drag(e, el, "all")}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          select([el.id]);
+          setMenu({ x: e.clientX, y: e.clientY, el });
+        }}
       >
         {look === "cut" && <span className="time-span-name">{el.name}</span>}
         <b className="l" onPointerDown={(e) => drag(e, el, "start")} />
@@ -371,7 +479,7 @@ export default function TimeStrip() {
   };
 
   return (
-    <section className={`time ${look === "cut" ? "cut" : ""}`} data-name="time-strip">
+    <section className={`time ${look === "cut" ? "cut" : ""}`} data-name="time-strip" onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
       <div className="time-bar">
         <button className="pill" data-name="play" onClick={togglePlay} title={clock.playing ? "Pause" : "Play"}>
           {clock.playing ? "Pause" : "Play"}
@@ -508,7 +616,96 @@ export default function TimeStrip() {
           </div>
         ))}
         <div className="time-head" style={{ left: NAMES + clock.t * pps }} />
+        {snap !== null && <div className="time-snap" style={{ left: NAMES + snap * pps }} />}
       </div>
+      {menu && (
+        <div
+          className="ctx"
+          style={{
+            left: Math.max(10, Math.min(menu.x, window.innerWidth - 230)),
+            top: Math.max(10, Math.min(menu.y, window.innerHeight - 270)),
+          }}
+        >
+          <div
+            className="ctx-item"
+            onClick={() => {
+              const el = menu.el;
+              setMenu(null);
+              if (sceneId) dispatch("split_at", { sceneId, t: clock.t, ids: [el.id] });
+            }}
+          >
+            <span>Cut here</span>
+            <kbd>S</kbd>
+          </div>
+          <div
+            className="ctx-item"
+            onClick={() => {
+              const el = menu.el;
+              setMenu(null);
+              dispatch("ripple_delete", { ids: [el.id] });
+            }}
+          >
+            <span>Delete and close the gap</span>
+            <kbd>D</kbd>
+          </div>
+          <div className="ctx-line" />
+          <div
+            className="ctx-item"
+            onClick={() => {
+              const el = menu.el;
+              setMenu(null);
+              dispatch("key_now", { ids: [el.id], props: ["x", "y"], t: clock.t });
+            }}
+          >
+            <span>Mark position</span>
+            <kbd>Option P</kbd>
+          </div>
+          <div
+            className="ctx-item"
+            onClick={() => {
+              const el = menu.el;
+              setMenu(null);
+              dispatch("key_now", { ids: [el.id], props: ["width", "height"], t: clock.t });
+            }}
+          >
+            <span>Mark size</span>
+            <kbd>Option S</kbd>
+          </div>
+          <div
+            className="ctx-item"
+            onClick={() => {
+              const el = menu.el;
+              setMenu(null);
+              dispatch("key_now", { ids: [el.id], props: ["opacity"], t: clock.t });
+            }}
+          >
+            <span>Mark opacity</span>
+            <kbd>Option T</kbd>
+          </div>
+          <div
+            className="ctx-item"
+            onClick={() => {
+              const el = menu.el;
+              setMenu(null);
+              dispatch("key_now", { ids: [el.id], props: ["rotation"], t: clock.t });
+            }}
+          >
+            <span>Mark turn</span>
+            <kbd>Option R</kbd>
+          </div>
+          <div className="ctx-line" />
+          <div
+            className="ctx-item"
+            onClick={() => {
+              const el = menu.el;
+              setMenu(null);
+              dispatch("remove_key", { ids: [el.id] });
+            }}
+          >
+            <span>Remove every mark</span>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

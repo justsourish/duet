@@ -195,9 +195,11 @@ export default function App() {
           </button>
         </div>
         <span className="spacer" />
-        <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
-          Present
-        </button>
+        {dock.mode !== "motion" && (
+          <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
+            Present
+          </button>
+        )}
         <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
           <Icon name="panel-left" size={15} />
         </button>

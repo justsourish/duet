@@ -2314,3 +2314,46 @@ button {
 .time-row.on .time-span.sound {
   background: var(--muted);
 }
+
+.time-snap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--duet);
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* right-click menu */
+.ctx {
+  position: fixed;
+  z-index: 90;
+  min-width: 210px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+.ctx-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: default;
+}
+.ctx-item:hover {
+  background: var(--accent-soft);
+}
+.ctx-item kbd {
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+}
+.ctx-line {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 6px;
+}
