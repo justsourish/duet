@@ -292,6 +292,33 @@ export default function TimeStrip() {
   const every = length <= 12 ? 1 : length <= 60 ? 5 : length <= 300 ? 30 : 60;
   for (let t = 0; t <= length + 0.001; t += every) marks.push(t);
 
+  const draggedMark = useRef(false);
+
+  const dragMark = (e: React.PointerEvent, el: El, t: number) => {
+    e.stopPropagation();
+    select([el.id]);
+    const from = e.clientX;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      const by = (ev.clientX - from) / pps;
+      if (Math.abs(ev.clientX - from) < 2 && !moved) return;
+      moved = true;
+      draggedMark.current = true;
+      dragPreview("move_key", { id: el.id, from: t, to: t + by });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) {
+        dragCommit("Move a moment");
+      } else {
+        seek(t);
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   const renderBar = (el: El) => {
     const span = spanOf(el, frame);
     const keyTimes = [...new Set(MOVING.flatMap((p) => (el.keys[p] ?? []).map((k) => k.t)))];
@@ -307,7 +334,25 @@ export default function TimeStrip() {
         {look === "cut" && <span className="time-span-name">{el.name}</span>}
         <b className="l" onPointerDown={(e) => drag(e, el, "start")} />
         {keyTimes.map((t) => (
-          <u key={t} style={{ left: (t - span.start) * pps }} />
+          <u
+            key={t}
+            data-name="mark"
+            title={clockText(t)}
+            style={{ left: (t - span.start) * pps, cursor: "ew-resize" }}
+            onPointerDown={(e) => dragMark(e, el, t)}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (draggedMark.current) {
+                draggedMark.current = false;
+                return;
+              }
+              seek(t);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              dispatch("remove_key", { ids: [el.id], t });
+            }}
+          />
         ))}
         <b className="r" onPointerDown={(e) => drag(e, el, "end")} />
       </div>

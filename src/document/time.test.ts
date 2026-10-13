@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runCommand } from "../commands";
+import { commandLabel, runCommand } from "../commands";
 import { parseDoc, serializeDoc } from "./serialize";
 import { docAt, entranceOf, valueAt } from "./time";
 import { emptyDoc } from "./types";
@@ -46,6 +46,39 @@ describe("time", () => {
     expect(doc.elements.r.x).toBe(100);
     doc = runCommand(doc, "remove_key", { ids: ["r"], prop: "x" });
     expect(doc.elements.r.keys).toEqual({});
+  });
+
+  it("moves a moment along the timeline, clamped to the scene and replacing any key there", () => {
+    let doc = runCommand(scene(), "set_key", { ids: ["r"], prop: "x", t: 1, v: 100 });
+    doc = runCommand(doc, "set_key", { ids: ["r"], prop: "y", t: 1, v: 200 });
+    doc = runCommand(doc, "set_key", { ids: ["r"], prop: "x", t: 4, v: 500 });
+    expect(commandLabel("move_key", { id: "r", from: 1, to: 2.5 })).toBe("Move a moment");
+
+    // moves every key within 0.004 of 'from' on that element (both x and y)
+    doc = runCommand(doc, "move_key", { id: "r", from: 1.002, to: 2.5 });
+    expect(doc.elements.r.keys.x?.map((k) => [k.t, k.v])).toEqual([[2.5, 100], [4, 500]]);
+    expect(doc.elements.r.keys.y?.map((k) => [k.t, k.v])).toEqual([[2.5, 200]]);
+
+    // replaces an existing key of the same property at 'to'
+    doc = runCommand(doc, "move_key", { id: "r", from: 2.5, to: 4 });
+    expect(doc.elements.r.keys.x?.map((k) => [k.t, k.v])).toEqual([[4, 100]]);
+    expect(doc.elements.r.keys.y?.map((k) => [k.t, k.v])).toEqual([[4, 200]]);
+
+    // clamps to the frame duration (10s) and rounds to 3 decimals
+    doc = runCommand(doc, "move_key", { id: "r", from: 4, to: 12.3456 });
+    expect(doc.elements.r.keys.x?.map((k) => [k.t, k.v])).toEqual([[10, 100]]);
+
+    // clamps to 0 when negative
+    doc = runCommand(doc, "move_key", { id: "r", from: 10, to: -3 });
+    expect(doc.elements.r.keys.x?.map((k) => [k.t, k.v])).toEqual([[0, 100]]);
+
+    // rounds to 3 decimals when within bounds
+    doc = runCommand(doc, "move_key", { id: "r", from: 0, to: 3.4567 });
+    expect(doc.elements.r.keys.x?.map((k) => [k.t, k.v])).toEqual([[3.457, 100]]);
+
+    // returns the same doc when nothing matched
+    expect(runCommand(doc, "move_key", { id: "r", from: 5, to: 6 })).toBe(doc);
+    expect(runCommand(doc, "move_key", { id: "nonexistent", from: 3.457, to: 5 })).toBe(doc);
   });
 
   it("moves what a thing does along with it when its start moves", () => {

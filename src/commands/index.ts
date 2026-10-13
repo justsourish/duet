@@ -965,6 +965,39 @@ const removeKey: CommandDef<RemoveKeyArgs> = {
   },
 };
 
+// ---- move_key ----
+export interface MoveKeyArgs {
+  id: string;
+  from: number;
+  to: number;
+}
+
+const moveKey: CommandDef<MoveKeyArgs> = {
+  label: () => "Move a moment",
+  run: (doc, a) => {
+    if (!Number.isFinite(a.from) || !Number.isFinite(a.to)) return doc;
+    const el = doc.elements[a.id];
+    const scene = sceneOf(doc, a.id);
+    if (!el || !scene) return doc;
+    const to = Math.max(0, Math.min(scene.duration, round(a.to)));
+    const next = clone(doc);
+    let changed = false;
+    for (const prop of MOVING) {
+      const keys = next.elements[a.id].keys[prop];
+      if (!keys) continue;
+      const matching = keys.filter((k) => Math.abs(k.t - a.from) <= 0.004);
+      if (!matching.length) continue;
+      changed = true;
+      let left = keys.filter((k) => Math.abs(k.t - a.from) > 0.004);
+      for (const k of matching) {
+        left = withKey(left, { ...k, t: to });
+      }
+      next.elements[a.id].keys[prop] = left;
+    }
+    return changed ? next : doc;
+  },
+};
+
 // ---- split_at ----
 export interface SplitArgs {
   /** The frame that plays. */
@@ -1115,6 +1148,7 @@ export const commands = {
   set_keys: setKeys,
   key_now: keyNow,
   remove_key: removeKey,
+  move_key: moveKey,
   set_entrance: setEntrance,
   split_at: splitAt,
   ripple_delete: rippleDelete,

@@ -2116,8 +2116,14 @@ button {
   margin-left: -3px;
   background: var(--text);
   transform: rotate(45deg);
-  pointer-events: none;
-  z-index: 2;
+  pointer-events: auto;
+  cursor: ew-resize;
+  z-index: 3;
+}
+.time-span u::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
 }
 .time-head {
   position: absolute;
