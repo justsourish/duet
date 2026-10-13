@@ -1910,6 +1910,53 @@ button {
   padding: 6px 16px;
   border-bottom: 1px solid var(--line);
 }
+.time-look.pill {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  gap: 2px;
+  cursor: default;
+}
+.time-look.pill:hover {
+  border-color: var(--line);
+}
+.time-look button {
+  padding: 3px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.time-look button:hover {
+  color: var(--text);
+}
+.time-look button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.time-look button.active:hover {
+  color: #fff;
+}
+.time-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.time-quiet-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.time-quiet-btn:hover {
+  color: var(--text);
+}
 .time-bar label {
   display: flex;
   align-items: center;
@@ -1943,18 +1990,24 @@ button {
   position: relative;
   max-height: 170px;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   padding: 0 16px 6px 0;
 }
 .time-row {
   display: flex;
   align-items: center;
   height: 24px;
+  width: max-content;
+  min-width: 100%;
 }
 .time-row.on .time-name {
   color: var(--text);
 }
 .time-name {
+  position: sticky;
+  left: 0;
+  background: var(--panel);
+  z-index: 4;
   flex: none;
   width: 150px;
   padding: 0 10px 0 16px;
@@ -1976,6 +2029,11 @@ button {
   top: 0;
   background: var(--panel);
   z-index: 2;
+  width: max-content;
+  min-width: 100%;
+}
+.time-row.ruler .time-name {
+  z-index: 5;
 }
 .time-row.ruler .time-lane {
   cursor: ew-resize;
@@ -2004,11 +2062,37 @@ button {
   background: var(--duet-soft);
   border-color: var(--duet);
 }
-.time-row.on .time-span {
+.time-row.on .time-span,
+.time-span.on {
   background: var(--accent);
 }
-.time-row.on .time-span.video {
+.time-row.on .time-span.video,
+.time-span.video.on {
   background: var(--duet);
+}
+.time.cut .time-span:not(.on) {
+  background: var(--accent-soft);
+}
+.time.cut .time-span.video:not(.on) {
+  background: var(--duet-soft);
+}
+.time-span-name {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--text);
+  pointer-events: none;
+  user-select: none;
+}
+.time-span.on .time-span-name {
+  color: #fff;
 }
 .time-span b {
   position: absolute;
@@ -2016,6 +2100,7 @@ button {
   bottom: 0;
   width: 6px;
   cursor: ew-resize;
+  z-index: 2;
 }
 .time-span b.l {
   left: 0;
@@ -2032,6 +2117,7 @@ button {
   background: var(--text);
   transform: rotate(45deg);
   pointer-events: none;
+  z-index: 2;
 }
 .time-head {
   position: absolute;

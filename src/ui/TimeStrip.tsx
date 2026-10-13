@@ -8,7 +8,7 @@ import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc
 import { clipLength } from "../video/clips";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
 import { addClips, exportScene, stopExport } from "../video/scene";
-import { useLayout } from "./layout";
+import { setLayout, useLayout } from "./layout";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
 
@@ -36,11 +36,13 @@ function pageFrame(doc: Doc, id: string | undefined): El | null {
 
 export default function TimeStrip() {
   const mode = useLayout((d) => d.mode);
+  const look = useLayout((d) => d.timeLook ?? "layers");
   const doc = useStore((s) => currentDoc(s));
   const selection = useStore((s) => s.selection);
   const clock = useStore((s) => s.clock);
   const lanes = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(600);
+  const [zoom, setZoom] = useState(1);
   const [making, setMaking] = useState<number | null>(null);
   const [note, setNote] = useState("");
 
@@ -64,6 +66,25 @@ export default function TimeStrip() {
     const key = (e: KeyboardEvent) => {
       const on = document.activeElement as HTMLElement | null;
       if (e.metaKey || e.ctrlKey || e.altKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        e.stopPropagation();
+        setZoom((z) => z * 1.5);
+        return;
+      }
+      if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        e.stopPropagation();
+        setZoom((z) => Math.max(1, z / 1.5));
+        return;
+      }
+      if (e.key === "\\") {
+        e.preventDefault();
+        e.stopPropagation();
+        setZoom(1);
+        if (lanes.current) lanes.current.scrollLeft = 0;
+        return;
+      }
       const k = e.key.toLowerCase();
       if (!["s", "d", "q", "w", "k", "l"].includes(k)) return;
       e.preventDefault();
@@ -100,27 +121,101 @@ export default function TimeStrip() {
     return () => window.removeEventListener("keydown", key, true);
   }, [sceneId]);
 
+  const length = frame?.duration ?? 0;
+  const laneWidth = wide * zoom;
+  const pps = length > 0 ? laneWidth / length : 1;
+
+  useEffect(() => {
+    if (!clock.playing || zoom <= 1) return;
+    const el = lanes.current;
+    if (!el) return;
+    const headX = NAMES + clock.t * pps;
+    const leftVisible = el.scrollLeft + NAMES;
+    const rightVisible = el.scrollLeft + el.clientWidth;
+    if (headX > rightVisible - 20) {
+      el.scrollLeft = headX - el.clientWidth + 40;
+    } else if (headX < leftVisible) {
+      el.scrollLeft = Math.max(0, headX - NAMES);
+    }
+  }, [clock.playing, clock.t, pps, zoom]);
+
+  useEffect(() => {
+    if (zoom === 1 && lanes.current) {
+      lanes.current.scrollLeft = 0;
+    }
+  }, [zoom]);
+
   if (mode !== "motion") return null;
   if (!plays) {
     if (frame && selection.length === 1 && selection[0] === frame.id) {
       return (
         <section className="time still">
           <button className="pill" data-name="make-video" onClick={() => dispatch("set_duration", { id: frame.id, seconds: 10 })} title="Give this frame a length, so what is in it can appear, move and leave">
-            Make this frame a video
+            Make this frame a scene
           </button>
         </section>
       );
     }
     return (
       <section className="time still">
-        <span className="time-quiet">Select a frame to give it a length.</span>
+        <span className="time-quiet">Select a frame to make it a scene.</span>
       </section>
     );
   }
 
-  const length = frame.duration;
-  const pps = wide / length;
-  const rows = frame.childIds.map((id) => doc.elements[id]).filter(Boolean).reverse();
+  const things = frame.childIds.map((id) => doc.elements[id]).filter(Boolean).reverse();
+  const nonVideos = things.filter((el) => el.type !== "video");
+  const videoClips = things.filter((el) => el.type === "video");
+
+  const packTracks = (list: El[]) => {
+    const res: El[][] = [];
+    for (const el of list) {
+      const span = spanOf(el, frame);
+      let placed = false;
+      for (const track of res) {
+        const overlaps = track.some((existing) => {
+          const exSpan = spanOf(existing, frame);
+          return span.start < exSpan.end - 0.001 && exSpan.start < span.end - 0.001;
+        });
+        if (!overlaps) {
+          track.push(el);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) res.push([el]);
+    }
+    return res;
+  };
+
+  interface DisplayRow {
+    key: string;
+    name: string;
+    items: El[];
+    onClick?: () => void;
+  }
+
+  const displayRows: DisplayRow[] =
+    look === "layers"
+      ? things.map((el) => ({
+          key: el.id,
+          name: el.name,
+          items: [el],
+          onClick: () => select([el.id]),
+        }))
+      : [
+          ...packTracks(nonVideos).map((items, i) => ({
+            key: `track-${i + 1}`,
+            name: `Track ${i + 1}`,
+            items,
+          })),
+          ...packTracks(videoClips).map((items, i) => ({
+            key: `clips-${i + 1}`,
+            name: `Clips ${i + 1}`,
+            items,
+          })),
+        ];
+
   const picked = selection.length === 1 && selection[0] !== frame.id && pageFrame(doc, selection[0])?.id === frame.id ? doc.elements[selection[0]] : null;
 
   const scrub = (e: React.PointerEvent) => {
@@ -197,8 +292,30 @@ export default function TimeStrip() {
   const every = length <= 12 ? 1 : length <= 60 ? 5 : length <= 300 ? 30 : 60;
   for (let t = 0; t <= length + 0.001; t += every) marks.push(t);
 
+  const renderBar = (el: El) => {
+    const span = spanOf(el, frame);
+    const keyTimes = [...new Set(MOVING.flatMap((p) => (el.keys[p] ?? []).map((k) => k.t)))];
+    const isSelected = selection.includes(el.id);
+    return (
+      <div
+        key={el.id}
+        className={`time-span ${el.type} ${isSelected ? "on" : ""}`}
+        data-name={`span-${el.name}`}
+        style={{ left: span.start * pps, width: Math.max(4, (span.end - span.start) * pps) }}
+        onPointerDown={(e) => drag(e, el, "all")}
+      >
+        {look === "cut" && <span className="time-span-name">{el.name}</span>}
+        <b className="l" onPointerDown={(e) => drag(e, el, "start")} />
+        {keyTimes.map((t) => (
+          <u key={t} style={{ left: (t - span.start) * pps }} />
+        ))}
+        <b className="r" onPointerDown={(e) => drag(e, el, "end")} />
+      </div>
+    );
+  };
+
   return (
-    <section className="time" data-name="time-strip">
+    <section className={`time ${look === "cut" ? "cut" : ""}`} data-name="time-strip">
       <div className="time-bar">
         <button className="pill" data-name="play" onClick={togglePlay} title={clock.playing ? "Pause" : "Play"}>
           {clock.playing ? "Pause" : "Play"}
@@ -222,6 +339,22 @@ export default function TimeStrip() {
             }}
           />
         </label>
+        <div className="pill time-look">
+          <button
+            className={look === "layers" ? "active" : ""}
+            data-name="look-layers"
+            onClick={() => setLayout({ timeLook: "layers" })}
+          >
+            Layers
+          </button>
+          <button
+            className={look === "cut" ? "active" : ""}
+            data-name="look-cut"
+            onClick={() => setLayout({ timeLook: "cut" })}
+          >
+            Cut
+          </button>
+        </div>
         <button className="pill" data-name="add-clip" onClick={bring} title="Bring video files into this frame, at the moment the clock is on">
           Add clip
         </button>
@@ -253,6 +386,35 @@ export default function TimeStrip() {
           </>
         )}
         <span className="spacer" />
+        <div className="time-zoom">
+          <button
+            className="time-quiet-btn"
+            data-name="zoom-out"
+            onClick={() => setZoom((z) => Math.max(1, z / 1.5))}
+            title="Zoom out (-)"
+          >
+            -
+          </button>
+          <button
+            className="time-quiet-btn"
+            data-name="zoom-fit"
+            onClick={() => {
+              setZoom(1);
+              if (lanes.current) lanes.current.scrollLeft = 0;
+            }}
+            title="Fit to window (\)"
+          >
+            Fit
+          </button>
+          <button
+            className="time-quiet-btn"
+            data-name="zoom-in"
+            onClick={() => setZoom((z) => z * 1.5)}
+            title="Zoom in (=)"
+          >
+            +
+          </button>
+        </div>
         {note && <span className="time-note">{note}</span>}
         {making === null ? (
           <button className="pill primary" data-name="export-video" onClick={make} title="Make one video file out of this frame">
@@ -268,7 +430,7 @@ export default function TimeStrip() {
       <div className="time-lanes" ref={lanes}>
         <div className="time-row ruler">
           <span className="time-name" />
-          <div className="time-lane" onPointerDown={scrub} style={{ width: wide }}>
+          <div className="time-lane" onPointerDown={scrub} style={{ width: laneWidth }}>
             {marks.map((t) => (
               <i key={t} style={{ left: t * pps }}>
                 {clockText(t).replace(/\.0$/, "")}
@@ -276,26 +438,16 @@ export default function TimeStrip() {
             ))}
           </div>
         </div>
-        {rows.map((el) => {
-          const span = spanOf(el, frame);
-          const keyTimes = [...new Set(MOVING.flatMap((p) => (el.keys[p] ?? []).map((k) => k.t)))];
-          return (
-            <div key={el.id} className={`time-row ${selection.includes(el.id) ? "on" : ""}`}>
-              <span className="time-name" onClick={() => select([el.id])} title={el.name}>
-                {el.name}
-              </span>
-              <div className="time-lane" style={{ width: wide }} onPointerDown={scrub}>
-                <div className={`time-span ${el.type}`} data-name={`span-${el.name}`} style={{ left: span.start * pps, width: Math.max(4, (span.end - span.start) * pps) }} onPointerDown={(e) => drag(e, el, "all")}>
-                  <b className="l" onPointerDown={(e) => drag(e, el, "start")} />
-                  {keyTimes.map((t) => (
-                    <u key={t} style={{ left: (t - span.start) * pps }} />
-                  ))}
-                  <b className="r" onPointerDown={(e) => drag(e, el, "end")} />
-                </div>
-              </div>
+        {displayRows.map((row) => (
+          <div key={row.key} className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""}`}>
+            <span className="time-name" onClick={row.onClick} title={row.name}>
+              {row.name}
+            </span>
+            <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
+              {row.items.map(renderBar)}
             </div>
-          );
-        })}
+          </div>
+        ))}
         <div className="time-head" style={{ left: NAMES + clock.t * pps }} />
       </div>
     </section>
