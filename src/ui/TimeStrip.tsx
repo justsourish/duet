@@ -6,7 +6,9 @@ import type { Doc, El } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, getState, restoreDoc, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
-import { addClips, addSounds, exportScene, stopExport } from "../video/scene";
+import { QUALITIES, SIZES, addClips, addSounds, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
+import type { ExportChoice } from "../video/scene";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { setLayout, useLayout } from "./layout";
 import { useDismiss } from "./useDismiss";
 
@@ -35,6 +37,10 @@ export default function TimeStrip() {
   const [zoom, setZoom] = useState(1);
   const [making, setMaking] = useState<number | null>(null);
   const [note, setNote] = useState("");
+  // how the video is made, chosen before it is made, and where the last one went
+  const [choosing, setChoosing] = useState(false);
+  const [choice, setChoice] = useState<ExportChoice>(defaultChoice);
+  const [made, setMade] = useState<string | null>(null);
   // set while a keyframe mark is being dragged, so letting go is not taken for a click
   const draggedMark = useRef(false);
   const [snap, setSnap] = useState<number | null>(null);
@@ -363,8 +369,13 @@ export default function TimeStrip() {
     setNote("");
     setMaking(0);
     try {
-      const file = await exportScene(frame.id, setMaking);
-      if (file) setNote(`Saved ${file.split(/[\\/]/).pop()}`);
+      setChoosing(false);
+      setMade(null);
+      const file = await exportScene(frame.id, setMaking, choice);
+      if (file) {
+        setMade(file);
+        setNote(choice.ask ? `Saved ${file.split(/[\\/]/).pop()}` : "Saved in Documents, Duet, Exports");
+      }
     } catch (e) {
       setNote(String(e instanceof Error ? e.message : e));
     } finally {
@@ -548,10 +559,62 @@ export default function TimeStrip() {
           </button>
         </div>
         {note && <span className="time-note">{note}</span>}
-        {making === null ? (
-          <button className="pill primary" data-name="export-video" onClick={make} title="Make one video file out of this frame">
-            Export video
+        {made && making === null && (
+          <button className="pill" data-name="show-video" onClick={() => void revealItemInDir(made)} title="Show the video in Finder">
+            Show
           </button>
+        )}
+        {making === null ? (
+          <div className="export-anchor">
+            <button className="pill primary" data-name="export-video" onClick={() => setChoosing(!choosing)} title="Make one video file out of this scene">
+              Export video
+            </button>
+            {choosing && (
+              <div className="export-pop" data-name="export-settings">
+                <label>
+                  Size
+                  <select data-name="export-size" value={choice.longSide} onChange={(e) => setChoice({ ...choice, longSide: Number(e.target.value) })}>
+                    {SIZES.map((z) => {
+                      const [w, h] = exportSize(frame, z.longSide);
+                      return (
+                        <option key={z.longSide} value={z.longSide}>
+                          {z.name}, {w} by {h}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+                <label>
+                  Frames a second
+                  <select data-name="export-fps" value={choice.fps} onChange={(e) => setChoice({ ...choice, fps: Number(e.target.value) })}>
+                    {[24, 25, 30, 60].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Quality
+                  <select data-name="export-quality" value={choice.quality} onChange={(e) => setChoice({ ...choice, quality: Number(e.target.value) })}>
+                    {QUALITIES.map((q) => (
+                      <option key={q.quality} value={q.quality}>
+                        {q.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="export-where">
+                  <input type="checkbox" checked={choice.ask} onChange={(e) => setChoice({ ...choice, ask: e.target.checked })} />
+                  Ask me where to save
+                </label>
+                {!choice.ask && <div className="time-quiet">It goes to Documents, Duet, Exports.</div>}
+                <button className="pill primary" data-name="export-go" onClick={make}>
+                  Export
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           <button className="pill" data-name="stop-export" onClick={stopExport} title="Stop making the video">
             Making your video, {Math.round(making * 100)}%. Stop

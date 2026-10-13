@@ -214,7 +214,7 @@ pub struct Sound {
 static MAKING: Mutex<Option<Child>> = Mutex::new(None);
 
 /// The ffmpeg arguments that turn pictures handed in one by one, and the sound of the clips, into one file.
-fn scene_args(fps: u32, seconds: f64, sounds: &[Sound], out: &str) -> Vec<String> {
+fn scene_args(fps: u32, seconds: f64, quality: u32, sounds: &[Sound], out: &str) -> Vec<String> {
     let mut args: Vec<String> = ["-y", "-hide_banner", "-loglevel", "error", "-f", "image2pipe", "-framerate"].map(String::from).to_vec();
     args.extend([fps.to_string(), "-c:v".into(), "mjpeg".into(), "-i".into(), "-".into()]);
     let mut graph = String::new();
@@ -232,14 +232,16 @@ fn scene_args(fps: u32, seconds: f64, sounds: &[Sound], out: &str) -> Vec<String
         graph += &format!("amix=inputs={}:normalize=0,apad,atrim=duration={seconds:.3}[a]", sounds.len());
         args.extend(["-filter_complex".into(), graph, "-map".into(), "[a]".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "160k".into()]);
     }
-    args.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart"].map(String::from));
+    // quality is ffmpeg's own scale: lower is finer and makes a bigger file
+    let crf = quality.clamp(10, 34).to_string();
+    args.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", crf.as_str(), "-pix_fmt", "yuv420p", "-movflags", "+faststart"].map(String::from));
     args.push(out.into());
     args
 }
 
 /// Start making a video. Pictures follow with `scene_export_frame`, and `scene_export_end` finishes it.
 #[tauri::command]
-pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, sounds: Vec<Sound>) -> Result<(), String> {
+pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, quality: Option<u32>, sounds: Vec<Sound>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
         // a clip with no sound in it has nothing to add
@@ -250,7 +252,7 @@ pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, sounds: Vec
             }
         }
         let child = Command::new(ffmpeg)
-            .args(scene_args(fps.clamp(1, 120), seconds, &heard, &out))
+            .args(scene_args(fps.clamp(1, 120), seconds, quality.unwrap_or(18), &heard, &out))
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -333,12 +335,12 @@ mod tests {
     #[test]
     fn a_frame_that_plays_gets_its_pictures_and_each_clip_heard_at_its_moment() {
         let sounds = vec![Sound { path: "a.mp4".into(), from: 1.0, at: 2.5, length: 3.0, volume: 0.5 }];
-        let args = scene_args(30, 10.0, &sounds, "out.mp4").join(" ");
+        let args = scene_args(30, 10.0, 18, &sounds, "out.mp4").join(" ");
         assert!(args.contains("-f image2pipe -framerate 30 -c:v mjpeg -i -"));
         assert!(args.contains("-ss 1.000 -t 3.000 -i a.mp4"));
         assert!(args.contains("volume=0.500,adelay=2500:all=1[a0]"));
         assert!(args.contains("atrim=duration=10.000[a]"));
-        let silent = scene_args(30, 10.0, &[], "out.mp4").join(" ");
+        let silent = scene_args(30, 10.0, 18, &[], "out.mp4").join(" ");
         assert!(!silent.contains("filter_complex"));
     }
 }

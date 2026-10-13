@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getState, seenDoc } from "../state/store";
 import { clipPicture } from "../video/clips";
 import { seek } from "../video/play";
-import { exportScene } from "../video/scene";
+import { defaultChoice, exportScene } from "../video/scene";
 import { addClip, getCut, emptyCut, setCut, sizeOf } from "../video/cut";
 import type { Info } from "../video/cut";
 import { busyOutside } from "./outside";
@@ -366,7 +366,7 @@ export async function callBuilderTool(name: string, raw: unknown, by?: string): 
   if (name === "dev_video" && a.do === "frame") {
     try {
       const began = Date.now();
-      const file = await exportScene(String(a.id), () => {}, String(a.path));
+      const file = await exportScene(String(a.id), () => {}, { ...defaultChoice(), to: String(a.path) });
       return { text: `Made ${file} in ${Math.round((Date.now() - began) / 100) / 10} seconds.` };
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));

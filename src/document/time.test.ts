@@ -3,7 +3,7 @@ import { commandLabel, runCommand } from "../commands";
 import { parseDoc, serializeDoc } from "./serialize";
 import { docAt, entranceOf, valueAt } from "./time";
 import { emptyDoc } from "./types";
-import { soundsOf } from "../video/scene";
+import { exportSize, soundsOf } from "../video/scene";
 import { currentDoc, dispatch, loadDoc, resetStore, seenDoc, setClock, workDoc } from "../state/store";
 
 function scene() {
@@ -163,5 +163,12 @@ describe("time", () => {
     expect(soundsOf(doc, "f")).toEqual([{ path: "/music.mp3", from: 0, at: 2, length: 6, volume: 0.3 }]);
     doc = runCommand(doc, "split_at", { sceneId: "f", t: 5, ids: ["m"], newIds: { m: "m2" } });
     expect(soundsOf(doc, "f")[1]).toEqual({ path: "/music.mp3", from: 3, at: 5, length: 3, volume: 0.3 });
+  });
+
+  it("a video comes out at the size that was chosen, in even numbers", () => {
+    expect(exportSize({ width: 1920, height: 1080 }, 0)).toEqual([1920, 1080]);
+    expect(exportSize({ width: 1920, height: 1080 }, 1280)).toEqual([1280, 720]);
+    expect(exportSize({ width: 1080, height: 1920 }, 1280)).toEqual([720, 1280]);
+    expect(exportSize({ width: 339.98, height: 179.46 }, 0)).toEqual([340, 178]);
   });
 });

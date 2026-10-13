@@ -157,7 +157,6 @@ export async function placeSounds(sceneId: string, paths: string[]): Promise<str
   return problems;
 }
 
-const FPS = 30;
 
 /** The sound of every clip in a frame: which file, from where in it, when it is heard, and how loud. */
 export function soundsOf(doc: Doc, sceneId: string) {
@@ -186,20 +185,64 @@ export const stopExport = () => {
   stop = true;
 };
 
+/** How a video is made: how big, how smooth, how fine, and where it goes. */
+export interface ExportChoice {
+  /** The longer side of the video in pixels, or 0 to keep the size of the scene. */
+  longSide: number;
+  fps: number;
+  /** ffmpeg's own scale: lower is finer and makes a bigger file. */
+  quality: number;
+  /** True to be asked where to save. Otherwise it goes to Documents, Duet, Exports. */
+  ask: boolean;
+  /** A full path, used by the builder tools in place of everything above about where. */
+  to?: string;
+}
+
+export const SIZES: { name: string; longSide: number }[] = [
+  { name: "Same as the scene", longSide: 0 },
+  { name: "4K", longSide: 3840 },
+  { name: "1080p", longSide: 1920 },
+  { name: "720p", longSide: 1280 },
+];
+export const QUALITIES: { name: string; quality: number }[] = [
+  { name: "Best", quality: 15 },
+  { name: "Good", quality: 20 },
+  { name: "Small file", quality: 27 },
+];
+export const defaultChoice = (): ExportChoice => ({ longSide: 0, fps: 30, quality: 20, ask: false });
+
+/** The size a scene comes out at for a choice, in even numbers of pixels, as video needs. */
+export function exportSize(scene: { width: number; height: number }, longSide: number): [number, number] {
+  const k = longSide > 0 ? longSide / Math.max(scene.width, scene.height) : 1;
+  const even = (n: number) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
+  return [even(scene.width * k), even(scene.height * k)];
+}
+
 /**
  * Make one video file out of a frame that plays. Every picture of it is drawn here, exactly as the
  * canvas draws it, and handed over one by one. Returns the file, or null if the designer backed out.
  */
-export async function exportScene(sceneId: string, progress: (done: number) => void, to?: string): Promise<string | null> {
+export async function exportScene(sceneId: string, progress: (done: number) => void, choice: ExportChoice = defaultChoice()): Promise<string | null> {
   const doc = currentDoc();
   const scene = doc.elements[sceneId];
   if (!scene?.duration) throw new Error("This frame has no length yet.");
-  const out = to ?? await save({ title: "Save your video", defaultPath: `${scene.name}.mp4`, filters: [{ name: "Video", extensions: ["mp4"] }] });
+  let out: string | null;
+  if (choice.to) out = choice.to;
+  else if (choice.ask) out = await save({ title: "Save your video", defaultPath: `${scene.name}.mp4`, filters: [{ name: "Video", extensions: ["mp4"] }] });
+  else {
+    // no question asked: it goes beside the projects, named by the scene and the time
+    const dir = `${await invoke<string>("default_projects_dir")}/Exports`;
+    await invoke("make_dir", { path: dir });
+    const d = new Date();
+    const two = (n: number) => String(n).padStart(2, "0");
+    const safe = scene.name.replace(/[\\/:*?"<>|]/g, " ").trim() || "Video";
+    out = `${dir}/${safe} ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}.${two(d.getMinutes())}.${two(d.getSeconds())}.mp4`;
+  }
   if (!out) return null;
   const file = out.toLowerCase().endsWith(".mp4") ? out : `${out}.mp4`;
-  // video needs even numbers of pixels
-  const width = Math.round(scene.width) - (Math.round(scene.width) % 2);
-  const height = Math.round(scene.height) - (Math.round(scene.height) % 2);
+  const FPS = Math.max(1, Math.min(120, Math.round(choice.fps) || 30));
+  const [width, height] = exportSize(scene, choice.longSide);
+  const scale = width / scene.width;
   const sheet = document.createElement("canvas");
   sheet.width = width;
   sheet.height = height;
@@ -211,7 +254,7 @@ export async function exportScene(sceneId: string, progress: (done: number) => v
   holdClips(true);
   let begun = false;
   try {
-    await invoke("scene_export_begin", { out: file, fps: FPS, seconds: total / FPS, sounds: soundsOf(doc, sceneId) });
+    await invoke("scene_export_begin", { out: file, fps: FPS, seconds: total / FPS, quality: choice.quality, sounds: soundsOf(doc, sceneId) });
     begun = true;
     for (let i = 0; i < total; i++) {
       if (stop) throw new Error("Stopped.");
@@ -221,6 +264,8 @@ export async function exportScene(sceneId: string, progress: (done: number) => v
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, width, height);
+      // the scene is drawn at the size asked for, sharp at any size because it is drawn, not stretched
+      ctx.setTransform(scale, 0, 0, height / scene.height, 0, 0);
       const el = now.elements[sceneId];
       drawElement(ctx, now, el, -el.x, -el.y);
       const blob = await new Promise<Blob | null>((r) => sheet.toBlob(r, "image/jpeg", 0.92));
