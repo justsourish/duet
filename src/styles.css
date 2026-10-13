@@ -3338,3 +3338,67 @@ button.agent-perm:hover {
   font-size: 11px;
   color: var(--text);
 }
+
+/* early access: said once beside the name, quietly */
+.early {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+/* what is on the way, in the skills */
+.skills .soon {
+  margin: 10px 14px 4px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.skills .soon b {
+  color: var(--text);
+  font-weight: 600;
+}
+/* how much agents may do: the three choices, each with what it means */
+button.agent-perm {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.perm-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.perm-row:hover,
+.perm-row.active {
+  background: var(--panel-2);
+}
+.perm-row b {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.perm-row.active b {
+  color: var(--duet);
+}
+.perm-row small {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.cfoot .attach {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+}

@@ -1,6 +1,6 @@
 import { isOutside, plainName } from "../ai/who";
 import { useEffect, useLayoutEffect, useRef, useState, Fragment } from "react";
-import { sendToAgent, stopAgent } from "../ai/agent";
+import { detectAgent, sendToAgent, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
 import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
@@ -114,6 +114,7 @@ export default function ChatPanel() {
   const [litStep, setLitStep] = useState<string | null>(null);
   const [big, setBig] = useState(false);
   const [popOpen, setPopOpen] = useState(false);
+  const [permOpen, setPermOpen] = useState(false);
   const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
 
   const [cardAgent, setCardAgent] = useState<
@@ -133,12 +134,14 @@ export default function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useDismiss(popOpen, () => setPopOpen(false), ".agent-pop, [data-name='agent-button']");
+  useDismiss(permOpen, () => setPermOpen(false), ".perm-pop, [data-name='perm-button']");
   useDismiss(Boolean(cardAgent), () => setCardAgent(null), ".agent-card, [data-name='members']");
   useDismiss(settingsOpen, () => setSettingsOpen(false), ".chat-settings, [data-name='chat-settings']");
 
   useEffect(() => {
     if (minimized) {
       setPopOpen(false);
+      setPermOpen(false);
       setCardAgent(null);
       setSettingsOpen(false);
     }
@@ -151,6 +154,12 @@ export default function ChatPanel() {
       .then((list) => setAgyModels([{ id: "", name: "Default" }, ...list]))
       .catch(() => setAgyModels([{ id: "", name: "Default" }]));
   }, [agent, cardAgent, agyModels.length]);
+
+  // the list of installed AI tools is looked for again if it is ever empty, so nobody is left with no one to ask
+  const nobody = Object.keys(installed).length === 0;
+  useEffect(() => {
+    if (nobody && inTauri()) void detectAgent();
+  }, [nobody]);
 
   const dragging = moving !== null;
   useLayoutEffect(() => {
@@ -1037,7 +1046,10 @@ export default function ChatPanel() {
                 className="agent-btn"
                 data-name="agent-button"
                 title="Who answers, and how"
-                onClick={() => setPopOpen((o) => !o)}
+                onClick={() => {
+                  setPopOpen((o) => !o);
+                  setPermOpen(false);
+                }}
               >
                 <span className="agent-btn-badge" style={{ backgroundColor: agentColour(toolName) }}>{chatToolLetter}</span>
                 <span className="agent-btn-name">{toolName}</span>
@@ -1047,11 +1059,35 @@ export default function ChatPanel() {
                 type="button"
                 data-name="perm-button"
                 className={`agent-perm ${mode === "auto" ? "auto" : ""}`}
-                title="How much agents may do. Click to change: Suggest, Ask first, Auto."
-                onClick={() => setMode(mode === "suggest" ? "ask" : mode === "ask" ? "auto" : "suggest")}
+                title="How much agents may do"
+                onClick={() => {
+                  setPermOpen((o) => !o);
+                  setPopOpen(false);
+                }}
               >
                 {MODES.find((m) => m.mode === mode)?.label}
+                <span className="agent-btn-v">v</span>
               </button>
+              {permOpen && (
+                <div className="agent-pop perm-pop">
+                  <div className="agent-pop-label">How much agents may do</div>
+                  <div className="who-answers-list">
+                    {MODES.map((m) => (
+                      <div
+                        key={m.mode}
+                        className={`perm-row ${m.mode === mode ? "active" : ""}`}
+                        onClick={() => {
+                          setMode(m.mode);
+                          setPermOpen(false);
+                        }}
+                      >
+                        <b>{m.label}</b>
+                        <small>{m.hint}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {popOpen && (
                 <div className="agent-pop">
                   <div>
@@ -1082,11 +1118,40 @@ export default function ChatPanel() {
                       )}
                     </div>
                   </div>
+                  {members.some((m) => m.id === agent) && (
+                    <div>
+                      <div className="agent-pop-label">{toolName} settings</div>
+                      <div className="agent-pop-row">
+                        <div>
+                          <div className="agent-pop-label">Model</div>
+                          <select value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
+                            {(agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS).map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {agent === "claude" && (
+                          <div>
+                            <div className="agent-pop-label">Effort</div>
+                            <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
+                              {EFFORTS.map((x) => (
+                                <option key={x} value={x}>
+                                  {x === "" ? "Default" : x}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            <button className="mini attach" disabled={found === false} title="Add pictures or a written brief for the AI to look at. You can also paste or drop them here." onClick={() => picker.current?.click()}>
-              <Icon name="image" size={16} />
+            <button className="mini attach" disabled={found === false} title="Attach a picture, or a text or Markdown brief, for the AI to look at. You can also paste or drop them here." onClick={() => picker.current?.click()}>
+              <Icon name="plus" size={16} />
             </button>
             {showMentions && (
               <div className="mention-list">

@@ -57,6 +57,9 @@ export default function SkillsPanel() {
     <div className="skills">
       <div className="h">Shipped with Duet</div>
       {skills.filter((s) => s.source === "shipped").map(row)}
+      <div className="soon">
+        <b>More skills are coming soon.</b> Duet is in early access. More skills made for Duet arrive with the next updates.
+      </div>
       <div className="h">Mine</div>
       {mine.length === 0 && !adding && <div className="empty">Rules of your own, saved for every project.</div>}
       {mine.map(row)}
@@ -96,7 +99,7 @@ export default function SkillsPanel() {
           {note && <div className="pop-note pad">{note}</div>}
         </>
       )}
-      <div className="hint">Turned-on skills are given to Duet every time you chat. More skills are coming soon.</div>
+      <div className="hint">Turned-on skills are given to Duet every time you chat.</div>
     </div>
   );
 }

@@ -151,6 +151,7 @@ export default function Home({ onClose }: { onClose: () => void }) {
       <aside className="home-side">
         <div className="home-title">
           Du<b>et</b>
+          <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
         </div>
         <button className="pill primary wide" onClick={make}>
           New project
