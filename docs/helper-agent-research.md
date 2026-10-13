@@ -42,6 +42,7 @@ Keep it fair: same task text, a fresh branch from the same starting point, no ex
 | 13 Oct 2026 | 47, drag marks | gemini-3.8-flash-high | 9 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 462,188 helper tokens. Branch `helper/47-drag-marks`. |
 | 13 Oct 2026 | 45, motion panel | gemini-3.8-flash-high | 12 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 494,602 helper tokens. Branch `helper/45-motion-panel`. |
 | 13 Oct 2026 | 50, snap menu | gemini-3.8-flash-high | 18 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 513,606 helper tokens. Branch `helper/50-snap-menu`. |
+| 13 Oct 2026 | 25, one line | gemini-3.8-flash-high | 11 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 328,507 helper tokens. Branch `helper/25-one-line`. |
 
 ## What has been learned
 

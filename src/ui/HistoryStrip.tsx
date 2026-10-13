@@ -1,3 +1,4 @@
+import { agentColour, whoColour } from "../ai/colours";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useDismiss } from "./useDismiss";
 import { saveVersion } from "../project/project";
@@ -11,21 +12,9 @@ const OLD_STEP = 10;
 const PAD = 16;
 const Y = 24;
 
-const AI_PALETTE = ["#35c9b5", "#5aa9ff", "#e6c14a", "#c58bff", "#7ed957"];
-
-function hashColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) {
-    h = (h * 31 + name.charCodeAt(i)) | 0;
-  }
-  return AI_PALETTE[(h >>> 0) % AI_PALETTE.length];
-}
-
 function outlineFor(actor: Actor, by?: string, version?: string): string {
   if (version) return "#fff";
-  if (actor === "you") return "var(--text)";
-  if (!by) return "var(--duet)";
-  return hashColor(by);
+  return whoColour(actor, by);
 }
 
 function getX(i: number, len: number): number {
@@ -86,7 +75,7 @@ export default function HistoryStrip() {
         seenAi.add(aiName);
         legendItems.push({
           name: aiName,
-          color: e.by ? hashColor(e.by) : "var(--duet)",
+          color: e.by ? agentColour(e.by) : "var(--duet)",
         });
       }
     }
