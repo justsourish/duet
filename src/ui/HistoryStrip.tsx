@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useDismiss } from "./useDismiss";
 import { saveVersion } from "../project/project";
+import { useChat } from "../ai/chat";
+import { wordsBehind } from "../memory/steps";
 import { goTo, redo, restoreDoc, undo, useStore } from "../state/store";
 
 const STEP = 30;
@@ -12,6 +14,8 @@ const timeText = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-
 export default function HistoryStrip() {
   const timeline = useStore((s) => s.timeline);
   const cursor = useStore((s) => s.cursor);
+  const said = useChat((s) => s.messages);
+  const earlier = useChat((s) => s.earlier);
   const scroller = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useDismiss(open, () => setOpen(false), ".popover, [data-toggle=\"versions\"]");
@@ -70,8 +74,10 @@ export default function HistoryStrip() {
               style={{ left: x(i), top: y(i) }}
               onMouseEnter={(ev) => {
                 const r = ev.currentTarget.getBoundingClientRect();
+                const words = wordsBehind(said, e) ?? wordsBehind(earlier, e);
+                const asked = words ? ` · You asked: “${words.length > 90 ? `${words.slice(0, 89).trimEnd()}…` : words}”` : "";
                 setTip({
-                  text: `${e.version ? `Version: ${e.version}. ` : ""}${e.label} · ${e.actor === "ai" ? "Duet" : "You"} · ${timeText(e.time)}`,
+                  text: `${e.version ? `Version: ${e.version}. ` : ""}${e.label} · ${e.actor === "ai" ? "Duet" : "You"} · ${timeText(e.time)}${asked}`,
                   x: r.left + r.width / 2,
                   y: r.top,
                 });

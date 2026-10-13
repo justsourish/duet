@@ -27,6 +27,8 @@ export interface Msg {
   /** History step this change created, so Undo can take it back. */
   undoStep?: number;
   undone?: boolean;
+  /** The name of the history step this change created. Unlike undoStep, it still means the same step after the project is opened again. */
+  step?: string;
 }
 
 /** A picture the designer gave the AI with a message. It is never part of the design. */

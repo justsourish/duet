@@ -18,6 +18,8 @@ export interface Said {
   pictures?: number[];
   /** The designer took this change back. */
   undone?: boolean;
+  /** The name of the history step this change led to. */
+  step?: string;
 }
 
 export interface Thread {
@@ -36,6 +38,7 @@ export interface Speaking {
   approval?: { summary: string; status: string };
   pictures?: number[];
   undone?: boolean;
+  step?: string;
 }
 
 /** How many things a project remembers. Older ones are let go, earlier conversations first. */
@@ -60,6 +63,7 @@ export function keepable(messages: Speaking[], now = Date.now()): Said[] {
     if (m.approval) said.approval = { summary: m.approval.summary, status: m.approval.status === "allowed" ? "allowed" : "declined" };
     if (m.pictures?.length) said.pictures = m.pictures;
     if (m.undone) said.undone = true;
+    if (typeof m.step === "string" && m.step) said.step = m.step;
     out.push(said);
   }
   return out;

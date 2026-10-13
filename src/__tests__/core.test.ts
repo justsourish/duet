@@ -3,7 +3,8 @@ import { runCommand } from "../commands";
 import { descendants, frameAt, hitTest, snapRect, topLevelOnly, worldPos, worldRect } from "../document/geometry";
 import { emptyDoc } from "../document/types";
 import { picturesIn } from "../project/assets";
-import { copyNameFor } from "../project/project";
+import { copyNameFor, stepMessage, stepsToKeep } from "../project/project";
+import { findStep, newStepId, stepsLine, wordsBehind } from "../memory/steps";
 import { leftOut } from "../ui/SendCopy";
 import { defaultLayout, relayout } from "../document/layout";
 import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
@@ -1979,5 +1980,76 @@ describe("send a copy", () => {
     expect(leftOut(true, false)).toContain("leaves out your conversation");
     expect(leftOut(false, true)).toContain("leaves out the earlier steps");
     expect(leftOut(true, true)).not.toContain("leaves out");
+  });
+});
+
+describe("words tied to steps", () => {
+  it("gives every new step a name of its own", () => {
+    resetStore();
+    dispatch("create_element", { id: "a", type: "rect", x: 0, y: 0, width: 10, height: 10 });
+    dispatch("create_element", { id: "b", type: "rect", x: 0, y: 0, width: 10, height: 10 }, "ai");
+    const [, one, two] = getState().timeline;
+    expect(one.step).toMatch(/^[0-9a-f]{12}$/);
+    expect(two.step).not.toBe(one.step);
+    expect(newStepId()).not.toBe(newStepId());
+  });
+
+  it("keeps the names with the saved step, the step's own name last", () => {
+    expect(stepMessage({ label: "Move logo", actor: "ai" }, false, ["aaaaaa", "bbbbbb"])).toBe("Move logo\n\nActor: ai\nSteps: aaaaaa bbbbbb");
+    // a step with no name is saved the way it always was
+    expect(stepMessage({ label: "Move logo", actor: "you" }, true)).toBe("Went back to: Move logo\n\nActor: you");
+    // nothing but a plain name ever gets into the line
+    expect(stepsLine(["aaaaaa", "Actor: ai", "bb\nbb", "aaaaaa"])).toBe("Steps: aaaaaa");
+  });
+
+  it("saves quick steps together, and only the ones no saved step holds yet", () => {
+    const timeline = [{}, { step: "aaaaaa" }, { step: "bbbbbb" }, { step: "cccccc" }];
+    expect(stepsToKeep(timeline, 3, new Set(["aaaaaa"]))).toEqual(["bbbbbb", "cccccc"]);
+    // gone back one: the step ahead is not part of what is being saved
+    expect(stepsToKeep(timeline, 2, new Set())).toEqual(["aaaaaa", "bbbbbb"]);
+    expect(stepsToKeep(timeline, 3, new Set(["aaaaaa", "bbbbbb", "cccccc"]))).toEqual([]);
+  });
+
+  it("finds a step by its name, or by the saved step that holds it, and nothing otherwise", () => {
+    const timeline = [{}, { step: "cccccc", covers: ["aaaaaa", "bbbbbb"] }, { step: "dddddd" }];
+    expect(findStep(timeline, "dddddd")).toBe(2);
+    expect(findStep(timeline, "aaaaaa")).toBe(1);
+    expect(findStep(timeline, "eeeeee")).toBe(-1);
+    expect(findStep(timeline, undefined)).toBe(-1);
+  });
+
+  it("shows the words behind a step, and stays quiet when there are none", () => {
+    const said = [
+      { role: "you", text: "make the headline bigger" },
+      { role: "duet", text: "On it." },
+      { role: "note", text: "Changed the size", step: "aaaaaa" },
+      { role: "break", text: "" },
+      { role: "note", text: "Moved it", step: "bbbbbb" },
+    ];
+    expect(wordsBehind(said, { step: "aaaaaa" })).toBe("make the headline bigger");
+    expect(wordsBehind(said, { step: "zzzzzz", covers: ["aaaaaa"] })).toBe("make the headline bigger");
+    // a step you made yourself, and one whose request is in another conversation
+    expect(wordsBehind(said, { step: "cccccc" })).toBeNull();
+    expect(wordsBehind(said, { step: "bbbbbb" })).toBeNull();
+    expect(wordsBehind(said, {})).toBeNull();
+  });
+
+  it("keeps the step with a message when the conversation is saved and read back", () => {
+    const kept = keepable([{ role: "note", text: "Changed the size", time: 1, step: "aaaaaa" }]);
+    expect(readThread(packThread({ now: kept, earlier: [] })).now[0].step).toBe("aaaaaa");
+  });
+
+  it("an AI change remembers its step, and still does after the project is put away and brought back", () => {
+    resetStore();
+    showConversationFor("/steps.duet", true);
+    dispatch("create_element", { id: "a", type: "rect", x: 0, y: 0, width: 10, height: 10 }, "ai");
+    const step = getState().timeline[getState().cursor].step;
+    addMsg({ role: "note", text: "Made a box", undoStep: getState().cursor, step });
+    showConversationFor("/other.duet");
+    showConversationFor("/steps.duet");
+    const back = getChat().messages[0];
+    expect(back.undoStep).toBeUndefined();
+    expect(back.step).toBe(step);
+    expect(findStep(getState().timeline, back.step)).toBe(1);
   });
 });

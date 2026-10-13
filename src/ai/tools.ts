@@ -437,9 +437,15 @@ async function placeImage(args: Args): Promise<ToolResult> {
   await ensureSaved();
   dispatch("create_element", { type: "image", id: String(args.id), parentId: args.parentId as string | null, x: Number(args.x), y: Number(args.y), width, height, props: { src: pic.src, name } }, "ai");
   if (!currentDoc().elements[String(args.id)]) return fail("The picture could not be placed there.");
-  addMsg({ role: "note", text: `Brought in the picture ${file}`, undoStep: getState().cursor });
+  addMsg({ role: "note", text: `Brought in the picture ${file}`, ...stepNow() });
   void saveNow();
   return { text: `Placed the picture as ${String(args.id)} named "${name}", ${width} by ${height} (the file is ${pic.width} by ${pic.height}). Call look_at_image to see it.` };
+}
+
+/** The step a change has just made: where it is for Undo, and its name so the words stay tied to it. */
+function stepNow() {
+  const s = getState();
+  return { undoStep: s.cursor, step: s.timeline[s.cursor].step };
 }
 
 /** Trace a picture into shapes, as one step the designer can undo. */
@@ -448,7 +454,7 @@ async function traceImage(args: Args): Promise<ToolResult> {
   const name = nameOf(args.id);
   const result = await tracePicture(String(args.id), "ai");
   if ("why" in result) return fail(result.why);
-  addMsg({ role: "note", text: `Traced ${name} into shapes`, undoStep: getState().cursor });
+  addMsg({ role: "note", text: `Traced ${name} into shapes`, ...stepNow() });
   void saveNow();
   const where = result.groupId ? `, together in the group ${result.groupId}` : "";
   return { text: `Made ${result.ids.length} ${result.ids.length === 1 ? "path" : "paths"}: ${result.ids.join(", ")}${where}. They sit exactly over the picture, which is still there. Change their fill with set_props.` };
@@ -460,8 +466,7 @@ async function apply(tool: string, args: Args): Promise<ToolResult> {
   await ensureSaved();
   const label = commandLabel(tool as CommandName, args as never);
   dispatch(tool as CommandName, args as never, "ai");
-  const step = getState().cursor;
-  addMsg({ role: "note", text: summarise(tool, args), undoStep: step });
+  addMsg({ role: "note", text: summarise(tool, args), ...stepNow() });
   void saveNow();
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
   if (tool === "make_mask") {

@@ -8,7 +8,8 @@ import type { ModelChoice } from "../ai/chat";
 import type { AgentId } from "../ai/chat";
 import type { Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
-import { useStore } from "../state/store";
+import { findStep } from "../memory/steps";
+import { goTo, useStore } from "../state/store";
 import ConnectAi from "./ConnectAi";
 import Icon from "./Icons";
 import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
@@ -48,6 +49,7 @@ export default function ChatPanel() {
   }, [agent, agyModels.length]);
   const modelList = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
   const cursor = useStore((s) => s.cursor);
+  const timeline = useStore((s) => s.timeline);
   const place = useLayout((d) => d.chat);
   const chatW = useLayout((d) => d.chatW);
   const chatH = useLayout((d) => d.chatH);
@@ -319,6 +321,14 @@ export default function ChatPanel() {
                       </span>
                     )}
                     {m.undone && <em> Undone</em>}
+                    {(() => {
+                      const at = findStep(timeline, m.step);
+                      return at >= 0 && at !== cursor && !m.undone ? (
+                        <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
+                          Show this step
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                 );
               return <div key={m.id} className="m">{m.text}</div>;

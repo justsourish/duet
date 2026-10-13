@@ -1,3 +1,4 @@
+import { newStepId } from "../memory/steps";
 import type { AbsNode } from "../document/path";
 import { useSyncExternalStore } from "react";
 import { commandLabel, runCommand } from "../commands";
@@ -15,6 +16,10 @@ export interface HistoryEntry {
   time: number;
   /** Set when this moment has been given a name, like "Client round 1". */
   version?: string;
+  /** The step's own name, so what was said can point at it. */
+  step?: string;
+  /** Names of quick steps that were saved together with this one. */
+  covers?: string[];
 }
 
 export interface Viewport {
@@ -114,7 +119,7 @@ function commit(doc: Doc, label: string, actor: Actor) {
     set({ transientDoc: null });
     return;
   }
-  const timeline = state.timeline.slice(0, state.cursor + 1).concat({ doc, label, actor, time: Date.now() });
+  const timeline = state.timeline.slice(0, state.cursor + 1).concat({ doc, label, actor, time: Date.now(), step: newStepId() });
   set({
     timeline,
     cursor: timeline.length - 1,

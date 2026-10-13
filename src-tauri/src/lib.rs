@@ -327,6 +327,8 @@ struct HistoryItem {
     actor: String,
     doc: String,
     versions: Vec<String>,
+    /// The names of the steps saved here, its own name last. Empty for steps saved before they had names.
+    steps: Vec<String>,
 }
 
 /// The saved steps of a project, oldest first, each with the design as it was then.
@@ -395,6 +397,7 @@ fn git_history(path: String, limit: usize) -> Result<Vec<HistoryItem>, String> {
             actor: actor.to_string(),
             doc,
             versions: named.get(&oid).cloned().unwrap_or_default(),
+            steps: message.lines().find_map(|l| l.trim().strip_prefix("Steps:")).map(|s| s.split_whitespace().map(String::from).collect()).unwrap_or_default(),
         });
     }
     items.reverse();
@@ -513,6 +516,23 @@ mod tests {
         assert_eq!(h[1].label, "Add rectangle");
         assert_eq!(h[1].actor, "ai");
         assert_eq!(h[1].doc, "{\"n\":2}");
+    }
+
+    #[test]
+    fn hands_back_the_names_of_the_steps_saved_together() {
+        let p = project("names");
+        write(&p, "{\"n\":1}");
+        git_prepare(p.clone()).unwrap();
+        // a step saved before steps had names
+        assert!(git_commit(p.clone(), "Start of project\n\nActor: you".into()).unwrap());
+        write(&p, "{\"n\":2}");
+        assert!(git_commit(p.clone(), "Move logo\n\nActor: ai\nSteps: aaaaaa bbbbbb".into()).unwrap());
+
+        let h = git_history(p.clone(), 50).unwrap();
+        assert!(h[0].steps.is_empty());
+        assert_eq!(h[1].steps, vec!["aaaaaa", "bbbbbb"]);
+        assert_eq!(h[1].actor, "ai");
+        assert_eq!(h[1].label, "Move logo");
     }
 
     #[test]

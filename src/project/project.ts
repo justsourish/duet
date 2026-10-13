@@ -8,6 +8,7 @@ import { DesignFileError, parseDoc, serializeDoc } from "../document/serialize";
 import { readyToLeave } from "../ai/agent";
 import { conversationProject, getChat, moveConversationTo, restoreConversation, showConversationFor, subscribeChat } from "../ai/chat";
 import { loadThread, saveThread } from "../memory/files";
+import { stepsLine } from "../memory/steps";
 import { keepable, packThread, readThread } from "../memory/thread";
 import { getState, loadDoc, loadTimeline, setEntryVersion, setProject, subscribe } from "../state/store";
 import type { HistoryEntry } from "../state/store";
@@ -225,17 +226,27 @@ async function writeDesign(path: string, doc: Doc) {
 }
 
 /** The text stored with each saved step. The first line is what the history strip shows. */
-function stepMessage(entry: HistoryEntry, wentBack: boolean) {
+export function stepMessage(entry: Pick<HistoryEntry, "label" | "actor">, wentBack: boolean, names: string[] = []) {
   const label = wentBack ? `Went back to: ${entry.label}` : entry.label;
-  return `${label}\n\nActor: ${entry.actor}`;
+  const steps = stepsLine(names);
+  return `${label}\n\nActor: ${entry.actor}${steps ? `\n${steps}` : ""}`;
 }
 
-/** Record the current design as a saved step. Never blocks or fails the save itself. */
-async function recordStep(path: string, text: string) {
+/** Names of steps that are already kept in a saved step of the open project. */
+let stepsKept = new Set<string>();
+
+/** The names of the steps up to here that no saved step holds yet, oldest first, so this one's own name comes last. */
+export function stepsToKeep(timeline: Pick<HistoryEntry, "step">[], cursor: number, kept: Set<string>): string[] {
+  return timeline.slice(0, cursor + 1).flatMap((e) => (e.step && !kept.has(e.step) ? [e.step] : []));
+}
+
+/** Record the current design as a saved step. Never blocks or fails the save itself. Says whether a step was made. */
+async function recordStep(path: string, text: string): Promise<boolean> {
   try {
-    await invoke("git_commit", { path, message: text });
+    return (await invoke<boolean>("git_commit", { path, message: text })) === true;
   } catch (e) {
     console.warn("History could not record this step:", e);
+    return false;
   }
 }
 
@@ -262,7 +273,8 @@ export function saveNow(): Promise<void> {
     setProject({ status: "saving", error: null });
     try {
       await writeDesign(path, doc);
-      await recordStep(path, stepMessage(entry, wentBack));
+      const names = stepsToKeep(s.timeline, s.cursor, stepsKept);
+      if (await recordStep(path, stepMessage(entry, wentBack, names))) for (const n of names) stepsKept.add(n);
       schedulePack();
       setProject({ status: committed() === doc ? "saved" : "unsaved" });
     } catch (e) {
@@ -303,6 +315,7 @@ async function chooseFile(title: string): Promise<string | null> {
 
 /** Make the project file and its working copy from a design. */
 async function createProject(picked: string, doc: Doc, label: string) {
+  stepsKept = new Set();
   const work = await invoke<string>("fresh_work_dir", { file: picked });
   await writeDesign(work, doc);
   await startHistory(work, label);
@@ -371,6 +384,7 @@ interface HistoryItem {
   actor: string;
   doc: string;
   versions: string[];
+  steps?: string[];
 }
 
 /** The saved steps of this project, oldest first. Empty if there is no history yet. */
@@ -380,12 +394,16 @@ async function readHistory(path: string): Promise<HistoryEntry[]> {
     const out: HistoryEntry[] = [];
     for (const i of items) {
       try {
+        const names = i.steps ?? [];
         out.push({
           doc: parseDoc(i.doc),
           label: i.label,
           actor: i.actor === "ai" ? "ai" : "you",
           time: i.time * 1000,
           version: i.versions[0],
+          // a step saved before steps had names is known by what its saved step is called
+          step: names.length ? names[names.length - 1] : i.hash,
+          covers: names.length > 1 ? names.slice(0, -1) : undefined,
         });
       } catch {
         /* skip a step whose file we cannot read */
@@ -407,6 +425,7 @@ async function loadFrom(path: string, quiet: boolean, file: string): Promise<boo
     }
     const doc = parseDoc(await invoke<string>("read_text_file", { path: design }));
     const entries = await readHistory(path);
+    stepsKept = new Set(entries.flatMap((e) => [e.step, ...(e.covers ?? [])].filter((n): n is string => !!n)));
     await flushPack(); // what was said in the project being left goes into its file first
     showConversationFor(file);
     await bringBackThread(path);
