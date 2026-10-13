@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cuttable, newId, runCommand } from "../commands";
-import { ENTRANCES, entranceOf, spanOf } from "../document/time";
-import type { Entrance } from "../document/time";
+import { spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
 import type { Doc, El } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, getState, restoreDoc, select, useStore } from "../state/store";
@@ -17,16 +16,6 @@ const NAMES = 150;
 const SHORTEST = 0.1;
 
 const clockText = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
-
-const ENTRANCE_NAMES: Record<Entrance, string> = {
-  none: "Straight away",
-  fade: "Fade",
-  "slide-left": "Slide from the right",
-  "slide-right": "Slide from the left",
-  "slide-up": "Slide up",
-  "slide-down": "Slide down",
-  grow: "Grow",
-};
 
 /** The frame on the page that holds this thing. */
 function pageFrame(doc: Doc, id: string | undefined): El | null {
@@ -232,7 +221,6 @@ export default function TimeStrip() {
           })),
         ];
 
-  const picked = selection.length === 1 && selection[0] !== frame.id && pageFrame(doc, selection[0])?.id === frame.id ? doc.elements[selection[0]] : null;
 
   const scrub = (e: React.PointerEvent) => {
     const box = e.currentTarget.getBoundingClientRect();
@@ -525,33 +513,6 @@ export default function TimeStrip() {
         <button className="pill" data-name="add-sound" onClick={() => void bring("sound")} title="Bring in music or a voice. It is heard from the moment the clock is on">
           Add sound
         </button>
-        {picked && (
-          <>
-            <b className="time-picked" title="What is selected">
-              {picked.name}
-            </b>
-            <label title="How it arrives when it appears">
-              Arrives
-              <select data-name="arrives" value={entranceOf(picked, frame, "in")} onChange={(e) => dispatch("set_entrance", { ids: [picked.id], when: "in", kind: e.target.value as Entrance })}>
-                {ENTRANCES.map((k) => (
-                  <option key={k} value={k}>
-                    {ENTRANCE_NAMES[k]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label title="How it goes when it leaves">
-              Leaves
-              <select data-name="leaves" value={entranceOf(picked, frame, "out")} onChange={(e) => dispatch("set_entrance", { ids: [picked.id], when: "out", kind: e.target.value as Entrance })}>
-                {ENTRANCES.map((k) => (
-                  <option key={k} value={k}>
-                    {ENTRANCE_NAMES[k]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
-        )}
         <span className="spacer" />
         <div className="time-zoom">
           <button
