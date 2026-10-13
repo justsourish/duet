@@ -44,6 +44,7 @@ Keep it fair: same task text, a fresh branch from the same starting point, no ex
 | 13 Oct 2026 | 50, snap menu | gemini-3.8-flash-high | 18 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 513,606 helper tokens. Branch `helper/50-snap-menu`. |
 | 13 Oct 2026 | 25, one line | gemini-3.8-flash-high | 11 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 328,507 helper tokens. Branch `helper/25-one-line`. |
 | 13 Oct 2026 | 55, agents row | gemini-3.8-flash-high | 12 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 388,294 helper tokens. Branch `helper/55-agents-row`. |
+| 13 Oct 2026 | 55, calm chat | gemini-3.8-flash-high | 15 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 441,870 helper tokens. Branch `helper/55-calm-chat`. |
 
 ## What has been learned
 
