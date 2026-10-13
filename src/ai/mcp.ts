@@ -14,6 +14,8 @@ interface Rpc {
 }
 
 let version = "";
+/** Tools for building Duet itself. Only the build Duet is developed with loads them. */
+let builder: typeof import("./builder") | null = null;
 
 async function answer(rpc: Rpc): Promise<unknown> {
   switch (rpc.method) {
@@ -28,10 +30,10 @@ async function answer(rpc: Rpc): Promise<unknown> {
     case "ping":
       return {};
     case "tools/list":
-      return { tools: TOOLS };
+      return { tools: builder ? [...TOOLS, ...builder.BUILDER_TOOLS] : TOOLS };
     case "tools/call": {
       const name = String(rpc.params?.name ?? "");
-      const result = await callTool(name, rpc.params?.arguments);
+      const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments) : await callTool(name, rpc.params?.arguments);
       const content: Record<string, unknown>[] = [{ type: "text", text: result.text }];
       if (result.image) content.push({ type: "image", data: result.image.data, mimeType: result.image.mime });
       return { content, isError: !!result.isError };
@@ -43,6 +45,10 @@ async function answer(rpc: Rpc): Promise<unknown> {
 
 export async function startMcp(): Promise<() => void> {
   version = await getVersion().catch(() => "");
+  if (import.meta.env.DEV) {
+    builder = await import("./builder");
+    builder.watchErrors();
+  }
   // The bridge answers from this while Duet is closed, so an outside AI tool that starts first
   // still learns what Duet can do, and only has to be told to open Duet.
   void invoke("write_agent_file", { name: "bridge.json", body: JSON.stringify({ version, instructions: outsideRules(), tools: TOOLS }) }).catch(() => undefined);

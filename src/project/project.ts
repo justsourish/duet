@@ -377,6 +377,52 @@ async function newProjectDialog() {
   }
 }
 
+// ---- a test design, for building Duet ----
+
+const TEST_NAME = "Test design";
+/** The project file that was put away when a test design started. */
+let leftForTest: string | null = null;
+let inTest = false;
+
+export const inTestDesign = () => inTest;
+
+/**
+ * Put the open project away and start a design that has no file, so nothing a test does is saved anywhere.
+ * Returns a short message if it could not be done.
+ */
+export async function startTestDesign(doc: Doc = emptyDoc()): Promise<string | null> {
+  const s = getState();
+  if (!inTest) {
+    if (!s.project.path && s.timeline.length > 1) return "There is work here that has not been saved. Save it first.";
+    // no question on the screen here: whoever asked for a test design cannot answer one
+    if (getChat().running) return "The AI in the chat is still working. Wait for it or stop it first.";
+    clearTimeout(timer);
+    // a change still waiting to be saved belongs to the project being put away
+    if (s.project.path && committed() !== lastSaved) await saveNow();
+    await flushPack();
+    leftForTest = s.project.file;
+  }
+  inTest = true;
+  showConversationFor(TEST_NAME, true);
+  loadDoc(doc, TEST_NAME);
+  lastSaved = committed();
+  setProject({ path: null, file: null, name: TEST_NAME, status: "unsaved", error: null });
+  return null;
+}
+
+/** Throw the test design away and bring back the project that was open before it. */
+export async function leaveTestDesign(): Promise<string | null> {
+  if (!inTest) return "There is no test design open.";
+  inTest = false;
+  const back = leftForTest;
+  leftForTest = null;
+  loadDoc(emptyDoc(), "New file");
+  lastSaved = committed();
+  setProject({ path: null, file: null, name: "Untitled", status: "unsaved", error: null });
+  if (back && inTauri() && !(await openAny(back, true))) return `The project at ${back} could not be opened again.`;
+  return null;
+}
+
 interface HistoryItem {
   hash: string;
   time: number;

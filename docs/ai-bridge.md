@@ -70,6 +70,23 @@ What the bridge does when Duet is not there:
 
 By hand, without the bridge: read `~/.duet/session.json`, then POST to `http://127.0.0.1:<port>/mcp` with the header `Authorization: Bearer <token>`.
 
+## Builder tools, for building Duet itself
+
+These are not for designers. They let an AI that works on Duet's code check the interface without a person clicking through it. Only the build Duet is developed with (`npm run tauri dev`) has them: `src/ai/mcp.ts` loads `src/ai/builder.ts` only there, and the downloaded app does not contain the file. Their names all start with `dev_`.
+
+- `dev_guide`: how to use the rest. Read it once.
+- `dev_test_design`: puts the open project away and starts a clean design with no file, so nothing a check does is saved. With `sample` it starts with a frame that holds a shape and a group, and a plain shape beside it. `dev_leave_test_design` throws it away and brings the project back.
+- `dev_read_interface`: what the panels show, as numbered lines of words (buttons, boxes, rows, tabs and text, with their style names and values). Words, not a picture, so it costs little. `filter` narrows it.
+- `dev_press`, `dev_type`, `dev_key`: press something by name or line number, write in a box, press a key.
+- `dev_errors`: errors and warnings since the last look.
+- `dev_reload`: loads the interface again after Duet's code has changed.
+
+They press the interface the way a hand does, so the permission levels do not apply to them. That is why they are kept out of the app a designer downloads.
+
+They cannot draw on the canvas by dragging, drag a layer, or answer a window from the system such as Save. They give no picture of the whole window. Checked on 13 October 2026 against the running app: a test design opened and closed with the real project untouched, a tab was switched, a layer was selected, a position was typed and undone, and a tool was picked by key.
+
+To call them without an AI tool, see "How to test an agent against the live app without clicking" in `docs/next-steps.md`.
+
 ## Checked
 
 On 8 October 2026, Claude Code 2.1.293, started with the same settings the chat uses, connected, read an empty canvas, and built a frame with a rounded button and a centred label. Antigravity 1.3.1 connected through the bridge and read the canvas. The bad-token, wrong-path, unknown-tool and missing-id cases all return clear errors.

@@ -64,6 +64,10 @@ The chat shows bold, code and lists in what the AI writes (`src/ui/rich.tsx`), 1
 
 Small, safe tasks go to a cheaper agent. The rules are in `AGENTS.md` under "If you are a helper agent". A check in `.githooks/pre-commit` runs before every save: it refuses failing tests, and on a `helper/` branch it refuses changes to saving, history, the file format, memory and permissions. Switch it on in a fresh copy with `git config core.hooksPath .githooks`. Tasks are issue comments titled "Task for a helper agent", on issues with the label `helper task`. The first three are issues 16, 6 and 9, in that order. Each ends with a click list for the creator. Review by reading the list of changed files, and open a file only when it is a risky one.
 
+### Builder tools, so an AI can check the interface itself
+
+Done on 13 October 2026 (issue 41), not yet in a version. An AI that works on Duet can start a clean test design, read the panels as words, press things and read errors, through the same bridge as the design tools. Only the build Duet is developed with has them. See "Builder tools" in `docs/ai-bridge.md`, and `src/ai/builder.ts`. The test design is `startTestDesign` in `src/project/project.ts`. Use them to check interface work, including a helper's, before asking the creator to click. Still open: dragging on the canvas and in the layers, and a picture of the whole window.
+
 ### Waiting for the next version: the website docs
 
 Written 12 Oct 2026. The website repo has a `docs` branch (one commit on top of `main`, not pushed, not deployed) with a Docs section: eleven Markdown pages in `src/content/docs/`, built the same way as Updates. They describe the build on `main` here, which is ahead of the 0.3.1 download (rotation, the zoom tool, masks, trace, see-through pictures, anything as a component). So they must go live together with the version bump, not before. At the bump: merge `docs` into `main` in the site repo, check each page against the app, update `src/content/status.ts`, run `npm run release:sync`, write the update post, then deploy. The creator decides when.
