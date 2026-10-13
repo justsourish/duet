@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { outsideRules } from "./rules";
 import { outsideWorking } from "./outside";
 import { TOOLS, callTool } from "./tools";
-import { fromChat, toolName } from "./who";
+import { fromChat, OUTSIDE, toolName } from "./who";
 
 /** Answers the questions agents ask over MCP. Duet owns the design, so the answers come from here. */
 
@@ -36,9 +36,11 @@ async function answer(rpc: Rpc, client?: string | null): Promise<unknown> {
       return { tools: builder ? [...TOOLS, ...builder.BUILDER_TOOLS] : TOOLS };
     case "tools/call": {
       const name = String(rpc.params?.name ?? "");
-      const by = toolName(client);
+      const tool = toolName(client);
+      // a step remembers who made it, and whether that AI worked from its own window
+      const by = tool && !fromChat(client) ? tool + OUTSIDE : tool;
       // only a change counts as working: looking at the design, or a builder tool, does not
-      if (by && !fromChat(client) && !/^(get_|look_|select_|dev_)/.test(name)) outsideWorking(by);
+      if (tool && !fromChat(client) && !/^(get_|look_|select_|dev_)/.test(name)) outsideWorking(tool);
       const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments, by) : await callTool(name, rpc.params?.arguments, by);
       const content: Record<string, unknown>[] = [{ type: "text", text: result.text }];
       if (result.image) content.push({ type: "image", data: result.image.data, mimeType: result.image.mime });

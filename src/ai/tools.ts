@@ -290,7 +290,8 @@ export function summarise(tool: string, a: Args): string {
       const p = (a.props ?? {}) as Record<string, unknown>;
       // a new outline is a long list of points: say what it is instead of spelling it out
       if ("nodes" in p || "d" in p) return `Redraw the shape of ${namesOf(a.ids)}`;
-      return `Change ${namesOf(a.ids)}: ${Object.entries(p).map(([k, v]) => `${k} ${String(v)}`).join(", ")}`;
+      // a shadow or a gradient is said by its name, not spelled out
+      return `Change ${namesOf(a.ids)}: ${Object.entries(p).map(([k, v]) => (v && typeof v === "object" ? k : `${k} ${String(v)}`)).join(", ")}`;
     }
     case "move_elements":
       return `Move ${namesOf(a.ids)} by ${String(a.dx)}, ${String(a.dy)}`;

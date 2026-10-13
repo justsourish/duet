@@ -18,6 +18,12 @@ export const FROM_CHAT = "chat:";
 
 export const fromChat = (client: string | null | undefined) => !!client && client.startsWith(FROM_CHAT);
 
+/** Added to the name kept on a step when the AI worked from its own window, not from Duet's chat. */
+export const OUTSIDE = " (outside)";
+export const isOutside = (by: string | null | undefined) => !!by && by.endsWith(OUTSIDE);
+/** The name without that mark. */
+export const plainName = (by: string) => (by.endsWith(OUTSIDE) ? by.slice(0, -OUTSIDE.length) : by);
+
 /** The name to show for an AI tool, or undefined when it did not say who it is. */
 export function toolName(client: string | null | undefined): string | undefined {
   const raw = (client ?? "").replace(FROM_CHAT, "").trim();

@@ -1,3 +1,4 @@
+import { isOutside, plainName } from "../ai/who";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { sendToAgent, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
@@ -207,8 +208,8 @@ export default function ChatPanel() {
 
   const outsideAgents: string[] = [];
   for (const e of timeline) {
-    if (e.actor === "ai" && e.by && !outsideAgents.includes(e.by)) {
-      outsideAgents.push(e.by);
+    if (e.actor === "ai" && isOutside(e.by) && !outsideAgents.includes(plainName(e.by as string))) {
+      outsideAgents.push(plainName(e.by as string));
     }
   }
 
@@ -433,7 +434,7 @@ export default function ChatPanel() {
               if (m.role === "note") {
                 const noteStepIndex = findStep(timeline, m.step);
                 const noteAgent = (m as any).by || (m as any).name || (noteStepIndex >= 0 ? timeline[noteStepIndex]?.by : undefined) || (m.undoStep !== undefined ? timeline[m.undoStep]?.by : undefined);
-                const col = noteAgent ? agentColour(noteAgent) : undefined;
+                const col = isOutside(noteAgent) ? agentColour(plainName(noteAgent)) : undefined;
                 return (
                   <div
                     key={m.id}

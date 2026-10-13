@@ -1,4 +1,4 @@
-import { agentColour, whoColour } from "../ai/colours";
+import { whoColour } from "../ai/colours";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useDismiss } from "./useDismiss";
 import { saveVersion } from "../project/project";
@@ -75,7 +75,7 @@ export default function HistoryStrip() {
         seenAi.add(aiName);
         legendItems.push({
           name: aiName,
-          color: e.by ? agentColour(e.by) : "var(--duet)",
+          color: whoColour("ai", e.by),
         });
       }
     }
