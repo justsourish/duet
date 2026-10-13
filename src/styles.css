@@ -2364,3 +2364,17 @@ button {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+#busy-note {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: none;
+}

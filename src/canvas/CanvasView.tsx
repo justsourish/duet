@@ -1,5 +1,5 @@
 import { message } from "@tauri-apps/plugin-dialog";
-import { clipKind, dropClips } from "../video/scene";
+import { clipKind, dropClips, keepDropped } from "../video/scene";
 import { setLayout } from "../ui/layout";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { newId, runCommand } from "../commands";
@@ -989,14 +989,22 @@ export default function CanvasView() {
         const files = Array.from(e.dataTransfer.files);
         // a video or a sound is not read into Duet: it is played from where it is, so its place on the computer is needed
         if (files.some((f) => clipKind(f.name))) {
-          const paths = droppedPaths(e.dataTransfer).filter((p) => clipKind(p));
+          const known = droppedPaths(e.dataTransfer).filter((p) => clipKind(p));
+          const clips = files.filter((f) => clipKind(f.name));
           const frame = at ? frameAt(workDoc(), at.x, at.y) : null;
           void (async () => {
-            const problems = !paths.length
-              ? ["Duet could not tell where that file is. Use Add clip in the timeline, in Motion."]
-              : !frame
-                ? ["Drop a clip onto a frame."]
-                : await dropClips(frame, paths).catch((err) => [String(err)]);
+            let paths = known;
+            let problems: string[] = [];
+            try {
+              if (!frame) problems = ["Drop a clip onto a frame."];
+              else {
+                // when the system does not say where the file is, Duet keeps its own copy beside the projects
+                if (!paths.length) paths = await keepDropped(clips);
+                problems = await dropClips(frame, paths);
+              }
+            } catch (err) {
+              problems = [String(err instanceof Error ? err.message : err)];
+            }
             if (paths.length && frame && !problems.length) {
               setLayout({ mode: "motion" });
               select([frame]);

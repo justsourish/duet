@@ -27,6 +27,43 @@ export async function addClips(sceneId: string): Promise<string[]> {
   return placeClips(sceneId, picked === null ? [] : Array.isArray(picked) ? picked : [picked]);
 }
 
+/** A small line at the bottom of the window while something slow is going on. */
+function busy(text: string | null) {
+  let el = document.getElementById("busy-note");
+  if (!text) return el?.remove();
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "busy-note";
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+}
+
+/**
+ * Keep dropped files in the Clips folder beside the projects, and say where each one now is. The
+ * window is handed what is in a dropped file but not where it is, and a clip is played from a file.
+ */
+export async function keepDropped(files: File[]): Promise<string[]> {
+  const paths: string[] = [];
+  const PART = 8 * 1024 * 1024;
+  try {
+    for (const file of files) {
+      const kept = await invoke<{ path: string; already: boolean }>("clip_keep_begin", { name: file.name, size: file.size });
+      if (!kept.already) {
+        for (let from = 0; from < file.size; from += PART) {
+          busy(`Bringing in ${file.name}, ${Math.round((from / file.size) * 100)}%`);
+          await invoke("clip_keep_part", new Uint8Array(await file.slice(from, from + PART).arrayBuffer()));
+        }
+        await invoke("clip_keep_end");
+      }
+      paths.push(kept.path);
+    }
+  } finally {
+    busy(null);
+  }
+  return paths;
+}
+
 /** Whether a file is a video or a sound Duet can bring into a scene, going by its name. */
 export const clipKind = (path: string): "video" | "sound" | null => {
   const ext = (path.split(".").pop() ?? "").toLowerCase();

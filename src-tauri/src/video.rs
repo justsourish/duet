@@ -138,6 +138,64 @@ pub async fn video_export(clips: Vec<Clip>, width: u32, height: u32, out: String
     .map_err(|e| e.to_string())?
 }
 
+// ---------- a clip dropped onto Duet: the window is handed its contents, not where it is ----------
+
+/// The copy being written right now.
+static COPYING: Mutex<Option<std::fs::File>> = Mutex::new(None);
+
+#[derive(Serialize)]
+pub struct Kept {
+    path: String,
+    /// True when a file of this name and size was kept before, so nothing has to be copied.
+    already: bool,
+}
+
+/// Start keeping a dropped clip or sound in the Clips folder beside the projects. Its contents follow
+/// with `clip_keep_part`, and `clip_keep_end` finishes it. A video is played from a file, so it needs a place.
+#[tauri::command]
+pub fn clip_keep_begin(name: String, size: u64) -> Result<Kept, String> {
+    let dir = PathBuf::from(crate::default_projects_dir()?).join("Clips");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // only the name itself, never a way out of the folder
+    let plain: String = name.rsplit(['/', '\\']).next().unwrap_or("clip").chars().filter(|c| !c.is_control()).collect();
+    let plain = if plain.trim().is_empty() || plain.starts_with('.') { format!("clip{plain}") } else { plain };
+    let (stem, ext) = match plain.rsplit_once('.') {
+        Some((s, e)) => (s.to_string(), format!(".{e}")),
+        None => (plain.clone(), String::new()),
+    };
+    let mut path = dir.join(&plain);
+    let mut n = 2;
+    while path.exists() {
+        if std::fs::metadata(&path).map(|m| m.len() == size).unwrap_or(false) {
+            return Ok(Kept { path: path.to_string_lossy().to_string(), already: true });
+        }
+        path = dir.join(format!("{stem} {n}{ext}"));
+        n += 1;
+    }
+    let file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+    *COPYING.lock().map_err(|e| e.to_string())? = Some(file);
+    Ok(Kept { path: path.to_string_lossy().to_string(), already: false })
+}
+
+/// The next part of the clip being kept.
+#[tauri::command]
+pub fn clip_keep_part(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("That was not part of a file.".into());
+    };
+    let mut copying = COPYING.lock().map_err(|e| e.to_string())?;
+    copying.as_mut().ok_or("No clip is being kept.")?.write_all(bytes).map_err(|e| e.to_string())
+}
+
+/// The whole clip has been handed in.
+#[tauri::command]
+pub fn clip_keep_end() -> Result<(), String> {
+    if let Some(mut file) = COPYING.lock().map_err(|e| e.to_string())?.take() {
+        file.flush().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ---------- a frame that plays: its pictures arrive one by one and become one video ----------
 
 #[derive(Deserialize, Clone)]
