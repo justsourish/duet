@@ -37,8 +37,9 @@ async function answer(rpc: Rpc, client?: string | null): Promise<unknown> {
     case "tools/call": {
       const name = String(rpc.params?.name ?? "");
       const by = toolName(client);
-      if (by && !fromChat(client)) outsideWorking(by);
-      const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments) : await callTool(name, rpc.params?.arguments, by);
+      // only a change counts as working: looking at the design, or a builder tool, does not
+      if (by && !fromChat(client) && !/^(get_|look_|select_|dev_)/.test(name)) outsideWorking(by);
+      const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments, by) : await callTool(name, rpc.params?.arguments, by);
       const content: Record<string, unknown>[] = [{ type: "text", text: result.text }];
       if (result.image) content.push({ type: "image", data: result.image.data, mimeType: result.image.mime });
       return { content, isError: !!result.isError };

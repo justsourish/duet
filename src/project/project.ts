@@ -429,10 +429,35 @@ export async function startTestDesign(doc: Doc = emptyDoc()): Promise<string | n
   return null;
 }
 
+/**
+ * Keep the test design as a project file, with no window to ask where. For mockups drawn in Duet dev.
+ * The file must end in .duet and must not be there yet. Returns a short message if it could not be done.
+ */
+export async function keepTestDesign(file: string): Promise<string | null> {
+  if (!inTest) return "There is no test design open.";
+  if (!inTauri()) return "Saving works in the desktop app.";
+  if (!file.toLowerCase().endsWith(".duet")) return "The file name must end in .duet.";
+  if ((await invoke<boolean>("path_exists", { path: file })) === true) return "There is already a file with that name. Pick another name.";
+  const doc = committed();
+  try {
+    const work = await createProject(file, doc, "Start of project");
+    lastSaved = doc;
+    inTest = false;
+    setProject({ path: work, file, name: baseName(file), status: "saved", error: null });
+    await packNow();
+    void writePreview(work, doc);
+    return null;
+  } catch (e) {
+    return String(e);
+  }
+}
+
 /** Throw the test design away and bring back the project that was open before it. */
 export async function leaveTestDesign(): Promise<string | null> {
-  if (!inTest) return "There is no test design open.";
+  // after a test design was kept as a file there is still a project to go back to
+  if (!inTest && !leftForTest && !checkCopy) return "There is no test design open.";
   inTest = false;
+  await flushPack();
   const back = leftForTest;
   leftForTest = null;
   setProject({ path: null, file: null, name: "Untitled", status: "unsaved", error: null });

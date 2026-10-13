@@ -1,6 +1,6 @@
 import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
-import { inTestDesign, leaveTestDesign, startTestDesign } from "../project/project";
+import { inTestDesign, keepTestDesign, leaveTestDesign, startTestDesign } from "../project/project";
 import { getState } from "../state/store";
 import { busyOutside } from "./outside";
 import type { ToolDef, ToolResult } from "./tools";
@@ -43,6 +43,11 @@ export const BUILDER_TOOLS: ToolDef[] = [
     name: "dev_test_design",
     description: "Builder tool. Put the open project away and start a clean test design that is never saved. Call it before any check, so a real project is never touched.",
     inputSchema: { type: "object", properties: { sample: { ...bool, description: "True to start with a frame that holds a shape and a group, and a plain shape beside it." } } },
+  },
+  {
+    name: "dev_keep_test_design",
+    description: "Builder tool. Save the test design as a project file, with no window to ask where. For mockups. Give the full path of a new file that ends in .duet.",
+    inputSchema: { type: "object", properties: { path: str }, required: ["path"] },
   },
   { name: "dev_leave_test_design", description: "Builder tool. Throw the test design away and bring back the project that was open before it.", inputSchema: { type: "object", properties: {} } },
   {
@@ -317,17 +322,22 @@ export function sampleDoc() {
 }
 
 /** Run one builder tool. */
-export async function callBuilderTool(name: string, raw: unknown): Promise<ToolResult> {
+export async function callBuilderTool(name: string, raw: unknown, by?: string): Promise<ToolResult> {
   const a = (raw && typeof raw === "object" ? raw : {}) as Args;
   if (name === "dev_guide") return { text: GUIDE };
   if (name === "dev_test_design") {
     // the design on screen may be someone's real work in progress: never take it away from an AI that is using it
     const busy = inTestDesign() ? null : busyOutside();
-    if (busy) return fail(`${busy} changed this project less than two minutes ago and may still be working on it. A test design would take the project away from it. Wait, or check in another copy of Duet.`);
+    // the one asking is not in its own way
+    if (busy && busy !== by) return fail(`${busy} changed this project less than two minutes ago and may still be working on it. A test design would take the project away from it. Wait, or check in another copy of Duet.`);
     const why = await startTestDesign(a.sample ? sampleDoc() : emptyDoc());
     if (why) return fail(why);
     await settle();
     return { text: `A clean test design is open. Nothing in it is saved.${a.sample ? " It holds a frame (test-frame) with a shape (test-inner) and a group (test-group, holding test-grouped), and a plain shape (test-plain)." : ""} Finish with dev_leave_test_design.` };
+  }
+  if (name === "dev_keep_test_design") {
+    const why = await keepTestDesign(String(a.path ?? ""));
+    return why ? fail(why) : { text: `Saved as ${String(a.path)}. Changes from here on are saved into it.` };
   }
   if (name === "dev_leave_test_design") {
     const why = await leaveTestDesign();
