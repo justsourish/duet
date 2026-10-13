@@ -1,13 +1,40 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useDismiss } from "./useDismiss";
 import { saveVersion } from "../project/project";
 import { useChat } from "../ai/chat";
 import { wordsBehind } from "../memory/steps";
 import { goTo, redo, restoreDoc, undo, useStore } from "../state/store";
+import type { Actor } from "../commands";
 
 const STEP = 30;
-const LANE_Y = { you: 16, ai: 46 };
+const OLD_STEP = 10;
 const PAD = 16;
+const Y = 24;
+
+const AI_PALETTE = ["#35c9b5", "#5aa9ff", "#e6c14a", "#c58bff", "#7ed957"];
+
+function hashColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) | 0;
+  }
+  return AI_PALETTE[(h >>> 0) % AI_PALETTE.length];
+}
+
+function outlineFor(actor: Actor, by?: string, version?: string): string {
+  if (version) return "#fff";
+  if (actor === "you") return "var(--text)";
+  if (!by) return "var(--duet)";
+  return hashColor(by);
+}
+
+function getX(i: number, len: number): number {
+  const cutoff = Math.max(0, len - 40);
+  if (i <= cutoff) {
+    return PAD + i * OLD_STEP;
+  }
+  return PAD + cutoff * OLD_STEP + (i - cutoff) * STEP;
+}
 
 const timeText = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -35,13 +62,13 @@ export default function HistoryStrip() {
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const x = PAD + cursor * STEP;
-    if (x < el.scrollLeft + 20 || x > el.scrollLeft + el.clientWidth - 20) el.scrollLeft = Math.max(0, x - el.clientWidth / 2);
+    const currentX = getX(cursor, timeline.length);
+    if (currentX < el.scrollLeft + 20 || currentX > el.scrollLeft + el.clientWidth - 20) {
+      el.scrollLeft = Math.max(0, currentX - el.clientWidth / 2);
+    }
   }, [cursor, timeline.length]);
 
-  const width = PAD * 2 + Math.max(0, timeline.length - 1) * STEP;
-  const x = (i: number) => PAD + i * STEP;
-  const y = (i: number) => LANE_Y[timeline[i].actor];
+  const width = timeline.length > 0 ? getX(timeline.length - 1, timeline.length) + PAD : PAD * 2;
   const versions = timeline.map((e, i) => ({ e, i })).filter(({ e }) => e.version).reverse();
 
   const submit = async () => {
@@ -50,43 +77,95 @@ export default function HistoryStrip() {
     if (!result) setName("");
   };
 
+  const legendItems: { name: string; color: string }[] = [{ name: "You", color: "var(--text)" }];
+  const seenAi = new Set<string>();
+  for (const e of timeline) {
+    if (e.actor === "ai") {
+      const aiName = e.by ?? "Duet";
+      if (!seenAi.has(aiName)) {
+        seenAi.add(aiName);
+        legendItems.push({
+          name: aiName,
+          color: e.by ? hashColor(e.by) : "var(--duet)",
+        });
+      }
+    }
+  }
+
+  const cutoff = Math.max(0, timeline.length - 40);
+
   return (
     <footer className="hist">
-      <div className="lane-names">
-        <span>You</span>
-        <span className="ai">Duet</span>
+      <div className="hist-legend">
+        {legendItems.map((item) => (
+          <span key={item.name} className="hist-legend-item">
+            <span className="hist-legend-dot" style={{ backgroundColor: item.color }} />
+            <span>{item.name}</span>
+          </span>
+        ))}
       </div>
 
       <div className="scroller" ref={scroller}>
         <div className="lanes" style={{ width }}>
-          <svg width={width} height={62} className="links">
-            <line x1={0} x2={width} y1={LANE_Y.you} y2={LANE_Y.you} className="guide" />
-            <line x1={0} x2={width} y1={LANE_Y.ai} y2={LANE_Y.ai} className="guide" />
-            {timeline.slice(1).map((e, k) => {
-              const i = k + 1;
-              return <line key={i} x1={x(i - 1)} y1={y(i - 1)} x2={x(i)} y2={y(i)} className={`link ${e.actor === "ai" ? "ai" : ""}`} />;
-            })}
+          <svg width={width} height={48} className="links">
+            {timeline.length > 1 && (
+              <line
+                x1={getX(0, timeline.length)}
+                y1={Y}
+                x2={getX(timeline.length - 1, timeline.length)}
+                y2={Y}
+                className="link"
+              />
+            )}
           </svg>
-          {timeline.map((e, i) => (
-            <button
-              key={i}
-              className={`pt ${e.actor === "ai" ? "ai" : ""} ${i === cursor ? "now" : ""} ${i > cursor ? "future" : ""} ${e.version ? "ver" : ""}`}
-              style={{ left: x(i), top: y(i) }}
-              onMouseEnter={(ev) => {
-                const r = ev.currentTarget.getBoundingClientRect();
-                const words = wordsBehind(said, e) ?? wordsBehind(earlier, e);
-                const asked = words ? ` · You asked: “${words.length > 90 ? `${words.slice(0, 89).trimEnd()}…` : words}”` : "";
-                setTip({
-                  text: `${e.version ? `Version: ${e.version}. ` : ""}${e.label} · ${e.actor === "ai" ? (e.by ?? "Duet") : "You"} · ${timeText(e.time)}${asked}`,
-                  x: r.left + r.width / 2,
-                  y: r.top,
-                });
-              }}
-              onMouseLeave={() => setTip(null)}
-              onClick={() => goTo(i)}
-              aria-label={e.label}
-            />
-          ))}
+          {timeline.map((e, i) => {
+            const isOld = i < cutoff;
+            const words = wordsBehind(said, e) ?? wordsBehind(earlier, e);
+            const who = e.actor === "ai" ? (e.by ?? "Duet") : "You";
+            const asked = words ? ` · You asked: “${words.length > 90 ? `${words.slice(0, 89).trimEnd()}…` : words}”` : "";
+            const ringX = getX(i, timeline.length);
+            const outlineColor = outlineFor(e.actor, e.by, e.version);
+            const ringRadius = e.version ? 8 : (isOld ? 4 : 6);
+            const dotTop = Y - ringRadius - 7;
+            const verTop = words ? 0 : 2;
+
+            return (
+              <Fragment key={i}>
+                {e.version && (
+                  <span className={`ver-text ${i > cursor ? "future" : ""}`} style={{ left: ringX, top: verTop }}>
+                    {e.version}
+                  </span>
+                )}
+                {words && (
+                  <span
+                    className={`req-dot ${i > cursor ? "future" : ""}`}
+                    style={{ left: ringX, top: dotTop }}
+                    title="A request started here"
+                    onClick={() => goTo(i)}
+                  />
+                )}
+                <button
+                  className={`pt ${isOld && !e.version ? "old" : ""} ${e.version ? "ver" : ""} ${i === cursor ? "now" : ""} ${i > cursor ? "future" : ""}`}
+                  style={{
+                    left: ringX,
+                    top: Y,
+                    borderColor: outlineColor,
+                  }}
+                  onMouseEnter={(ev) => {
+                    const r = ev.currentTarget.getBoundingClientRect();
+                    setTip({
+                      text: `${who} · ${e.label} · ${timeText(e.time)}${asked}`,
+                      x: r.left + r.width / 2,
+                      y: r.top,
+                    });
+                  }}
+                  onMouseLeave={() => setTip(null)}
+                  onClick={() => goTo(i)}
+                  aria-label={e.label}
+                />
+              </Fragment>
+            );
+          })}
         </div>
       </div>
 
