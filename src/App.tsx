@@ -4,7 +4,7 @@ import { detectAgent, startAgentListeners } from "./ai/agent";
 import { startMcp } from "./ai/mcp";
 import { loadSkills } from "./ai/skills";
 import CanvasView from "./canvas/CanvasView";
-import { findProjects, flushPack, inTauri, newProject, openProject, openProjectAt, restoreLast, saveNow, startAutosave } from "./project/project";
+import { findProjects, flushPack, inTauri, newProject, openProject, openProjectAt, isCheckCopy, restoreLast, saveNow, startAutosave } from "./project/project";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -62,6 +62,7 @@ export default function App() {
   const [presenting, setPresenting] = useState(false);
   const [home, setHome] = useState(false);
   const [sending, setSending] = useState(false);
+  const [check, setCheck] = useState(false);
   const dock = useLayout((d) => d);
   const hasFrames = useStore((s) => Object.values(s.timeline[s.cursor].doc.elements).some((e) => e.type === "frame"));
 
@@ -69,6 +70,7 @@ export default function App() {
     const stop = startAutosave();
     // go back to where you were; if there is nowhere to go back to, start at your projects
     void restoreLast().then(() => {
+      if (isCheckCopy()) return setCheck(true);
       if (inTauri() && !getState().project.path && getState().timeline.length <= 1) setHome(true);
     });
     const stops: (() => void)[] = [];
@@ -140,10 +142,11 @@ export default function App() {
   };
 
   return (
-    <div className={`app ${dock.swapped ? "swapped" : ""}`} style={appStyle}>
+    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""}`} style={appStyle}>
       <header className="top">
         <span className="logo">
           Du<b>et</b>
+          {check && <i className="checkmark" title="A second Duet, used only to check work on Duet itself. It never opens your projects by itself.">check copy</i>}
         </span>
         <button className="pill" onClick={() => setHome(true)} title="All your projects">
           Projects

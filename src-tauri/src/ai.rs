@@ -131,7 +131,7 @@ fn handle(mut req: tiny_http::Request, state: Arc<McpState>, app: AppHandle) {
 fn write_session_file(port: u16, token: &str) {
     let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"));
     let Ok(home) = home else { return };
-    let dir = std::path::Path::new(&home).join(".duet");
+    let dir = std::path::Path::new(&home).join(crate::duet_dir_name());
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
@@ -357,7 +357,7 @@ pub fn write_agent_files(system: String, mcp: String) -> Result<Value, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| "Could not find your home folder.".to_string())?;
-    let dir = std::path::Path::new(&home).join(".duet").join("agent-workspace");
+    let dir = std::path::Path::new(&home).join(crate::duet_dir_name()).join("agent-workspace");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let write = |name: &str, body: &str| -> Result<String, String> {
         let file = dir.join(name);
@@ -386,7 +386,7 @@ pub fn write_agent_file(name: String, body: String) -> Result<String, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| "Could not find your home folder.".to_string())?;
-    let file = std::path::Path::new(&home).join(".duet").join("agent-workspace").join(rel);
+    let file = std::path::Path::new(&home).join(crate::duet_dir_name()).join("agent-workspace").join(rel);
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -507,7 +507,7 @@ pub fn bridge() {
 
     let duet_dir = || -> Option<std::path::PathBuf> {
         let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
-        Some(std::path::Path::new(&home).join(".duet"))
+        Some(std::path::Path::new(&home).join(crate::duet_dir_name()))
     };
     let read_json = |file: std::path::PathBuf| -> Option<Value> {
         serde_json::from_str(&std::fs::read_to_string(file).ok()?).ok()

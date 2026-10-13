@@ -106,9 +106,20 @@ export function removeRecent(path: string) {
   window.dispatchEvent(new Event("duet:recents"));
 }
 
+/** True in the check copy, a second Duet used only to check work on Duet itself. Set once at launch. */
+let checkCopy = false;
+export const isCheckCopy = () => checkCopy;
+
+/** Find out, before anything is opened, whether this is the check copy. */
+export async function learnCheckCopy(): Promise<boolean> {
+  checkCopy = inTauri() && (await invoke<boolean>("check_copy").catch(() => false));
+  return checkCopy;
+}
+
 function remember(path: string | null) {
   try {
-    if (!path) return;
+    // the check copy shares this list with the Duet a designer works in, and must leave it alone
+    if (!path || checkCopy) return;
     localStorage.setItem(LAST_KEY, path);
     const old = getRecents().find((r) => r.path === path);
     const rest = getRecents().filter((r) => r.path !== path);
@@ -632,6 +643,8 @@ async function sendCopyDialog(choice: CopyChoice): Promise<{ saved: string } | {
 /** On launch, go back to where you were. */
 export async function restoreLast() {
   if (!inTauri()) return;
+  // the check copy never opens a designer's project by itself: two Duets on one project would fight over it
+  if (await learnCheckCopy()) return;
   let path: string | null = null;
   try {
     path = localStorage.getItem(LAST_KEY);

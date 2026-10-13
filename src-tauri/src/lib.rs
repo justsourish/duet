@@ -69,11 +69,31 @@ fn make_dir(path: String) -> Result<(), String> {
 // ---------- Duet's own folder: ~/.duet ----------
 // Skills the designer writes live here, so they travel across projects.
 
+/// True in the check copy: a second Duet started only to check work on Duet itself (`scripts/check-duet.sh`).
+/// It keeps everything of its own in another folder, so it never meets the Duet a designer is working in.
+pub fn is_check_copy() -> bool {
+    std::env::var("DUET_CHECK").map(|v| !v.is_empty() && v != "0").unwrap_or(false)
+}
+
+/// The name of Duet's own folder in the home folder.
+pub fn duet_dir_name() -> &'static str {
+    if is_check_copy() {
+        ".duet-check"
+    } else {
+        ".duet"
+    }
+}
+
+#[tauri::command]
+fn check_copy() -> bool {
+    is_check_copy()
+}
+
 fn duet_home_dir() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| "Could not find your home folder.".to_string())?;
-    let dir = Path::new(&home).join(".duet");
+    let dir = Path::new(&home).join(duet_dir_name());
     fs::create_dir_all(&dir).map_err(err)?;
     Ok(dir)
 }
@@ -448,6 +468,7 @@ pub fn run() {
             path_exists,
             make_dir,
             duet_home,
+            check_copy,
             list_dir,
             list_user_skills,
             write_user_skill,
@@ -467,6 +488,12 @@ pub fn run() {
             ai::agent_cancel
         ])
         .setup(|app| {
+            if is_check_copy() {
+                use tauri::Manager;
+                for window in app.webview_windows().values() {
+                    let _ = window.set_title("Duet check copy");
+                }
+            }
             ai::start(app.handle()).map_err(|e| format!("Could not start the agent bridge: {e}"))?;
             Ok(())
         })

@@ -20,7 +20,7 @@ fn work_root() -> Result<PathBuf, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| "Could not find your home folder.".to_string())?;
-    let dir = Path::new(&home).join(".duet").join("work");
+    let dir = Path::new(&home).join(crate::duet_dir_name()).join("work");
     fs::create_dir_all(&dir).map_err(err)?;
     Ok(dir)
 }
