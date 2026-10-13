@@ -173,7 +173,8 @@ def clear(branch, copy):
 
 def keep(a):
     branch, copy, _ = names(a.issue, a.words)
-    if git("status", "--porcelain", "--untracked-files=no").replace(" M docs/helper-agent-research.md", "").strip():
+    # the row this run added to the research file is the one thing that may be waiting
+    if [l for l in git("status", "--porcelain", "--untracked-files=no").splitlines() if not l.endswith("docs/helper-agent-research.md")]:
         sys.exit("There is unsaved work on main. Save it first.")
     if git("branch", "--show-current") != "main":
         sys.exit("Go to main first.")
