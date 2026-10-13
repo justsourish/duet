@@ -2357,3 +2357,10 @@ button {
   background: var(--line);
   margin: 4px 6px;
 }
+.scene-mark {
+  margin-left: 8px;
+  color: var(--duet);
+  font-style: normal;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}

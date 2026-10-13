@@ -1,3 +1,6 @@
+import { message } from "@tauri-apps/plugin-dialog";
+import { clipKind, dropClips } from "../video/scene";
+import { setLayout } from "../ui/layout";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { newId, runCommand } from "../commands";
 import { extractPayload, payloadToText, textToPayload } from "../document/clipboard";
@@ -65,6 +68,23 @@ type Drag =
   | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean }
   | { kind: "zoom"; start: { x: number; y: number }; sx: number; sy: number }
   | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
+
+/** Where files dragged in from the computer are, when the system says so. */
+function droppedPaths(data: DataTransfer): string[] {
+  const out: string[] = [];
+  for (const kind of ["text/uri-list", "public.file-url", "text/plain"]) {
+    for (const line of data.getData(kind).split(/\r?\n/)) {
+      if (!line.startsWith("file://")) continue;
+      try {
+        const path = decodeURIComponent(new URL(line.trim()).pathname);
+        if (!out.includes(path)) out.push(path);
+      } catch {
+        // not a place on the computer
+      }
+    }
+  }
+  return out;
+}
 
 const CREATE_TOOLS: Tool[] = ["frame", "rect", "ellipse", "text"];
 const DEFAULT_SIZE: Record<ElementType, { w: number; h: number }> = {
@@ -966,7 +986,25 @@ export default function CanvasView() {
         const rect = wrapRef.current?.getBoundingClientRect();
         const vp = getState().viewport;
         const at = rect ? { x: (e.clientX - rect.left - vp.x) / vp.zoom, y: (e.clientY - rect.top - vp.y) / vp.zoom } : undefined;
-        void placeFiles(Array.from(e.dataTransfer.files), at);
+        const files = Array.from(e.dataTransfer.files);
+        // a video or a sound is not read into Duet: it is played from where it is, so its place on the computer is needed
+        if (files.some((f) => clipKind(f.name))) {
+          const paths = droppedPaths(e.dataTransfer).filter((p) => clipKind(p));
+          const frame = at ? frameAt(workDoc(), at.x, at.y) : null;
+          void (async () => {
+            const problems = !paths.length
+              ? ["Duet could not tell where that file is. Use Add clip in the timeline, in Motion."]
+              : !frame
+                ? ["Drop a clip onto a frame."]
+                : await dropClips(frame, paths).catch((err) => [String(err)]);
+            if (paths.length && frame && !problems.length) {
+              setLayout({ mode: "motion" });
+              select([frame]);
+            }
+            if (problems.length) void message(problems.join(" "), { title: "Duet", kind: "info" });
+          })();
+        }
+        void placeFiles(files, at);
       }}
     >
       <canvas

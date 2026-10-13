@@ -33,7 +33,11 @@ export function screenRect(s: State, r: Rect): Rect {
 }
 
 /** What is written above a screen on the canvas. A diamond marks components and their copies. */
-export const labelText = (el: El) => (el.component ? `◆ ${el.name}` : el.type === "instance" ? `◇ ${el.name}` : el.name);
+export const labelText = (el: El) =>
+  el.component ? `◆ ${el.name}` : el.type === "instance" ? `◇ ${el.name}` : el.duration > 0 ? `▶ ${el.name}  ${lengthText(el.duration)}` : el.name;
+
+/** How long a scene plays, as minutes and seconds. */
+export const lengthText = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
 export function labelRect(s: State, doc: Doc, id: string): Rect {
   const el = doc.elements[id];

@@ -18,6 +18,10 @@ if (import.meta.env.PROD) {
   );
 }
 
+// A file dropped anywhere Duet does not take it must never be opened by the window itself: that would
+// replace Duet with the file, and the window could then not even be closed.
+for (const ev of ["dragover", "drop"]) window.addEventListener(ev, (e) => e.preventDefault());
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <App />

@@ -1,3 +1,4 @@
+import { lengthText } from "../canvas/render";
 import AssetsPanel from "./AssetsPanel";
 import Icon from "./Icons";
 import { useEffect, useRef, useState } from "react";
@@ -176,7 +177,14 @@ function Row({ doc, id, depth, dnd, folded, onToggleFold }: RowProps) {
             }}
           />
         ) : (
-          <span className="name">{el.name}</span>
+          <span className="name">
+            {el.name}
+            {el.duration > 0 && (
+              <i className="scene-mark" title="A scene: this frame plays">
+                ▶ {lengthText(el.duration)}
+              </i>
+            )}
+          </span>
         )}
         <span
           className={`lockbtn ${el.locked ? "on" : ""}`}

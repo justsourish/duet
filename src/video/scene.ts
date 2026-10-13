@@ -11,6 +11,7 @@ import { pause } from "./play";
 /** A frame that plays: bringing clips into it, and making one video file out of it. */
 
 const KINDS = ["mp4", "mov", "m4v", "webm", "mkv", "avi"];
+const SOUNDS = ["mp3", "wav", "m4a", "aac", "aiff", "aif", "ogg", "flac"];
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 interface Info {
@@ -23,9 +24,42 @@ interface Info {
 /** Ask for video files and put them in the frame, starting at the moment the clock is on. Returns what could not be read. */
 export async function addClips(sceneId: string): Promise<string[]> {
   const picked = await open({ multiple: true, title: "Bring in clips", filters: [{ name: "Video", extensions: KINDS }] });
-  const paths = picked === null ? [] : Array.isArray(picked) ? picked : [picked];
+  return placeClips(sceneId, picked === null ? [] : Array.isArray(picked) ? picked : [picked]);
+}
+
+/** Whether a file is a video or a sound Duet can bring into a scene, going by its name. */
+export const clipKind = (path: string): "video" | "sound" | null => {
+  const ext = (path.split(".").pop() ?? "").toLowerCase();
+  return KINDS.includes(ext) ? "video" : SOUNDS.includes(ext) ? "sound" : null;
+};
+
+/**
+ * Files dropped onto a frame. The frame becomes a scene if it was not one, as long as the first clip.
+ * Returns what could not be read.
+ */
+export async function dropClips(frameId: string, paths: string[]): Promise<string[]> {
+  const videos = paths.filter((p) => clipKind(p) === "video");
+  const sounds = paths.filter((p) => clipKind(p) === "sound");
+  const frame = currentDoc().elements[frameId];
+  if (!frame || frame.type !== "frame" || frame.parentId) return ["Drop a clip onto a frame on the page."];
   const problems: string[] = [];
-  let at = getState().clock.t;
+  try {
+    if (!(frame.duration > 0)) {
+      const length = videos.length ? (await invoke<Info>("video_info", { path: videos[0] })).duration : await fileLength(sounds[0]);
+      dispatch("set_duration", { id: frameId, seconds: Math.max(1, Math.round(length * 1000) / 1000) });
+    }
+  } catch (e) {
+    return [String(e instanceof Error ? e.message : e)];
+  }
+  problems.push(...(await placeClips(frameId, videos)));
+  problems.push(...(await placeSounds(frameId, sounds)));
+  return problems;
+}
+
+/** Put video files in a scene, one after another, starting at the moment the clock is on. Returns what could not be read. */
+export async function placeClips(sceneId: string, paths: string[]): Promise<string[]> {
+  const problems: string[] = [];
+  let at = getState().clock.scene === sceneId ? getState().clock.t : 0;
   for (const path of paths) {
     try {
       const info = await invoke<Info>("video_info", { path });
@@ -58,19 +92,21 @@ export async function addClips(sceneId: string): Promise<string[]> {
   return problems;
 }
 
-const SOUNDS = ["mp3", "wav", "m4a", "aac", "aiff", "aif", "ogg", "flac"];
-
 /** Ask for sound files, such as music or a voice, and put them in the frame from the moment the clock is on. They are only heard. */
 export async function addSounds(sceneId: string): Promise<string[]> {
   const picked = await open({ multiple: true, title: "Bring in sound", filters: [{ name: "Sound", extensions: SOUNDS }] });
-  const paths = picked === null ? [] : Array.isArray(picked) ? picked : [picked];
+  return placeSounds(sceneId, picked === null ? [] : Array.isArray(picked) ? picked : [picked]);
+}
+
+/** Put sound files in a scene, from the moment the clock is on. Returns what could not be read. */
+export async function placeSounds(sceneId: string, paths: string[]): Promise<string[]> {
   const problems: string[] = [];
   for (const path of paths) {
     try {
       const length = await fileLength(path);
       const scene = currentDoc().elements[sceneId];
       if (!scene) break;
-      let at = getState().clock.t;
+      let at = getState().clock.scene === sceneId ? getState().clock.t : 0;
       if (at >= scene.duration - 0.05) at = 0;
       // music is usually longer than the video: it stops where the video stops, and does not make it longer
       const end = Math.min(scene.duration, Math.round((at + length) * 1000) / 1000);
