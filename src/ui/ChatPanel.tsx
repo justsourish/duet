@@ -1,13 +1,11 @@
 import { isOutside, plainName } from "../ai/who";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, Fragment } from "react";
 import { sendToAgent, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
 import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
 import { attachFiles } from "../ai/pictures";
-import type { ModelChoice } from "../ai/chat";
-import type { AgentId } from "../ai/chat";
-import type { Mode } from "../ai/chat";
+import type { ModelChoice, AgentId, Mode, Msg } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { findStep } from "../memory/steps";
 import { goTo, useStore } from "../state/store";
@@ -18,6 +16,7 @@ import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
 import { agentColour, whoColour } from "../ai/colours";
 import { busyOutside } from "../ai/outside";
+import { useDismiss } from "./useDismiss";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
   { mode: "suggest", label: "Suggest", hint: "Duet only suggests. Nothing changes until you tap Apply." },
@@ -26,6 +25,38 @@ const MODES: { mode: Mode; label: string; hint: string }[] = [
 ];
 
 const IDEAS = ["Describe this design", "Tidy the spacing", "Check text contrast"];
+
+type ChatMessage = Msg;
+
+type RenderItem =
+  | { type: "single"; msg: ChatMessage }
+  | { type: "noteGroup"; id: number; messages: ChatMessage[] };
+
+function groupMessages(list: ChatMessage[]): RenderItem[] {
+  const result: RenderItem[] = [];
+  let currentNotes: ChatMessage[] = [];
+
+  const flushNotes = () => {
+    if (currentNotes.length === 1) {
+      result.push({ type: "single", msg: currentNotes[0] });
+    } else if (currentNotes.length > 1) {
+      result.push({ type: "noteGroup", id: currentNotes[0].id, messages: currentNotes });
+    }
+    currentNotes = [];
+  };
+
+  for (const m of list) {
+    if (m.role === "note") {
+      currentNotes.push(m);
+    } else {
+      flushNotes();
+      result.push({ type: "single", msg: m });
+    }
+  }
+  flushNotes();
+
+  return result;
+}
 
 export default function ChatPanel() {
   const messages = useChat((s) => s.messages);
@@ -37,33 +68,133 @@ export default function ChatPanel() {
   const installed = useChat((s) => s.installed);
   const models = useChat((s) => s.models);
   const effort = useChat((s) => s.effort);
-  const [connecting, setConnecting] = useState(false);
   const pictures = useChat((s) => s.pictures);
-  const waiting = pictures.filter((p) => !p.sent);
+  const cursor = useStore((s) => s.cursor);
+  const timeline = useStore((s) => s.timeline);
+  const place = useLayout((d) => d.chat);
+  const chatW = useLayout((d) => d.chatW);
+  const chatH = useLayout((d) => d.chatH);
+
+  const [connecting, setConnecting] = useState(false);
   const [pictureNote, setPictureNote] = useState<string | null>(null);
-  const picker = useRef<HTMLInputElement>(null);
-  /** Pictures for the AI to look at with the next message. They never go on the canvas. */
-  const attach = (files: File[]) => void attachFiles(files).then(setPictureNote);
   const [agyModels, setAgyModels] = useState<ModelChoice[]>([]);
+  const [sizing, setSizing] = useState<{ w: number; h: number } | null>(null);
+  const [moving, setMoving] = useState<{ x: number; y: number } | null>(null);
+  const [text, setText] = useState("");
+  const [room, setRoom] = useState<number | null>(null);
+  const [busyName, setBusyName] = useState<string | null>(() => busyOutside());
+  const [litStep, setLitStep] = useState<string | null>(null);
+  const [big, setBig] = useState(false);
+  const [popOpen, setPopOpen] = useState(false);
+  const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
+
+  const picker = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const justMoved = useRef(false);
+  const list = useRef<HTMLDivElement>(null);
+  const litTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useDismiss(popOpen, () => setPopOpen(false), ".agent-pop, [data-name='agent-button']");
+
+  useEffect(() => {
+    if (minimized) setPopOpen(false);
+  }, [minimized]);
+
   useEffect(() => {
     if (agent !== "agy" || agyModels.length || !inTauri()) return;
     invoke<ModelChoice[]>("agent_models", { program: "agy" })
       .then((list) => setAgyModels([{ id: "", name: "Default" }, ...list]))
       .catch(() => setAgyModels([{ id: "", name: "Default" }]));
   }, [agent, agyModels.length]);
+
+  const dragging = moving !== null;
+  useLayoutEffect(() => {
+    const el = box.current;
+    const parent = el?.parentElement;
+    if (!el || !parent || minimized) return;
+    const hangs = dragging || !("corner" in place) || place.corner.startsWith("t");
+    const measure = () => {
+      const body = list.current;
+      if (!body) return;
+      let rest = el.offsetHeight - el.clientHeight; // the border
+      for (const c of Array.from(el.children) as HTMLElement[]) if (c !== body && !c.classList.contains("csize")) rest += c.offsetHeight;
+      // hanging from the top it must stop above the bottom edge; sitting on the bottom it may reach up to the top
+      const space = hangs ? parent.clientHeight - el.offsetTop - 16 : parent.clientHeight - 32;
+      const next = Math.max(48, Math.floor(space - rest));
+      setRoom((was) => (was === next ? was : next));
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(parent);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [minimized, place, dragging, big]);
+
+  useEffect(() => {
+    if (list.current) list.current.scrollTop = connecting ? 0 : list.current.scrollHeight;
+  }, [messages, minimized, room, sizing, chatH, connecting, big]);
+
+  useEffect(() => setConnecting(false), [messages.length]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setBusyName(busyOutside()), 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onShowRequest = (ev: Event) => {
+      const step = (ev as CustomEvent<string | undefined>).detail;
+      if (!step) return;
+      setMinimized(false);
+      setLitStep(step);
+      if (litTimer.current) clearTimeout(litTimer.current);
+      litTimer.current = setTimeout(() => {
+        setLitStep(null);
+      }, 1500);
+      const scrollAndLight = () => {
+        const el = list.current?.querySelector<HTMLElement>(`[data-step="${step}"]`);
+        if (el) {
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+          el.classList.add("lit");
+          setTimeout(() => el.classList.remove("lit"), 1500);
+        }
+      };
+      setTimeout(scrollAndLight, 50);
+    };
+    window.addEventListener("duet:show-request", onShowRequest);
+    return () => {
+      window.removeEventListener("duet:show-request", onShowRequest);
+      if (litTimer.current) clearTimeout(litTimer.current);
+    };
+  }, []);
+
+  const renderItems = groupMessages(messages);
+
+  useEffect(() => {
+    if (!litStep) return;
+    setUnfoldedGroups((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const item of renderItems) {
+        if (item.type === "noteGroup" && item.messages.some((m) => m.step === litStep)) {
+          if (!next[item.id]) {
+            next[item.id] = true;
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [litStep, renderItems]);
+
+  const waiting = pictures.filter((p) => !p.sent);
+  const attach = (files: File[]) => void attachFiles(files).then(setPictureNote);
   const modelList = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
-  const cursor = useStore((s) => s.cursor);
-  const timeline = useStore((s) => s.timeline);
-  const place = useLayout((d) => d.chat);
-  const chatW = useLayout((d) => d.chatW);
-  const chatH = useLayout((d) => d.chatH);
-  const [sizing, setSizing] = useState<{ w: number; h: number } | null>(null);
-  // The grip sits on the corner farthest from where the chat is anchored, so pulling it outward grows the chat.
+
   const anchor = "corner" in place ? place.corner : "tl";
   const growX = anchor.endsWith("l") ? 1 : -1;
   const growY = anchor.startsWith("t") ? 1 : -1;
 
-  /** Pull the grip to make the chat wider and taller. Minimizing and reopening keeps the size. */
   const resize = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -85,13 +216,9 @@ export default function ChatPanel() {
   };
   const w = sizing?.w ?? chatW;
   const h = sizing?.h ?? chatH;
-  const box = useRef<HTMLDivElement>(null);
-  const [moving, setMoving] = useState<{ x: number; y: number } | null>(null);
-  const justMoved = useRef(false);
 
-  /** Drag the chat by its title. Let go near a corner and it snaps there. Anywhere else, it stays put. */
   const grab = (e: React.PointerEvent) => {
-    if ((e.target as Element).closest(".mode") || e.button !== 0) return;
+    if ((e.target as Element).closest(".mode") || (e.target as Element).closest(".chat-expand-btn") || e.button !== 0) return;
     const el = box.current;
     const parent = el?.parentElement;
     if (!el || !parent) return;
@@ -127,84 +254,10 @@ export default function ChatPanel() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const [text, setText] = useState("");
-  const list = useRef<HTMLDivElement>(null);
-
-  // How tall the message list may be, so the whole chat always fits in the canvas area with its
-  // title on top and the message box at the bottom, however big it was pulled or wherever it was dropped.
-  const [room, setRoom] = useState<number | null>(null);
-  const dragging = moving !== null;
-  useLayoutEffect(() => {
-    const el = box.current;
-    const parent = el?.parentElement;
-    if (!el || !parent || minimized) return;
-    const hangs = dragging || !("corner" in place) || place.corner.startsWith("t");
-    const measure = () => {
-      const body = list.current;
-      if (!body) return;
-      let rest = el.offsetHeight - el.clientHeight; // the border
-      for (const c of Array.from(el.children) as HTMLElement[]) if (c !== body && !c.classList.contains("csize")) rest += c.offsetHeight;
-      // hanging from the top it must stop above the bottom edge; sitting on the bottom it may reach up to the top
-      const space = hangs ? parent.clientHeight - el.offsetTop - 16 : parent.clientHeight - 32;
-      const next = Math.max(48, Math.floor(space - rest));
-      setRoom((was) => (was === next ? was : next));
-    };
-    measure();
-    const watch = new ResizeObserver(measure);
-    watch.observe(parent);
-    watch.observe(el);
-    return () => watch.disconnect();
-  }, [minimized, place, dragging]);
-
-  // Show the newest message. Only the message list is scrolled: asking the browser to bring a message
-  // into view can also slide the whole panel, and then its title and background go missing.
-  // The setup steps for an outside AI sit above the messages, so they open at their first line.
-  useEffect(() => {
-    if (list.current) list.current.scrollTop = connecting ? 0 : list.current.scrollHeight;
-  }, [messages, minimized, room, h, connecting]);
-  // a new message, such as an AI asking for a yes, matters more than the setup steps
-  useEffect(() => setConnecting(false), [messages.length]);
-
-  const [busyName, setBusyName] = useState<string | null>(() => busyOutside());
-  useEffect(() => {
-    const timer = setInterval(() => setBusyName(busyOutside()), 3000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const [litStep, setLitStep] = useState<string | null>(null);
-  const litTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    const onShowRequest = (ev: Event) => {
-      const step = (ev as CustomEvent<string | undefined>).detail;
-      if (!step) return;
-      setMinimized(false);
-      setLitStep(step);
-      if (litTimer.current) clearTimeout(litTimer.current);
-      litTimer.current = setTimeout(() => {
-        setLitStep(null);
-      }, 1500);
-      const scrollAndLight = () => {
-        const el = list.current?.querySelector<HTMLElement>(`[data-step="${step}"]`);
-        if (el) {
-          el.scrollIntoView({ block: "center", behavior: "smooth" });
-          el.classList.add("lit");
-          setTimeout(() => el.classList.remove("lit"), 1500);
-        }
-      };
-      setTimeout(scrollAndLight, 50);
-    };
-    window.addEventListener("duet:show-request", onShowRequest);
-    return () => {
-      window.removeEventListener("duet:show-request", onShowRequest);
-      if (litTimer.current) clearTimeout(litTimer.current);
-    };
-  }, []);
 
   const chosenAgentObj = AGENTS.find((a) => a.id === agent);
-  const activeToolName = chosenAgentObj
-    ? (!installed[chosenAgentObj.id] ? `${chosenAgentObj.name} (not found)` : !chosenAgentObj.runnable ? `${chosenAgentObj.name} (coming soon)` : chosenAgentObj.name)
-    : "AI";
-  const chatToolLetter = (chosenAgentObj?.name || activeToolName || "Duet").charAt(0);
+  const toolName = chosenAgentObj?.name || "AI";
+  const chatToolLetter = toolName.charAt(0);
 
   const outsideAgents: string[] = [];
   for (const e of timeline) {
@@ -220,13 +273,74 @@ export default function ChatPanel() {
     void sendToAgent(t);
   };
 
+  const renderNote = (m: ChatMessage) => {
+    const isLater = m.undoStep !== undefined && m.undoStep > cursor;
+    const isLit = litStep === m.step;
+    const laterTitle = isLater ? "This comes after the moment you are looking at" : undefined;
+    const noteStepIndex = findStep(timeline, m.step);
+    const noteAgent = (m as any).by || (m as any).name || (noteStepIndex >= 0 ? timeline[noteStepIndex]?.by : undefined) || (m.undoStep !== undefined ? timeline[m.undoStep]?.by : undefined);
+    const col = isOutside(noteAgent) ? agentColour(plainName(noteAgent)) : undefined;
+    return (
+      <div
+        key={m.id}
+        data-step={m.step}
+        className={`m note ${noteAgent ? "outside-ai" : ""} ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
+        title={laterTitle}
+        style={col ? { color: col } : undefined}
+      >
+        {noteAgent && (
+          <span className="m-badge" style={{ backgroundColor: col }}>
+            {noteAgent.charAt(0)}
+          </span>
+        )}
+        {noteAgent ? (
+          <span className="m-body">
+            {m.text}
+            {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
+              <span className="undo" onClick={() => undoAiStep(m.id)}>
+                Undo
+              </span>
+            )}
+            {m.undone && <em> Undone</em>}
+            {(() => {
+              const at = findStep(timeline, m.step);
+              return at >= 0 && at !== cursor && !m.undone ? (
+                <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
+                  Show this step
+                </span>
+              ) : null;
+            })()}
+          </span>
+        ) : (
+          <>
+            {m.text}
+            {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
+              <span className="undo" onClick={() => undoAiStep(m.id)}>
+                Undo
+              </span>
+            )}
+            {m.undone && <em> Undone</em>}
+            {(() => {
+              const at = findStep(timeline, m.step);
+              return at >= 0 && at !== cursor && !m.undone ? (
+                <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
+                  Show this step
+                </span>
+              ) : null;
+            })()}
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
       ref={box}
-      className={`chat ${minimized ? "min" : ""} ${moving ? "moving free" : "corner" in place ? `c-${place.corner}` : "free"}`}
+      className={`chat ${big ? "big" : ""} ${minimized ? "min" : ""} ${moving ? "moving free" : "corner" in place ? `c-${place.corner}` : "free"}`}
       style={{
-        ...(moving ? { left: moving.x, top: moving.y } : "x" in place ? { left: place.x, top: place.y } : {}),
-        width: w,
+        ...(moving ? { left: moving.x, top: moving.y } : "x" in place ? { left: place.x, top: big ? Math.min(place.y, 16) : place.y } : {}),
+        width: big ? 520 : w,
       }}
       onDragOver={(e) => {
         if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
@@ -248,88 +362,38 @@ export default function ChatPanel() {
       >
         <div className="av">D</div>
         <div className="ctitle">Duet</div>
-        <div className="mode" onClick={(e) => e.stopPropagation()}>
-          {MODES.map((m) => (
-            <span key={m.mode} className={mode === m.mode ? "on" : ""} title={m.hint} onClick={() => setMode(m.mode)}>
-              {m.label}
-            </span>
-          ))}
-        </div>
+        <button
+          type="button"
+          className="chat-expand-btn"
+          data-name="chat-expand"
+          title={big ? "Make the chat smaller" : "Make the chat bigger"}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (minimized) setMinimized(false);
+            setBig((v) => !v);
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {big ? (
+              <>
+                <path d="M4 9h3v3M12 7H9V4" />
+                <path d="M7 9L2.5 13.5M9 7l4.5-4.5" />
+              </>
+            ) : (
+              <>
+                <path d="M10 2.5h3.5V6M6 13.5H2.5V10" />
+                <path d="M13.5 2.5l-5 5M2.5 13.5l5-5" />
+              </>
+            )}
+          </svg>
+        </button>
       </div>
 
       {!minimized && (
         <>
           <div className={`csize ${growX > 0 ? "r" : "l"} ${growY > 0 ? "b" : "t"}`} onPointerDown={resize} title="Pull to make the chat bigger or smaller" />
-          <div className="agents-row">
-            <span className="agents-label">Agents</span>
-            <div className="agent-chip active" title="Answers when you write here">
-              <span className="agent-chip-badge" style={{ backgroundColor: whoColour("ai") }}>
-                {activeToolName.charAt(0)}
-              </span>
-              <span className="agent-chip-name">{activeToolName}</span>
-            </div>
-            {outsideAgents.map((by) => {
-              const col = agentColour(by);
-              const isWorking = busyName === by;
-              return (
-                <div
-                  key={by}
-                  className={`agent-chip outside ${isWorking ? "working" : ""}`}
-                  title="Works from its own window. It cannot be asked from here."
-                >
-                  <span className="agent-chip-badge" style={{ backgroundColor: col }}>
-                    {by.charAt(0)}
-                  </span>
-                  <span className="agent-chip-name">{by}</span>
-                  <span className="agent-chip-status">
-                    {isWorking && <span className="agent-chip-dot" style={{ backgroundColor: col }} />}
-                    {isWorking ? "working" : "outside"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="tool-row">
-            <span>AI tool</span>
-            <select value={agent} disabled={running} onChange={(e) => setAgent(e.target.value as AgentId)}>
-              {AGENTS.map((a) => {
-                const here = installed[a.id];
-                const label = !here ? `${a.name} (not found)` : !a.runnable ? `${a.name} (coming soon)` : a.name;
-                return (
-                  <option key={a.id} value={a.id} disabled={!a.runnable}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-          <div className="tool-row">
-            <span>Model</span>
-            <select value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
-              {modelList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            {agent === "claude" && (
-            <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)} style={{ flex: "none", width: 92 }}>
-              {EFFORTS.map((x) => (
-                <option key={x} value={x}>
-                  {x === "" ? "Effort" : x}
-                </option>
-              ))}
-            </select>
-            )}
-          </div>
-          <div
-            className="connect-link"
-            onClick={() => setConnecting(!connecting)}
-          >
-            {connecting ? "Hide this" : "Connect your own AI"}
-          </div>
-          <div className="mode-hint">{MODES.find((m) => m.mode === mode)?.hint}</div>
-          <div className="cbody" ref={list} style={{ maxHeight: room === null ? h : Math.min(h, room) }}>
+          <div className="cbody" ref={list} style={{ maxHeight: big ? undefined : (room === null ? h : Math.min(h, room)) }}>
             {connecting && <ConnectAi />}
             {found === false && (
               <div className="m">
@@ -341,7 +405,38 @@ export default function ChatPanel() {
             {messages.length === 0 && found !== false && (
               <div className="m">Hi. Tell me what you want to do, or tap an idea. I can see what is selected on your canvas.</div>
             )}
-            {messages.map((m) => {
+            {renderItems.map((item) => {
+              if (item.type === "noteGroup") {
+                const isGroupLit = item.messages.some((m) => litStep === m.step);
+                const isGroupLater = item.messages.some((m) => m.undoStep !== undefined && m.undoStep > cursor);
+                const isUnfolded = unfoldedGroups[item.id] ?? isGroupLit;
+                const targetStep = item.messages.find((m) => m.step === litStep)?.step ?? item.messages[0].step;
+                return (
+                  <Fragment key={`group-${item.id}`}>
+                    <div
+                      data-step={targetStep}
+                      className={`m note ${isGroupLater ? "later" : ""} ${isGroupLit ? "lit" : ""}`}
+                      title={isGroupLater ? "This comes after the moment you are looking at" : undefined}
+                    >
+                      {item.messages.length} changes
+                      <span
+                        className="undo note-toggle"
+                        onClick={() =>
+                          setUnfoldedGroups((prev) => ({
+                            ...prev,
+                            [item.id]: !isUnfolded,
+                          }))
+                        }
+                      >
+                        {isUnfolded ? "Hide" : "Show"}
+                      </span>
+                    </div>
+                    {isUnfolded && item.messages.map((m) => renderNote(m))}
+                  </Fragment>
+                );
+              }
+
+              const m = item.msg;
               const isLater = m.undoStep !== undefined && m.undoStep > cursor;
               const isLit = litStep === m.step;
               const laterTitle = isLater ? "This comes after the moment you are looking at" : undefined;
@@ -432,61 +527,7 @@ export default function ChatPanel() {
                   </div>
                 );
               if (m.role === "note") {
-                const noteStepIndex = findStep(timeline, m.step);
-                const noteAgent = (m as any).by || (m as any).name || (noteStepIndex >= 0 ? timeline[noteStepIndex]?.by : undefined) || (m.undoStep !== undefined ? timeline[m.undoStep]?.by : undefined);
-                const col = isOutside(noteAgent) ? agentColour(plainName(noteAgent)) : undefined;
-                return (
-                  <div
-                    key={m.id}
-                    data-step={m.step}
-                    className={`m note ${noteAgent ? "outside-ai" : ""} ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-                    title={laterTitle}
-                    style={col ? { color: col } : undefined}
-                  >
-                    {noteAgent && (
-                      <span className="m-badge" style={{ backgroundColor: col }}>
-                        {noteAgent.charAt(0)}
-                      </span>
-                    )}
-                    {noteAgent ? (
-                      <span className="m-body">
-                        {m.text}
-                        {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
-                          <span className="undo" onClick={() => undoAiStep(m.id)}>
-                            Undo
-                          </span>
-                        )}
-                        {m.undone && <em> Undone</em>}
-                        {(() => {
-                          const at = findStep(timeline, m.step);
-                          return at >= 0 && at !== cursor && !m.undone ? (
-                            <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
-                              Show this step
-                            </span>
-                          ) : null;
-                        })()}
-                      </span>
-                    ) : (
-                      <>
-                        {m.text}
-                        {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
-                          <span className="undo" onClick={() => undoAiStep(m.id)}>
-                            Undo
-                          </span>
-                        )}
-                        {m.undone && <em> Undone</em>}
-                        {(() => {
-                          const at = findStep(timeline, m.step);
-                          return at >= 0 && at !== cursor && !m.undone ? (
-                            <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
-                              Show this step
-                            </span>
-                          ) : null;
-                        })()}
-                      </>
-                    )}
-                  </div>
-                );
+                return renderNote(m);
               }
               return (
                 <div
@@ -541,13 +582,136 @@ export default function ChatPanel() {
                 e.target.value = "";
               }}
             />
+            <div className="agent-anchor">
+              <button
+                type="button"
+                className="agent-btn"
+                data-name="agent-button"
+                title="Who answers, and how"
+                onClick={() => setPopOpen((o) => !o)}
+              >
+                <span className="agent-btn-badge">{chatToolLetter}</span>
+                <span className="agent-btn-name">{toolName}</span>
+                <span className="agent-btn-v">v</span>
+              </button>
+              <span className={`agent-perm ${mode === "auto" ? "auto" : ""}`}>
+                {MODES.find((m) => m.mode === mode)?.label}
+              </span>
+              {popOpen && (
+                <div className="agent-pop">
+                  <div>
+                    <div className="agent-pop-label">Who answers</div>
+                    <select value={agent} disabled={running} onChange={(e) => setAgent(e.target.value as AgentId)}>
+                      {AGENTS.map((a) => {
+                        const here = installed[a.id];
+                        const label = !here ? `${a.name} (not found)` : !a.runnable ? `${a.name} (coming soon)` : a.name;
+                        return (
+                          <option key={a.id} value={a.id} disabled={!a.runnable}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="agent-pop-row">
+                    <div>
+                      <div className="agent-pop-label">Model</div>
+                      <select value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
+                        {modelList.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {agent === "claude" && (
+                      <div>
+                        <div className="agent-pop-label">Effort</div>
+                        <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
+                          {EFFORTS.map((x) => (
+                            <option key={x} value={x}>
+                              {x === "" ? "Effort" : x}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="agent-pop-label">How much it may do</div>
+                    <div className="mode">
+                      {MODES.map((m) => (
+                        <span key={m.mode} className={mode === m.mode ? "on" : ""} title={m.hint} onClick={() => setMode(m.mode)}>
+                          {m.label}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mode-hint" style={{ padding: "6px 0 0" }}>
+                      {MODES.find((m) => m.mode === mode)?.hint}
+                    </div>
+                  </div>
+                  <div className="agent-pop-divider" />
+                  <div>
+                    <div className="agent-pop-label">Others on this design</div>
+                    {outsideAgents.length === 0 ? (
+                      <div className="agent-pop-empty">No one else right now.</div>
+                    ) : (
+                      <div className="agent-pop-chips">
+                        {outsideAgents.map((by) => {
+                          const col = agentColour(by);
+                          const isWorking = busyName === by;
+                          return (
+                            <div
+                              key={by}
+                              className={`agent-chip outside ${isWorking ? "working" : ""}`}
+                              title="Works from its own window. It cannot be asked from here."
+                            >
+                              <span className="agent-chip-badge" style={{ backgroundColor: col }}>
+                                {by.charAt(0)}
+                              </span>
+                              <span className="agent-chip-name">{by}</span>
+                              <span className="agent-chip-status">
+                                {isWorking && <span className="agent-chip-dot" style={{ backgroundColor: col }} />}
+                                {isWorking ? "working" : "outside"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="agent-pop-divider" />
+                  <div className="agent-pop-links">
+                    <div
+                      className="agent-pop-link connect-link"
+                      onClick={() => {
+                        setConnecting((c) => !c);
+                        setPopOpen(false);
+                      }}
+                    >
+                      Connect your own AI
+                    </div>
+                    <div
+                      className={`agent-pop-link newchat ${messages.length === 0 || running ? "disabled" : ""}`}
+                      onClick={() => {
+                        if (messages.length === 0 || running) return;
+                        newConversation();
+                        setPopOpen(false);
+                      }}
+                    >
+                      Start a fresh conversation
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <button className="mini attach" disabled={found === false} title="Add pictures for the AI to look at. You can also paste or drop them here." onClick={() => picker.current?.click()}>
               <Icon name="image" size={16} />
             </button>
             <textarea
               value={text}
               rows={1}
-              placeholder={found === false ? "Pick an AI tool that is installed" : "What do you want to change?"}
+              placeholder={found === false ? "Pick an AI tool that is installed" : `Ask ${toolName}`}
               disabled={found === false}
               onChange={(e) => setText(e.target.value)}
               onPaste={(e) => {
@@ -574,11 +738,6 @@ export default function ChatPanel() {
               </button>
             )}
           </div>
-          {messages.length > 0 && !running && (
-            <div className="newchat" onClick={newConversation}>
-              Start a fresh conversation
-            </div>
-          )}
         </>
       )}
     </div>
