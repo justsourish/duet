@@ -39,6 +39,8 @@ Keep it fair: same task text, a fresh branch from the same starting point, no ex
 | 13 Oct 2026 | 44, settings screen | gemini-3.8-flash-high | 12 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 517,709 helper tokens. Branch `helper/44-settings-screen`. |
 | 13 Oct 2026 | 45, mode switch | gemini-3.8-flash-high | 12 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 330,811 helper tokens. Branch `helper/45-mode-switch`. |
 | 13 Oct 2026 | 50, cut look | gemini-3.8-flash-high | 17 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 455,799 helper tokens. Branch `helper/50-cut-look`. |
+| 13 Oct 2026 | 47, drag marks | gemini-3.8-flash-high | 9 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 462,188 helper tokens. Branch `helper/47-drag-marks`. |
+| 13 Oct 2026 | 45, motion panel | gemini-3.8-flash-high | 12 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 494,602 helper tokens. Branch `helper/45-motion-panel`. |
 
 ## What has been learned
 

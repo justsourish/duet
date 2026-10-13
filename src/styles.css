@@ -2307,3 +2307,10 @@ button {
   padding: 2px 8px;
   font-size: 11px;
 }
+.time-span.sound {
+  background: var(--panel-2);
+  border-color: var(--muted);
+}
+.time-row.on .time-span.sound {
+  background: var(--muted);
+}

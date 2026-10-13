@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { cuttable, newId, runCommand } from "../commands";
 import { ENTRANCES, entranceOf, spanOf } from "../document/time";
 import type { Entrance } from "../document/time";
-import { MOVING } from "../document/types";
+import { MOVING, playsFile } from "../document/types";
 import type { Doc, El } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, getState, restoreDoc, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
-import { addClips, exportScene, stopExport } from "../video/scene";
+import { addClips, addSounds, exportScene, stopExport } from "../video/scene";
 import { setLayout, useLayout } from "./layout";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
@@ -45,6 +45,8 @@ export default function TimeStrip() {
   const [zoom, setZoom] = useState(1);
   const [making, setMaking] = useState<number | null>(null);
   const [note, setNote] = useState("");
+  // set while a keyframe mark is being dragged, so letting go is not taken for a click
+  const draggedMark = useRef(false);
 
   // what is selected decides which frame is open, and with nothing selected the open one stays
   const frame = pageFrame(doc, selection[0]) ?? (clock.scene ? (doc.elements[clock.scene] ?? null) : null);
@@ -164,7 +166,8 @@ export default function TimeStrip() {
   }
 
   const things = frame.childIds.map((id) => doc.elements[id]).filter(Boolean).reverse();
-  const nonVideos = things.filter((el) => el.type !== "video");
+  const nonVideos = things.filter((el) => !playsFile(el));
+  const sounds = things.filter((el) => el.type === "sound");
   const videoClips = things.filter((el) => el.type === "video");
 
   const packTracks = (list: El[]) => {
@@ -214,6 +217,11 @@ export default function TimeStrip() {
             name: `Clips ${i + 1}`,
             items,
           })),
+          ...packTracks(sounds).map((items, i) => ({
+            key: `sound-${i + 1}`,
+            name: `Sound ${i + 1}`,
+            items,
+          })),
         ];
 
   const picked = selection.length === 1 && selection[0] !== frame.id && pageFrame(doc, selection[0])?.id === frame.id ? doc.elements[selection[0]] : null;
@@ -239,7 +247,7 @@ export default function TimeStrip() {
     const span = spanOf(el, frame);
     const long = span.end - span.start;
     // a clip cannot show more than its file holds
-    const file = el.type === "video" ? clipLength(el.src) : 0;
+    const file = playsFile(el) ? clipLength(el.src) : 0;
     let moved = false;
     const move = (ev: PointerEvent) => {
       const by = (ev.clientX - from) / pps;
@@ -251,9 +259,9 @@ export default function TimeStrip() {
         const base = start + long > length ? runCommand(dragBase(), "set_duration", { id: frame.id, seconds: start + long }) : dragBase();
         dragPreviewDoc(runCommand(base, "set_timing", { ids: [el.id], start, end: start + long }));
       } else if (part === "start") {
-        const least = el.type === "video" ? span.start - el.clipFrom : 0;
+        const least = playsFile(el) ? span.start - el.clipFrom : 0;
         const start = Math.max(0, least, Math.min(span.end - SHORTEST, span.start + by));
-        dragPreview("set_timing", { ids: [el.id], start, end: span.end, ...(el.type === "video" ? { clipFrom: el.clipFrom + (start - span.start) } : {}) });
+        dragPreview("set_timing", { ids: [el.id], start, end: span.end, ...(playsFile(el) ? { clipFrom: el.clipFrom + (start - span.start) } : {}) });
       } else {
         const most = file ? span.start + file - el.clipFrom : length;
         const end = Math.max(span.start + SHORTEST, Math.min(length, most, span.end + by));
@@ -282,9 +290,9 @@ export default function TimeStrip() {
     }
   };
 
-  const bring = async () => {
+  const bring = async (what: "clips" | "sound") => {
     setNote("");
-    const problems = await addClips(frame.id).catch((e) => [String(e)]);
+    const problems = await (what === "clips" ? addClips(frame.id) : addSounds(frame.id)).catch((e) => [String(e)]);
     if (problems.length) setNote(problems.join(" "));
   };
 
@@ -292,7 +300,6 @@ export default function TimeStrip() {
   const every = length <= 12 ? 1 : length <= 60 ? 5 : length <= 300 ? 30 : 60;
   for (let t = 0; t <= length + 0.001; t += every) marks.push(t);
 
-  const draggedMark = useRef(false);
 
   const dragMark = (e: React.PointerEvent, el: El, t: number) => {
     e.stopPropagation();
@@ -400,8 +407,11 @@ export default function TimeStrip() {
             Cut
           </button>
         </div>
-        <button className="pill" data-name="add-clip" onClick={bring} title="Bring video files into this frame, at the moment the clock is on">
+        <button className="pill" data-name="add-clip" onClick={() => void bring("clips")} title="Bring video files into this scene, at the moment the clock is on">
           Add clip
+        </button>
+        <button className="pill" data-name="add-sound" onClick={() => void bring("sound")} title="Bring in music or a voice. It is heard from the moment the clock is on">
+          Add sound
         </button>
         {picked && (
           <>
