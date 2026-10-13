@@ -38,4 +38,8 @@ Keep it fair: same task text, a fresh branch from the same starting point, no ex
 
 ## What has been learned
 
-Nothing yet. Write short, dated findings here as they come, so they can become case studies later.
+Write short, dated findings here as they come, so they can become case studies later.
+
+- 13 Oct 2026. Started from the terminal with no one clicking, Antigravity edits files, runs commands and saves. It reports its own tokens, so the cost of a run is a measured number.
+- 13 Oct 2026. A six line fix cost the helper 206,179 tokens and 5 minutes. The main AI spent a task of about a hundred words and read a summary of a dozen lines. So the main AI saved, but the helper's subscription paid a lot for very little. Tiny fixes are better done directly. Hand over work that is big to write and easy to check.
+- 13 Oct 2026. A task that asks the helper to run the app, or to check a drag on the canvas, cannot be handed over this way yet.
