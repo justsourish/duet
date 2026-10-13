@@ -146,7 +146,7 @@ export default function App() {
       <header className="top">
         <span className="logo">
           Du<b>et</b>
-          {check && <i className="checkmark" title="A second Duet, used only to check work on Duet itself. It never opens your projects by itself.">check copy</i>}
+          {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
         </span>
         <button className="pill" onClick={() => setHome(true)} title="All your projects">
           Projects

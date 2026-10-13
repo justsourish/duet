@@ -69,16 +69,16 @@ fn make_dir(path: String) -> Result<(), String> {
 // ---------- Duet's own folder: ~/.duet ----------
 // Skills the designer writes live here, so they travel across projects.
 
-/// True in the check copy: a second Duet started only to check work on Duet itself (`scripts/check-duet.sh`).
+/// True in Duet dev: a second Duet started only to build and check Duet itself (`scripts/dev-duet.sh`).
 /// It keeps everything of its own in another folder, so it never meets the Duet a designer is working in.
 pub fn is_check_copy() -> bool {
-    std::env::var("DUET_CHECK").map(|v| !v.is_empty() && v != "0").unwrap_or(false)
+    std::env::var("DUET_DEV").map(|v| !v.is_empty() && v != "0").unwrap_or(false)
 }
 
 /// The name of Duet's own folder in the home folder.
 pub fn duet_dir_name() -> &'static str {
     if is_check_copy() {
-        ".duet-check"
+        ".duet-dev"
     } else {
         ".duet"
     }
@@ -491,7 +491,7 @@ pub fn run() {
             if is_check_copy() {
                 use tauri::Manager;
                 for window in app.webview_windows().values() {
-                    let _ = window.set_title("Duet check copy");
+                    let _ = window.set_title("Duet dev");
                 }
             }
             ai::start(app.handle()).map_err(|e| format!("Could not start the agent bridge: {e}"))?;
@@ -500,6 +500,20 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Duet")
         .run(|app, event| {
+            // Every build made for development shows an orange ring in the Dock, so it is never
+            // taken for the Duet a designer works in. Set here, after Tauri has set its own.
+            #[cfg(all(debug_assertions, target_os = "macos"))]
+            if let tauri::RunEvent::Ready = &event {
+                use objc2::{AllocAnyThread, MainThreadMarker};
+                use objc2_app_kit::{NSApplication, NSImage};
+                use objc2_foundation::NSData;
+                if let Some(mtm) = MainThreadMarker::new() {
+                    let data = NSData::with_bytes(include_bytes!("../icons/dev.png"));
+                    if let Some(icon) = NSImage::initWithData(NSImage::alloc(), &data) {
+                        unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon)) };
+                    }
+                }
+            }
             // a project file opened from Finder while Duet is already running
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             if let tauri::RunEvent::Opened { urls } = &event {

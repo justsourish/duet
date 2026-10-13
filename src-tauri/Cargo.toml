@@ -42,3 +42,9 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Only to give development builds their own Dock icon. Tauri already brings these in.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSData"] }
