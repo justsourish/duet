@@ -1,5 +1,6 @@
 mod ai;
 mod package;
+mod video;
 
 use git2::{Repository, Signature};
 use serde::Serialize;
@@ -477,6 +478,9 @@ pub fn run() {
             git_commit,
             git_history,
             git_name_version,
+            video::video_ready,
+            video::video_info,
+            video::video_export,
             ai::mcp_info,
             ai::mcp_reply,
             ai::mcp_ready,
