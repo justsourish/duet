@@ -11,6 +11,7 @@ import { applyProposal, undoAiStep } from "../ai/tools";
 import { findStep } from "../memory/steps";
 import { goTo, useStore } from "../state/store";
 import ConnectAi from "./ConnectAi";
+import Rich from "./rich";
 import Icon from "./Icons";
 import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
@@ -331,7 +332,11 @@ export default function ChatPanel() {
                     })()}
                   </div>
                 );
-              return <div key={m.id} className="m">{m.text}</div>;
+              return (
+                <div key={m.id} className="m">
+                  <Rich text={m.text} />
+                </div>
+              );
             })}
           </div>
 

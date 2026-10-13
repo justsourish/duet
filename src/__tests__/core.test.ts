@@ -6,6 +6,7 @@ import { picturesIn } from "../project/assets";
 import { copyNameFor, stepMessage, stepsToKeep } from "../project/project";
 import { findStep, newStepId, stepsLine, wordsBehind } from "../memory/steps";
 import { leftOut } from "../ui/SendCopy";
+import { richParts } from "../ui/rich";
 import { defaultLayout, relayout } from "../document/layout";
 import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
 import { resizeRect } from "../canvas/handles";
@@ -2051,5 +2052,23 @@ describe("words tied to steps", () => {
     expect(back.undoStep).toBeUndefined();
     expect(back.step).toBe(step);
     expect(findStep(getState().timeline, back.step)).toBe(1);
+  });
+});
+
+describe("what the AI writes in the chat", () => {
+  it("shows bold and code instead of the marks around them", () => {
+    expect(richParts("- **Order:** prices use `set_props` now")).toEqual([
+      { kind: "plain", text: "• " },
+      { kind: "bold", text: "Order:" },
+      { kind: "plain", text: " prices use " },
+      { kind: "code", text: "set_props" },
+      { kind: "plain", text: " now" },
+    ]);
+  });
+
+  it("leaves marks alone when nothing closes them, and plain text as it is", () => {
+    expect(richParts("2 ** 3 is 8")).toEqual([{ kind: "plain", text: "2 ** 3 is 8" }]);
+    expect(richParts("Moved it 12 - 4 px\n- done")).toEqual([{ kind: "plain", text: "Moved it 12 - 4 px\n• done" }]);
+    expect(richParts("")).toEqual([]);
   });
 });
