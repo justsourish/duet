@@ -64,6 +64,15 @@ The chat shows bold, code and lists in what the AI writes (`src/ui/rich.tsx`), 1
 
 Small, safe tasks go to a cheaper agent. The rules are in `AGENTS.md` under "If you are a helper agent". A check in `.githooks/pre-commit` runs before every save: it refuses failing tests, and on a `helper/` branch it refuses changes to saving, history, the file format, memory and permissions. Switch it on in a fresh copy with `git config core.hooksPath .githooks`. Tasks are issue comments titled "Task for a helper agent", on issues with the label `helper task`. The first three are issues 16, 6 and 9, in that order. Each ends with a click list for the creator. Review by reading the list of changed files, and open a file only when it is a risky one.
 
+Since 13 October 2026 the main AI starts the helper itself, with `scripts/helper.py`. The creator no longer pastes tasks into Antigravity.
+
+- `scripts/helper.py run <issue> <two-words> --task "..."` makes a copy of the code beside this folder (`../duet-helpers/`), on its own branch, and starts Antigravity there with no one clicking. The task is three lines: what to do, which files, how we know it is done. The standing rules are not repeated, they are in `AGENTS.md`.
+- Everything the helper does is written as it happens to `../duet-helpers/logs/<issue>-<two-words>.log`. The creator can watch with `tail -f`.
+- It ends with a summary of a few lines: saves, checks, files, whether it stayed in its lane, its own tokens. The main AI reads that, not the code, and checks interface work with the builder tools. It adds a row to `docs/helper-agent-research.md` by itself.
+- `keep` brings the work onto main and clears up. `drop` throws it away. `status` says if one is working.
+- One helper at a time, twenty minutes unless told otherwise. A fix of a few lines is quicker done directly and is not handed over.
+- Not for tasks that need the app run by the helper, or a drag on the canvas checked. Those still need a person, or better builder tools.
+
 ### Builder tools, so an AI can check the interface itself
 
 Done on 13 October 2026 (issue 41), not yet in a version. An AI that works on Duet can start a clean test design, read the panels as words, press things and read errors, through the same bridge as the design tools. Only the build Duet is developed with has them. See "Builder tools" in `docs/ai-bridge.md`, and `src/ai/builder.ts`. The test design is `startTestDesign` in `src/project/project.ts`. Use them to check interface work, including a helper's, before asking the creator to click. Still open: dragging on the canvas and in the layers, and a picture of the whole window.
