@@ -47,13 +47,16 @@ export default function TimeStrip() {
   const sceneId = mode === "motion" && plays ? frame.id : null;
   useEffect(() => openScene(sceneId), [sceneId]);
 
+  // the room the timeline has is the panel's own width, measured on the panel so it never depends on what is inside it
   useEffect(() => {
-    const el = lanes.current;
+    const el = lanes.current?.parentElement;
     if (!el) return;
-    const see = new ResizeObserver(() => setWide(Math.max(100, el.clientWidth - NAMES)));
+    const measure = () => setWide(Math.max(100, el.clientWidth - NAMES - 16));
+    measure();
+    const see = new ResizeObserver(measure);
     see.observe(el);
     return () => see.disconnect();
-  }, [plays]);
+  }, [plays, mode, sceneId]);
 
   // cutting keys, the ones video editors already have in their hands
   useEffect(() => {
@@ -376,7 +379,8 @@ export default function TimeStrip() {
   };
 
   const marks: number[] = [];
-  const every = length <= 12 ? 1 : length <= 60 ? 5 : length <= 300 ? 30 : 60;
+  // marks far enough apart to read, whatever the length and the zoom
+  const every = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800].find((n) => n * pps >= 64) ?? 3600;
   for (let t = 0; t <= length + 0.001; t += every) marks.push(t);
 
 
