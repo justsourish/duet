@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
 import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
 import { attachFiles } from "../ai/pictures";
-import type { ModelChoice, AgentId, Mode, Msg } from "../ai/chat";
+import type { ModelChoice, Mode, Msg } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { findStep } from "../memory/steps";
 import { goTo, useStore } from "../state/store";
@@ -14,9 +14,10 @@ import Rich from "./rich";
 import Icon from "./Icons";
 import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
-import { agentColour, whoColour } from "../ai/colours";
+import { agentColour } from "../ai/colours";
 import { busyOutside } from "../ai/outside";
 import { useDismiss } from "./useDismiss";
+import { toggleSkill, useSkills } from "../ai/skills";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
   { mode: "suggest", label: "Suggest", hint: "Duet only suggests. Nothing changes until you tap Apply." },
@@ -58,6 +59,32 @@ function groupMessages(list: ChatMessage[]): RenderItem[] {
   return result;
 }
 
+function renderYouText(content: string, membersList: { name: string }[]) {
+  const parts = content.split(/(@[A-Za-z0-9_-]+)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith("@") && part.length > 1) {
+      const word = part.slice(1).toLowerCase();
+      const hit =
+        membersList.find((m) => {
+          const flat = m.name.replace(/\s+/g, "").toLowerCase();
+          return flat.startsWith(word);
+        }) ??
+        AGENTS.find((a) => {
+          const flat = a.name.replace(/\s+/g, "").toLowerCase();
+          return flat.startsWith(word);
+        });
+      if (hit) {
+        return (
+          <span key={idx} style={{ color: agentColour(hit.name), fontWeight: "bold" }}>
+            {part}
+          </span>
+        );
+      }
+    }
+    return part;
+  });
+}
+
 export default function ChatPanel() {
   const messages = useChat((s) => s.messages);
   const mode = useChat((s) => s.mode);
@@ -74,6 +101,7 @@ export default function ChatPanel() {
   const place = useLayout((d) => d.chat);
   const chatW = useLayout((d) => d.chatW);
   const chatH = useLayout((d) => d.chatH);
+  const skills = useSkills();
 
   const [connecting, setConnecting] = useState(false);
   const [pictureNote, setPictureNote] = useState<string | null>(null);
@@ -88,24 +116,41 @@ export default function ChatPanel() {
   const [popOpen, setPopOpen] = useState(false);
   const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
 
+  const [cardAgent, setCardAgent] = useState<
+    | { type: "member"; agent: (typeof AGENTS)[number] }
+    | { type: "outside"; name: string }
+    | null
+  >(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mentionHidden, setMentionHidden] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
+
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const justMoved = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const litTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useDismiss(popOpen, () => setPopOpen(false), ".agent-pop, [data-name='agent-button']");
+  useDismiss(Boolean(cardAgent), () => setCardAgent(null), ".agent-card, [data-name='members']");
+  useDismiss(settingsOpen, () => setSettingsOpen(false), ".chat-settings, [data-name='chat-settings']");
 
   useEffect(() => {
-    if (minimized) setPopOpen(false);
+    if (minimized) {
+      setPopOpen(false);
+      setCardAgent(null);
+      setSettingsOpen(false);
+    }
   }, [minimized]);
 
   useEffect(() => {
-    if (agent !== "agy" || agyModels.length || !inTauri()) return;
+    const needAgy = agent === "agy" || (cardAgent?.type === "member" && cardAgent.agent.id === "agy");
+    if (!needAgy || agyModels.length || !inTauri()) return;
     invoke<ModelChoice[]>("agent_models", { program: "agy" })
       .then((list) => setAgyModels([{ id: "", name: "Default" }, ...list]))
       .catch(() => setAgyModels([{ id: "", name: "Default" }]));
-  }, [agent, agyModels.length]);
+  }, [agent, cardAgent, agyModels.length]);
 
   const dragging = moving !== null;
   useLayoutEffect(() => {
@@ -189,7 +234,6 @@ export default function ChatPanel() {
 
   const waiting = pictures.filter((p) => !p.sent);
   const attach = (files: File[]) => void attachFiles(files).then(setPictureNote);
-  const modelList = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
 
   const anchor = "corner" in place ? place.corner : "tl";
   const growX = anchor.endsWith("l") ? 1 : -1;
@@ -265,6 +309,68 @@ export default function ChatPanel() {
       outsideAgents.push(plainName(e.by as string));
     }
   }
+
+  const members = AGENTS.filter((a) => a.runnable && Boolean(installed[a.id]));
+
+  const joinedLines = outsideAgents.map((name) => {
+    const firstStep = timeline.find(
+      (e) => e.actor === "ai" && isOutside(e.by) && plainName(e.by as string) === name
+    );
+    return {
+      type: "joined" as const,
+      name,
+      time: firstStep?.time ?? 0,
+      text: `${name} joined from its own window`,
+    };
+  });
+
+  type RenderEntry =
+    | RenderItem
+    | { type: "joined"; name: string; time: number; text: string };
+
+  const getItemTime = (item: RenderEntry): number => {
+    if (item.type === "joined") return item.time;
+    if (item.type === "single") return item.msg.time ?? 0;
+    return item.messages[0]?.time ?? 0;
+  };
+
+  const sortedJoined = [...joinedLines].sort((a, b) => a.time - b.time);
+  const conversationItems: RenderEntry[] = [];
+  let jIdx = 0;
+  for (const r of renderItems) {
+    const rTime = getItemTime(r);
+    while (jIdx < sortedJoined.length && sortedJoined[jIdx].time <= rTime) {
+      conversationItems.push(sortedJoined[jIdx]);
+      jIdx++;
+    }
+    conversationItems.push(r);
+  }
+  while (jIdx < sortedJoined.length) {
+    conversationItems.push(sortedJoined[jIdx]);
+    jIdx++;
+  }
+
+  const mentionMatch = text.match(/@([A-Za-z]*)$/);
+  const mentionQuery = mentionMatch ? mentionMatch[1].toLowerCase() : null;
+  const matchingMembers = mentionQuery !== null
+    ? members.filter((m) => m.name.toLowerCase().startsWith(mentionQuery))
+    : [];
+  const showMentions = !mentionHidden && mentionMatch !== null && matchingMembers.length > 0;
+  const activeMentionIdx = Math.min(mentionIndex, Math.max(0, matchingMembers.length - 1));
+
+  const insertMention = (m: (typeof AGENTS)[number]) => {
+    const replacement = "@" + m.name.replace(/\s+/g, "") + " ";
+    const next = text.replace(/@[A-Za-z]*$/, replacement);
+    setText(next);
+    setMentionHidden(false);
+    setMentionIndex(0);
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = next.length;
+      }
+    }, 0);
+  };
 
   const send = (t: string) => {
     if ((!t.trim() && !waiting.length) || running) return;
@@ -360,8 +466,131 @@ export default function ChatPanel() {
         title="Drag to move me. Let go near a corner and I will snap there."
         onClick={() => !justMoved.current && setMinimized(!minimized)}
       >
-        <div className="av">D</div>
-        <div className="ctitle">Duet</div>
+        <div className="ctitle">
+          <b>Chat</b>
+        </div>
+        <div
+          className="members-cluster"
+          data-name="members"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {members.map((m) => {
+            const isAnswers = m.id === agent;
+            return (
+              <div
+                key={m.id}
+                className={`member-badge ${isAnswers ? "answers-ring" : ""}`}
+                style={{ backgroundColor: agentColour(m.name) }}
+                title={m.name}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (minimized) setMinimized(false);
+                  setCardAgent({ type: "member", agent: m });
+                  setSettingsOpen(false);
+                }}
+              >
+                {m.name.charAt(0)}
+              </div>
+            );
+          })}
+          {outsideAgents.map((name) => (
+            <div
+              key={name}
+              className="member-badge outside"
+              style={{ backgroundColor: agentColour(name) }}
+              title={name}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (minimized) setMinimized(false);
+                setCardAgent({ type: "outside", name });
+                setSettingsOpen(false);
+              }}
+            >
+              {name.charAt(0)}
+            </div>
+          ))}
+
+          {!cardAgent && !settingsOpen && (
+            <div className="members-list">
+              {members.map((m) => {
+                const isAnswers = m.id === agent;
+                return (
+                  <div
+                    key={m.id}
+                    className="members-list-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (minimized) setMinimized(false);
+                      setCardAgent({ type: "member", agent: m });
+                    }}
+                  >
+                    <span
+                      className={`member-badge ${isAnswers ? "answers-ring" : ""}`}
+                      style={{ backgroundColor: agentColour(m.name) }}
+                    >
+                      {m.name.charAt(0)}
+                    </span>
+                    <span className="members-list-name">{m.name}</span>
+                    <span className="members-list-status">{isAnswers ? "answers" : "here"}</span>
+                  </div>
+                );
+              })}
+              {outsideAgents.map((name) => {
+                const isWorking = busyName === name;
+                return (
+                  <div
+                    key={name}
+                    className="members-list-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (minimized) setMinimized(false);
+                      setCardAgent({ type: "outside", name });
+                    }}
+                  >
+                    <span
+                      className="member-badge outside"
+                      style={{ backgroundColor: agentColour(name) }}
+                    >
+                      {name.charAt(0)}
+                    </span>
+                    <span className="members-list-name">{name}</span>
+                    <span className="members-list-status">{isWorking ? "working" : "outside"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          className="chat-settings-btn"
+          data-name="chat-settings"
+          title="Chat settings"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (minimized) setMinimized(false);
+            setSettingsOpen((o) => !o);
+            setCardAgent(null);
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+
         <button
           type="button"
           className="chat-expand-btn"
@@ -388,6 +617,209 @@ export default function ChatPanel() {
             )}
           </svg>
         </button>
+
+        {cardAgent && (
+          <div
+            className="agent-card"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {cardAgent.type === "member" ? (
+              <>
+                <div className="agent-card-head">
+                  <span
+                    className="agent-card-badge"
+                    style={{ backgroundColor: agentColour(cardAgent.agent.name) }}
+                  >
+                    {cardAgent.agent.name.charAt(0)}
+                  </span>
+                  <div className="agent-card-info">
+                    <div className="agent-card-name">{cardAgent.agent.name}</div>
+                    <div className="agent-card-status">
+                      {cardAgent.agent.id === agent ? "answers" : "here"}
+                    </div>
+                  </div>
+                </div>
+                <div className="agent-pop-row">
+                  <div>
+                    <div className="agent-pop-label">Model</div>
+                    <select
+                      value={models[cardAgent.agent.id] ?? ""}
+                      disabled={running}
+                      onChange={(e) => setModel(cardAgent.agent.id, e.target.value)}
+                    >
+                      {(cardAgent.agent.id === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {cardAgent.agent.id === "claude" && (
+                    <div>
+                      <div className="agent-pop-label">Effort</div>
+                      <select
+                        title="How hard it thinks. More effort takes longer and costs more."
+                        value={effort}
+                        disabled={running}
+                        onChange={(e) => setEffort(e.target.value)}
+                      >
+                        {EFFORTS.map((x) => (
+                          <option key={x} value={x}>
+                            {x === "" ? "Effort" : x}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                {cardAgent.agent.id !== agent && (
+                  <button
+                    type="button"
+                    className="make-answer-btn"
+                    disabled={running}
+                    onClick={() => {
+                      setAgent(cardAgent.agent.id);
+                    }}
+                  >
+                    Make this one answer
+                  </button>
+                )}
+                <div className="agent-card-quiet">
+                  {"Or write @" + cardAgent.agent.name + " in a message."}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="agent-card-head">
+                  <span
+                    className="agent-card-badge outside"
+                    style={{ backgroundColor: agentColour(cardAgent.name) }}
+                  >
+                    {cardAgent.name.charAt(0)}
+                  </span>
+                  <div className="agent-card-info">
+                    <div className="agent-card-name">{cardAgent.name}</div>
+                    <div className="agent-card-status">
+                      {busyName === cardAgent.name ? "working" : "outside"}
+                    </div>
+                  </div>
+                </div>
+                <div className="agent-card-quiet">
+                  Works from its own window. It cannot be asked from here.
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {settingsOpen && (
+          <div
+            className="chat-settings"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="chat-settings-section">
+              <div className="agent-pop-label">How much agents may do</div>
+              <div className="mode">
+                {MODES.map((m) => (
+                  <span
+                    key={m.mode}
+                    className={mode === m.mode ? "on" : ""}
+                    title={m.hint}
+                    onClick={() => setMode(m.mode)}
+                  >
+                    {m.label}
+                  </span>
+                ))}
+              </div>
+              <div className="mode-hint" style={{ padding: "6px 0 0" }}>
+                {MODES.find((m) => m.mode === mode)?.hint}
+              </div>
+            </div>
+
+            <div className="chat-settings-section">
+              <div className="agent-pop-label">Members</div>
+              <div className="chat-settings-members-list">
+                {members.map((m) => {
+                  const isAnswers = m.id === agent;
+                  return (
+                    <div key={m.id} className="members-list-item">
+                      <span
+                        className={`member-badge ${isAnswers ? "answers-ring" : ""}`}
+                        style={{ backgroundColor: agentColour(m.name) }}
+                      >
+                        {m.name.charAt(0)}
+                      </span>
+                      <span className="members-list-name">{m.name}</span>
+                      <span className="members-list-status">
+                        {isAnswers ? "answers" : "here"}
+                      </span>
+                    </div>
+                  );
+                })}
+                {outsideAgents.map((name) => {
+                  const isWorking = busyName === name;
+                  return (
+                    <div key={name} className="members-list-item">
+                      <span
+                        className="member-badge outside"
+                        style={{ backgroundColor: agentColour(name) }}
+                      >
+                        {name.charAt(0)}
+                      </span>
+                      <span className="members-list-name">{name}</span>
+                      <span className="members-list-status">
+                        {isWorking ? "working" : "outside"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div
+                className="agent-pop-link connect-link"
+                style={{ marginTop: 6 }}
+                onClick={() => {
+                  setConnecting((c) => !c);
+                  setSettingsOpen(false);
+                }}
+              >
+                Connect your own AI
+              </div>
+            </div>
+
+            <div className="chat-settings-section">
+              <div className="agent-pop-label">Skills</div>
+              <div className="chat-settings-skills">
+                {skills.map((s) => (
+                  <div className="skill" key={s.id}>
+                    <div className="n">
+                      {s.name}
+                      <small>{s.summary}</small>
+                    </div>
+                    <div
+                      className={`sw ${s.enabled ? "on" : ""}`}
+                      onClick={() => toggleSkill(s.id)}
+                      role="switch"
+                      aria-checked={s.enabled}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div
+                className={`agent-pop-link newchat ${messages.length === 0 || running ? "disabled" : ""}`}
+                style={{ marginTop: 6 }}
+                onClick={() => {
+                  if (messages.length === 0 || running) return;
+                  newConversation();
+                  setSettingsOpen(false);
+                }}
+              >
+                Start a fresh conversation
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {!minimized && (
@@ -405,7 +837,14 @@ export default function ChatPanel() {
             {messages.length === 0 && found !== false && (
               <div className="m">Hi. Tell me what you want to do, or tap an idea. I can see what is selected on your canvas.</div>
             )}
-            {renderItems.map((item) => {
+            {conversationItems.map((item) => {
+              if (item.type === "joined") {
+                return (
+                  <div key={`joined-${item.name}`} className="chat-joined-line">
+                    {item.text}
+                  </div>
+                );
+              }
               if (item.type === "noteGroup") {
                 const isGroupLit = item.messages.some((m) => litStep === m.step);
                 const isGroupLater = item.messages.some((m) => m.undoStep !== undefined && m.undoStep > cursor);
@@ -468,7 +907,7 @@ export default function ChatPanel() {
                         })}
                       </div>
                     )}
-                    {m.text}
+                    {renderYouText(m.text, members)}
                   </div>
                 );
               if (m.role === "error")
@@ -529,6 +968,7 @@ export default function ChatPanel() {
               if (m.role === "note") {
                 return renderNote(m);
               }
+              const authorName = m.by || toolName;
               return (
                 <div
                   key={m.id}
@@ -536,9 +976,12 @@ export default function ChatPanel() {
                   className={`m ai ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
                   title={laterTitle}
                 >
-                  <span className="m-badge" style={{ backgroundColor: whoColour("ai") }}>
-                    {chatToolLetter}
-                  </span>
+                  <div className="m-author">
+                    <span className="m-badge" style={{ backgroundColor: agentColour(authorName) }}>
+                      {authorName.charAt(0)}
+                    </span>
+                    <span className="m-author-name">{authorName}</span>
+                  </div>
                   <div className="m-body">
                     <Rich text={m.text} />
                   </div>
@@ -590,7 +1033,7 @@ export default function ChatPanel() {
                 title="Who answers, and how"
                 onClick={() => setPopOpen((o) => !o)}
               >
-                <span className="agent-btn-badge">{chatToolLetter}</span>
+                <span className="agent-btn-badge" style={{ backgroundColor: agentColour(toolName) }}>{chatToolLetter}</span>
                 <span className="agent-btn-name">{toolName}</span>
                 <span className="agent-btn-v">v</span>
               </button>
@@ -601,105 +1044,30 @@ export default function ChatPanel() {
                 <div className="agent-pop">
                   <div>
                     <div className="agent-pop-label">Who answers</div>
-                    <select value={agent} disabled={running} onChange={(e) => setAgent(e.target.value as AgentId)}>
-                      {AGENTS.map((a) => {
-                        const here = installed[a.id];
-                        const label = !here ? `${a.name} (not found)` : !a.runnable ? `${a.name} (coming soon)` : a.name;
-                        return (
-                          <option key={a.id} value={a.id} disabled={!a.runnable}>
-                            {label}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <div className="agent-pop-row">
-                    <div>
-                      <div className="agent-pop-label">Model</div>
-                      <select value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
-                        {modelList.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {agent === "claude" && (
-                      <div>
-                        <div className="agent-pop-label">Effort</div>
-                        <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
-                          {EFFORTS.map((x) => (
-                            <option key={x} value={x}>
-                              {x === "" ? "Effort" : x}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div className="agent-pop-label">How much it may do</div>
-                    <div className="mode">
-                      {MODES.map((m) => (
-                        <span key={m.mode} className={mode === m.mode ? "on" : ""} title={m.hint} onClick={() => setMode(m.mode)}>
-                          {m.label}
-                        </span>
+                    <div className="who-answers-list">
+                      {members.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`who-answer-row ${m.id === agent ? "active" : ""}`}
+                          onClick={() => {
+                            if (running) return;
+                            setAgent(m.id);
+                            setPopOpen(false);
+                          }}
+                        >
+                          <span
+                            className="member-badge"
+                            style={{ backgroundColor: agentColour(m.name) }}
+                          >
+                            {m.name.charAt(0)}
+                          </span>
+                          <span className="who-answer-name">{m.name}</span>
+                          {m.id === agent && <span className="who-answer-status">answers</span>}
+                        </div>
                       ))}
-                    </div>
-                    <div className="mode-hint" style={{ padding: "6px 0 0" }}>
-                      {MODES.find((m) => m.mode === mode)?.hint}
-                    </div>
-                  </div>
-                  <div className="agent-pop-divider" />
-                  <div>
-                    <div className="agent-pop-label">Others on this design</div>
-                    {outsideAgents.length === 0 ? (
-                      <div className="agent-pop-empty">No one else right now.</div>
-                    ) : (
-                      <div className="agent-pop-chips">
-                        {outsideAgents.map((by) => {
-                          const col = agentColour(by);
-                          const isWorking = busyName === by;
-                          return (
-                            <div
-                              key={by}
-                              className={`agent-chip outside ${isWorking ? "working" : ""}`}
-                              title="Works from its own window. It cannot be asked from here."
-                            >
-                              <span className="agent-chip-badge" style={{ backgroundColor: col }}>
-                                {by.charAt(0)}
-                              </span>
-                              <span className="agent-chip-name">{by}</span>
-                              <span className="agent-chip-status">
-                                {isWorking && <span className="agent-chip-dot" style={{ backgroundColor: col }} />}
-                                {isWorking ? "working" : "outside"}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="agent-pop-divider" />
-                  <div className="agent-pop-links">
-                    <div
-                      className="agent-pop-link connect-link"
-                      onClick={() => {
-                        setConnecting((c) => !c);
-                        setPopOpen(false);
-                      }}
-                    >
-                      Connect your own AI
-                    </div>
-                    <div
-                      className={`agent-pop-link newchat ${messages.length === 0 || running ? "disabled" : ""}`}
-                      onClick={() => {
-                        if (messages.length === 0 || running) return;
-                        newConversation();
-                        setPopOpen(false);
-                      }}
-                    >
-                      Start a fresh conversation
+                      {members.length === 0 && (
+                        <div className="agent-pop-empty">No members installed.</div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -708,12 +1076,39 @@ export default function ChatPanel() {
             <button className="mini attach" disabled={found === false} title="Add pictures for the AI to look at. You can also paste or drop them here." onClick={() => picker.current?.click()}>
               <Icon name="image" size={16} />
             </button>
+            {showMentions && (
+              <div className="mention-list">
+                {matchingMembers.map((m, idx) => (
+                  <div
+                    key={m.id}
+                    className={`mention-item ${idx === activeMentionIdx ? "selected" : ""}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(m);
+                    }}
+                  >
+                    <span
+                      className="member-badge"
+                      style={{ backgroundColor: agentColour(m.name) }}
+                    >
+                      {m.name.charAt(0)}
+                    </span>
+                    <span>{m.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <textarea
+              ref={textareaRef}
               value={text}
               rows={1}
               placeholder={found === false ? "Pick an AI tool that is installed" : `Ask ${toolName}`}
               disabled={found === false}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                setMentionHidden(false);
+                setMentionIndex(0);
+              }}
               onPaste={(e) => {
                 const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
                 if (!files.length) return;
@@ -721,6 +1116,31 @@ export default function ChatPanel() {
                 attach(files);
               }}
               onKeyDown={(e) => {
+                if (showMentions) {
+                  if (e.key === "Tab" || e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const chosen = matchingMembers[activeMentionIdx] ?? matchingMembers[0];
+                    if (chosen) insertMention(chosen);
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setMentionHidden(true);
+                    return;
+                  }
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setMentionIndex((i) => (i + 1) % matchingMembers.length);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setMentionIndex((i) => (i - 1 + matchingMembers.length) % matchingMembers.length);
+                    return;
+                  }
+                }
                 e.stopPropagation();
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
