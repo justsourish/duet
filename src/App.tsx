@@ -26,7 +26,7 @@ import Settings from "./ui/Settings";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
 import Toolbar from "./ui/Toolbar";
-import { getState, useStore } from "./state/store";
+import { useStore } from "./state/store";
 import "./styles.css";
 
 const STATUS: Record<string, string> = {
@@ -77,10 +77,10 @@ export default function App() {
 
   useEffect(() => {
     const stop = startAutosave();
-    // go back to where you were; if there is nowhere to go back to, start at your projects
+    // every launch starts at your projects; the last one is a click away ("Back to ...")
     void restoreLast().then(() => {
       if (isCheckCopy()) return setCheck(true);
-      if (inTauri() && !getState().project.path && getState().timeline.length <= 1) setHome(true);
+      if (inTauri()) setHome(true);
     });
     const stops: (() => void)[] = [];
     let alive = true;
