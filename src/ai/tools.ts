@@ -8,7 +8,7 @@ import { measureText } from "../canvas/text";
 import { canMask, canTurn } from "../document/geometry";
 import { outlineFromData } from "../document/path";
 import { ENTRANCES, sceneOf } from "../document/time";
-import { MOVING } from "../document/types";
+import { MOVING, emptyDoc } from "../document/types";
 import type { El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
 import { addPicture, mimeFor } from "../project/assets";
@@ -131,15 +131,28 @@ export const TOOLS: ToolDef[] = [
   {
     name: "create_elements",
     description:
-      "Add many things at once, as one step. Use this to build a whole screen or section in one call instead of one create_element call per thing. Give a list of elements; each one takes the same fields as create_element (type, x, y, width, height, d, props) and may have children, a list of elements that go inside it (only frames can have children). Children are placed relative to their parent frame. The result lists the id of every element made, in order.",
+      "Add many things at once, as one step. Use this to build a whole screen or section in ONE call, instead of one create_element call per thing. Send one frame as the single top level element and put everything inside it in its children, each child with x and y relative to that frame. Each element takes the same fields as create_element (type, x, y, width, height, d, props). A child that is a frame can have its own children. The result lists the id of every element made. Example: {\"elements\":[{\"type\":\"frame\",\"x\":0,\"y\":0,\"width\":360,\"height\":640,\"props\":{\"fill\":\"#ffffff\"},\"children\":[{\"type\":\"text\",\"x\":24,\"y\":80,\"props\":{\"text\":\"Welcome back\",\"fontSize\":28,\"fontWeight\":700}},{\"type\":\"rect\",\"x\":24,\"y\":160,\"width\":312,\"height\":48,\"props\":{\"fill\":\"#f1f1f4\",\"radius\":8}}]}]}",
     inputSchema: {
       type: "object",
       properties: {
         parentId: { ...str, description: "A frame to put the top level elements in. Leave out for the page." },
         elements: {
           type: "array",
-          description: "Elements to add, each as {type, x, y, width, height, d, props, children}. children is a list of elements of the same shape.",
-          items: { type: "object" },
+          description: "The things to add. Usually one frame whose children hold everything else.",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["frame", "rect", "ellipse", "text", "path"] },
+              x: num,
+              y: num,
+              width: num,
+              height: num,
+              d: str,
+              props,
+              children: { type: "array", description: "Elements inside this frame, same shape as this one. x and y are relative to this frame.", items: { type: "object" } },
+            },
+            required: ["type", "x", "y"],
+          },
         },
       },
       required: ["elements"],
@@ -275,6 +288,38 @@ function namesOf(list: unknown): string {
   return Array.isArray(list) ? list.map(nameOf).join(", ") : "";
 }
 
+/** Names an agent might use for a property, and what Duet calls it. */
+const PROP_ALIASES: Record<string, string> = { cornerRadius: "radius", borderRadius: "radius", backgroundColor: "fill", color: "fill", borderColor: "stroke", borderWidth: "strokeWidth", font: "fontFamily", content: "text", label: "text" };
+const ELEMENT_FIELDS = new Set(["type", "x", "y", "width", "height", "d", "props", "children", "parentId"]);
+let knownProps: Set<string> | null = null;
+/** Every property an element has, found by making one. */
+function propNames(): Set<string> {
+  if (!knownProps) {
+    const made = runCommand(emptyDoc(), "create_element", { id: "probe", type: "rect", x: 0, y: 0, width: 1, height: 1 });
+    knownProps = new Set(Object.keys(made.elements.probe));
+  }
+  return knownProps;
+}
+
+/** Style fields written beside x and y count as props, so a thing is not silently left plain. A field Duet has no use for is named in the error. */
+function liftProps(own: Args): { el: Args } | { error: string } {
+  const el: Args = {};
+  const props: Record<string, unknown> = { ...((own.props as Record<string, unknown>) ?? {}) };
+  const unknown: string[] = [];
+  for (const [k, v] of Object.entries(own)) {
+    if (ELEMENT_FIELDS.has(k)) el[k] = v;
+    else if (PROP_ALIASES[k] && !(PROP_ALIASES[k] in props)) props[PROP_ALIASES[k]] = v;
+    else if (propNames().has(k) && !(k in props)) props[k] = v;
+    else if (!(k in props)) unknown.push(k);
+  }
+  if (unknown.length) return { error: `I do not know the field ${unknown.map((k) => `"${k}"`).join(", ")}. Style goes in props or beside x and y, using: ${[...propNames()].filter((k) => !["id", "parentId", "childIds", "overrides", "keys", "nodes"].includes(k)).join(", ")}.` };
+  el.props = props;
+  return { el };
+}
+
+/** Shown with every mistake in create_elements: an agent that cannot see the tool's fields learns them from its first wrong call. */
+const BATCH_USAGE = ` How to call it: {"elements":[{"type":"frame","x":0,"y":0,"width":360,"height":640,"fill":"#ffffff","children":[{"type":"text","x":24,"y":80,"text":"Welcome back","fontSize":28,"fontWeight":700},{"type":"rect","x":24,"y":160,"width":312,"height":48,"fill":"#f1f1f4","radius":8}]}]}. One frame holds everything in children. Each thing needs type, x, y. x and y are from the frame's corner. Style (fill, stroke, radius, text, fontSize, fontWeight, opacity...) goes beside x and y. Never give a child a parentId.`;
+
 /** A sentence a designer would say, for approvals and suggestions. */
 export function summarise(tool: string, a: Args): string {
   switch (tool) {
@@ -376,8 +421,12 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
         if (depth > 12) return "Elements are nested too deeply.";
         for (const raw of list) {
           if (!raw || typeof raw !== "object") return "Each element must be an object.";
-          const { children, ...own } = raw as Args;
-          const one = prepare("create_element", { ...own, parentId: own.parentId ?? parentId ?? null }, work);
+          const { children, ...rest } = raw as Args;
+          const lifted = liftProps(rest);
+          if ("error" in lifted) return `Element ${made.length + 1}: ${lifted.error}`;
+          const own = lifted.el;
+          // inside a frame, nesting says where a thing goes: a parentId an agent made up there is ignored
+          const one = prepare("create_element", { ...own, parentId: (depth === 0 ? own.parentId : null) ?? parentId ?? null }, work);
           if ("error" in one) return `Element ${made.length + 1} (${String(own.type)}): ${one.error}`;
           made.push(one.args);
           work = runCommand(work, "create_element", one.args as never);
@@ -391,8 +440,8 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
       };
       if (a.parentId != null && doc.elements[String(a.parentId)]?.type !== "frame") return { error: `parentId ${String(a.parentId)} is not a frame.` };
       const bad = walk(a.elements, a.parentId, 0);
-      if (bad) return { error: bad };
-      if (!made.length) return { error: "elements is empty." };
+      if (bad) return { error: bad + BATCH_USAGE };
+      if (!made.length) return { error: "elements is empty." + BATCH_USAGE };
       return { args: { items: made } };
     }
     case "place_image": {
