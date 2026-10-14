@@ -26,6 +26,7 @@ Restart `tauri dev` after installing a new npm package. Vite re-bundles dependen
 - `src-tauri/src/lib.rs` file access, bundled Git history (libgit2), user skills in `~/.duet/skills`.
 - `src-tauri/src/ai.rs` local MCP server (127.0.0.1, token), and the runner for the user's agent tool.
 - `mockups/` how the interface was thought through. `docs/` plans and decisions.
+- `ref/` and `scratch/` stay on this machine, never committed. Their READMEs say how they are sorted; `scripts/ref-tidy` does the sorting.
 
 ## Project links
 
