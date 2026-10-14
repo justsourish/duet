@@ -18,6 +18,8 @@ Read this first. It is the short version of two long working days.
 - **A test build went to his friend Somya** on 13 October (`~/Desktop/Duet test for Somya/`). It is older than most of the above.
 - **Issues filed these two days:** 44 to 58. Ideas go there, not into code, unless he says build.
 
+- **0.5.0 (14 October 2026).** Built that day: the AI builds a whole section in one call (`create_elements`, one step in the history, and its errors teach the call), a speed graph for every move with ready shapes and two handles (`set_curve`, `curve` on a key), Option U opens every thing that moves into a row per kind of change (Cut keeps bars clean and lists moments in the panel), a pen icon that reads as a pen, and a zoom that glides and scrubs. The scrub replaced the old drag-a-box zoom; ask him whether to bring the box back on Shift. Issues filed for what is next: 59 to 63 and 66 to 70. His private plans for plugins and who can reach what are in `duet-private/plans/`.
+
 ### Video and motion
 
 A frame on the page with a length is a **scene** and plays like a video. Everything in it is seen over time. The pieces: `src/document/time.ts` (what a design looks like at one moment, keys, arrivals, `poseAt` and `settle`), the time commands in `src/commands/index.ts` (`set_duration`, `set_timing`, `set_key`, `set_keys`, `key_now`, `move_key`, `remove_key`, `set_entrance`, `split_at`, `ripple_delete`), the clock in `src/state/store.ts`, `src/video/` (players for clips, play and pause, export, the keys for marking a moment), `src/ui/TimeStrip.tsx` (the timeline), the Motion section in `src/ui/PropertiesPanel.tsx`, and the export in `src-tauri/src/video.rs`.
