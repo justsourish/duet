@@ -2,7 +2,7 @@ import { outline } from "./outline";
 import { componentsIn } from "../document/components";
 import { lookAtDesign, lookAtImage } from "./vision";
 import { lookAtAttachment } from "./pictures";
-import { commandLabel, newId } from "../commands";
+import { commandLabel, newId, runCommand } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
 import { canMask, canTurn } from "../document/geometry";
@@ -129,6 +129,23 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "create_elements",
+    description:
+      "Add many things at once, as one step. Use this to build a whole screen or section in one call instead of one create_element call per thing. Give a list of elements; each one takes the same fields as create_element (type, x, y, width, height, d, props) and may have children, a list of elements that go inside it (only frames can have children). Children are placed relative to their parent frame. The result lists the id of every element made, in order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        parentId: { ...str, description: "A frame to put the top level elements in. Leave out for the page." },
+        elements: {
+          type: "array",
+          description: "Elements to add, each as {type, x, y, width, height, d, props, children}. children is a list of elements of the same shape.",
+          items: { type: "object" },
+        },
+      },
+      required: ["elements"],
+    },
+  },
+  {
     name: "place_image",
     description:
       "Put a picture file from this computer onto the canvas, such as a photo or a reference the designer told you about. path is the full path to a PNG, JPG, GIF, WebP or SVG file (~ for the home folder works). Leave width and height out to keep its shape at up to 640 pixels on the longer side, or give one of them to set the size and keep the shape. The designer may be asked to allow it. You still cannot see the picture: call look_at_image with the new id if you need to.",
@@ -237,7 +254,7 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-const EDITS = new Set(["create_instance", "create_element", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate"]);
+const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
 const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound"]);
 
@@ -266,6 +283,8 @@ export function summarise(tool: string, a: Args): string {
       if (a.type === "path") return "Draw a shape";
       return `Add a ${a.type === "rect" ? "rectangle" : String(a.type)}${p.text ? ` that says "${p.text}"` : ""}`;
     }
+    case "create_elements":
+      return `Add ${Array.isArray(a.items) ? a.items.length : "several"} things`;
     case "create_instance":
       return `Place a copy of ${nameOf(a.componentId)}`;
     case "place_image":
@@ -307,9 +326,8 @@ export function summarise(tool: string, a: Args): string {
 }
 
 /** Check the arguments and fill in anything that can be worked out. Returns an error message if it cannot be done. */
-function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
+function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | { error: string } {
   const a: Args = { ...raw };
-  const doc = currentDoc();
   switch (tool) {
     case "create_element": {
       if (!["frame", "rect", "ellipse", "text", "path"].includes(String(a.type))) return { error: "type must be frame, rect, ellipse, text or path." };
@@ -347,6 +365,35 @@ function prepare(tool: string, raw: Args): { args: Args } | { error: string } {
       a.props = p;
       a.id = newId(String(a.type));
       return { args: a };
+    }
+    case "create_elements": {
+      // a suggestion that was already checked comes back through here when the designer taps Apply
+      if (Array.isArray(a.items)) return { args: a };
+      const made: Args[] = [];
+      let work = doc;
+      const walk = (list: unknown, parentId: unknown, depth: number): string | null => {
+        if (!Array.isArray(list)) return "elements must be a list.";
+        if (depth > 12) return "Elements are nested too deeply.";
+        for (const raw of list) {
+          if (!raw || typeof raw !== "object") return "Each element must be an object.";
+          const { children, ...own } = raw as Args;
+          const one = prepare("create_element", { ...own, parentId: own.parentId ?? parentId ?? null }, work);
+          if ("error" in one) return `Element ${made.length + 1} (${String(own.type)}): ${one.error}`;
+          made.push(one.args);
+          work = runCommand(work, "create_element", one.args as never);
+          if (children != null) {
+            if (own.type !== "frame") return `Element ${made.length} (${String(own.type)}): only a frame can have children.`;
+            const bad = walk(children, one.args.id, depth + 1);
+            if (bad) return bad;
+          }
+        }
+        return null;
+      };
+      if (a.parentId != null && doc.elements[String(a.parentId)]?.type !== "frame") return { error: `parentId ${String(a.parentId)} is not a frame.` };
+      const bad = walk(a.elements, a.parentId, 0);
+      if (bad) return { error: bad };
+      if (!made.length) return { error: "elements is empty." };
+      return { args: { items: made } };
     }
     case "place_image": {
       const path = typeof a.path === "string" ? a.path.trim() : "";
@@ -660,6 +707,11 @@ async function apply(tool: string, args: Args, by?: string): Promise<ToolResult>
   if (tool === "make_mask") {
     if (!currentDoc().elements[String(args.groupId)]) return fail("That mask could not be made.");
     return { text: `Made the mask group ${String(args.groupId)}. It is as big as the shape. Its things kept their ids.` };
+  }
+  if (tool === "create_elements") {
+    const items = (args.items as { id: string; type: string }[]) ?? [];
+    const doc = currentDoc();
+    return { text: `Created ${items.length} elements: ${items.map((i) => `${i.id} "${doc.elements[i.id]?.name}"`).join(", ")}. Look at the design to check it.` };
   }
   if (tool === "create_element") {
     const el = currentDoc().elements[String(args.id)];

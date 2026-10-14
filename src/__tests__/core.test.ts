@@ -2080,3 +2080,32 @@ describe("what the AI writes in the chat", () => {
     expect(richParts("")).toEqual([]);
   });
 });
+
+describe("create_elements", () => {
+  it("builds a frame with its children as one command", () => {
+    const base = emptyDoc();
+    const doc = runCommand(base, "create_elements", {
+      items: [
+        { id: "f1", type: "frame", x: 0, y: 0, width: 300, height: 400 },
+        { id: "r1", type: "rect", x: 10, y: 10, width: 50, height: 50, parentId: "f1" },
+        { id: "t1", type: "text", x: 10, y: 80, width: 100, height: 20, parentId: "f1", props: { text: "Hi" } },
+      ],
+    });
+    expect(doc.rootIds).toEqual(["f1"]);
+    expect(doc.elements.f1.childIds.sort()).toEqual(["r1", "t1"]);
+    expect(doc.elements.t1.text).toBe("Hi");
+    expect(base.rootIds).toEqual([]);
+  });
+
+  it("is one step in history", () => {
+    resetStore();
+    const before = getState().timeline.length;
+    dispatch("create_elements", {
+      items: [
+        { id: "f1", type: "frame", x: 0, y: 0, width: 300, height: 400 },
+        { id: "r1", type: "rect", x: 0, y: 0, width: 10, height: 10, parentId: "f1" },
+      ],
+    });
+    expect(getState().timeline.length).toBe(before + 1);
+  });
+});

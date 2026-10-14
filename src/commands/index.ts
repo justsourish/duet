@@ -144,6 +144,22 @@ const createElement: CommandDef<CreateArgs> = {
   },
 };
 
+// ---- create_elements ----
+export interface CreateManyArgs {
+  /** In order: a frame comes before the things inside it. */
+  items: CreateArgs[];
+}
+
+/** Many new things as one step, such as a whole screen built in one go. */
+const createElements: CommandDef<CreateManyArgs> = {
+  label: (a) => `Add ${a.items.length} things`,
+  run: (doc, a) => {
+    let next = doc;
+    for (const item of a.items) next = createElement.run(next, item);
+    return next;
+  },
+};
+
 // ---- move_elements ----
 export interface MoveArgs {
   ids: string[];
@@ -1123,6 +1139,7 @@ const setEntrance: CommandDef<SetEntranceArgs> = {
 // ---- registry ----
 export const commands = {
   create_element: createElement,
+  create_elements: createElements,
   move_elements: moveElements,
   resize_element: resizeElement,
   set_props: setProps,

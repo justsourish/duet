@@ -37,6 +37,7 @@ const WORKING: Record<string, string> = {
   trace_image: "Tracing a picture",
   select_elements: "Pointing at things",
   create_element: "Adding something",
+  create_elements: "Building a section",
   set_props: "Changing something",
   move_elements: "Moving things",
   resize_element: "Resizing something",
