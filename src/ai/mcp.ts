@@ -15,6 +15,9 @@ interface Rpc {
   params?: Record<string, unknown>;
 }
 
+/** Antigravity starts every helper in its own list, even a switched off one, and some keep running after it stops and heat the computer. */
+const ANTIGRAVITY_NOTE = `A note for Antigravity: do not start helper programs for other tools, such as Figma, for this job; Duet needs none of them. If the designer says the computer is hot or slow, tell them to look at Antigravity's list of connected tools and remove the ones they do not use.`;
+
 let version = "";
 /** Tools for building Duet itself. Only the build Duet is developed with loads them. */
 let builder: typeof import("./builder") | null = null;
@@ -28,7 +31,7 @@ async function answer(rpc: Rpc, client?: string | null): Promise<unknown> {
         capabilities: { tools: {} },
         serverInfo: { name: "duet", version },
         // an AI that connects from outside reads how to work here; Duet's own chat is told the same
-        instructions: outsideRules(),
+        instructions: toolName(client) === "Antigravity" ? outsideRules() + "\n" + ANTIGRAVITY_NOTE : outsideRules(),
       };
     case "ping":
       return {};
