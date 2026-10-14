@@ -66,7 +66,7 @@ type Drag =
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number }
   | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number } }
   | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean }
-  | { kind: "zoom"; start: { x: number; y: number }; sx: number; sy: number }
+  | { kind: "zoom"; sx: number; sy: number; startZoom: number; vx: number; vy: number; moved: boolean; priorGlide: { zoom: number; zoomIn?: boolean } | null }
   | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
 
 /** Where files dragged in from the computer are, when the system says so. */
@@ -128,9 +128,84 @@ export function pastePayload(payload: ClipPayload, duplicate = false) {
 export const MIN_ZOOM = 0.02;
 export const MAX_ZOOM = 64;
 
+const ZOOM_LEVELS = [0.02, 0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+
+export function nextZoomLevel(current: number, zoomIn: boolean): number {
+  if (zoomIn) {
+    for (const z of ZOOM_LEVELS) {
+      if (z > current * 1.01) return z;
+    }
+    return MAX_ZOOM;
+  }
+  for (let i = ZOOM_LEVELS.length - 1; i >= 0; i--) {
+    if (ZOOM_LEVELS[i] < current * 0.99) return ZOOM_LEVELS[i];
+  }
+  return MIN_ZOOM;
+}
+
+const GLIDE_MS = 200;
+
+function easeOut(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+const animFrame = (cb: FrameRequestCallback): number => {
+  if (typeof requestAnimationFrame === "function") return requestAnimationFrame(cb);
+  return setTimeout(() => cb(Date.now()), 16) as unknown as number;
+};
+
+const cancelAnimFrame = (id: number) => {
+  if (typeof cancelAnimationFrame === "function") return cancelAnimationFrame(id);
+  clearTimeout(id);
+};
+
+let glideRaf = 0;
+let activeGlideTarget: { x: number; y: number; zoom: number; zoomIn?: boolean } | null = null;
+
+export function stopGlide() {
+  if (glideRaf) {
+    cancelAnimFrame(glideRaf);
+    glideRaf = 0;
+  }
+  activeGlideTarget = null;
+}
+
+/** Glide the viewport to a new place and zoom level. */
+export function glideTo(target: { x: number; y: number; zoom: number; zoomIn?: boolean }) {
+  stopGlide();
+  const start = getState().viewport;
+  if (start.x === target.x && start.y === target.y && start.zoom === target.zoom) return;
+  activeGlideTarget = target;
+  const nowFn = typeof performance !== "undefined" ? () => performance.now() : () => Date.now();
+  const startTime = nowFn();
+
+  const tick = (now: number) => {
+    const elapsed = now - startTime;
+    const progress = Math.min(1, elapsed / GLIDE_MS);
+    const t = easeOut(progress);
+
+    if (progress >= 1) {
+      glideRaf = 0;
+      activeGlideTarget = null;
+      setViewport({ x: target.x, y: target.y, zoom: target.zoom });
+      return;
+    }
+
+    setViewport({
+      zoom: start.zoom + (target.zoom - start.zoom) * t,
+      x: start.x + (target.x - start.x) * t,
+      y: start.y + (target.y - start.y) * t,
+    });
+
+    glideRaf = animFrame(tick);
+  };
+
+  glideRaf = animFrame(tick);
+}
+
 function fitBox(box: Rect, width: number, height: number, maxZoom: number, pad = 120) {
   const zoom = Math.max(MIN_ZOOM, Math.min(maxZoom, (width - pad * 2) / box.width, (height - pad * 2) / box.height));
-  setViewport({
+  glideTo({
     zoom,
     x: width / 2 - (box.x + box.width / 2) * zoom,
     y: height / 2 - (box.y + box.height / 2) * zoom,
@@ -141,7 +216,7 @@ function fitBox(box: Rect, width: number, height: number, maxZoom: number, pad =
 export function zoomToFit(width: number, height: number) {
   const doc = workDoc();
   const box = unionRect(doc.rootIds.map((id) => worldBounds(doc, id)));
-  if (!box) return setViewport({ x: 160, y: 100, zoom: 1 });
+  if (!box) return glideTo({ x: 160, y: 100, zoom: 1 });
   fitBox(box, width, height, 2);
 }
 
@@ -166,7 +241,7 @@ export function revealElements(ids: string[], width: number, height: number) {
   const visible = left >= 0 && top >= 0 && right <= width && bottom <= height;
   if (visible) return;
   if (box.width * vp.zoom <= width * 0.9 && box.height * vp.zoom <= height * 0.9) {
-    setViewport({ zoom: vp.zoom, x: width / 2 - (box.x + box.width / 2) * vp.zoom, y: height / 2 - (box.y + box.height / 2) * vp.zoom });
+    glideTo({ zoom: vp.zoom, x: width / 2 - (box.x + box.width / 2) * vp.zoom, y: height / 2 - (box.y + box.height / 2) * vp.zoom });
   } else {
     fitBox(box, width, height, 4);
   }
@@ -178,7 +253,7 @@ export function zoomTo(level: number, width: number, height: number) {
   const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level));
   const wx = (width / 2 - vp.x) / vp.zoom;
   const wy = (height / 2 - vp.y) / vp.zoom;
-  setViewport({ zoom, x: width / 2 - wx * zoom, y: height / 2 - wy * zoom });
+  glideTo({ zoom, x: width / 2 - wx * zoom, y: height / 2 - wy * zoom });
 }
 
 export default function CanvasView() {
@@ -248,6 +323,7 @@ export default function CanvasView() {
       ro.disconnect();
       unsub();
       window.removeEventListener("duet:repaint", schedule);
+      stopGlide();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -323,20 +399,35 @@ export default function CanvasView() {
     canvasRef.current!.setPointerCapture(e.pointerId);
 
     if (e.button === 1 || spaceRef.current || s.tool === "hand") {
+      stopGlide();
       dragRef.current = { kind: "pan", sx: p.sx, sy: p.sy, vx: s.viewport.x, vy: s.viewport.y };
       setCursor("grabbing");
       return;
     }
 
     if (s.tool === "pen") {
+      stopGlide();
       dragRef.current = { kind: "pen", index: penDown(p, s.viewport.zoom) };
       return;
     }
 
     if (s.tool === "zoom") {
-      dragRef.current = { kind: "zoom", start: { x: p.x, y: p.y }, sx: p.sx, sy: p.sy };
+      const priorGlide = activeGlideTarget;
+      stopGlide();
+      dragRef.current = {
+        kind: "zoom",
+        sx: p.sx,
+        sy: p.sy,
+        startZoom: s.viewport.zoom,
+        vx: s.viewport.x,
+        vy: s.viewport.y,
+        moved: false,
+        priorGlide,
+      };
       return;
     }
+
+    stopGlide();
 
     if (CREATE_TOOLS.includes(s.tool)) {
       const type = s.tool as ElementType;
@@ -439,8 +530,13 @@ export default function CanvasView() {
     }
 
     if (d.kind === "zoom") {
-      // dragging marks out the area to zoom into
-      if (Math.hypot(p.sx - d.sx, p.sy - d.sy) >= 4) setOverlay({ marquee: normalize(d.start.x, d.start.y, p.x, p.y) });
+      if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
+      d.moved = true;
+      const factor = Math.exp((p.sx - d.sx) * 0.006);
+      const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, d.startZoom * factor));
+      const wx = (d.sx - d.vx) / d.startZoom;
+      const wy = (d.sy - d.vy) / d.startZoom;
+      setViewport({ zoom, x: d.sx - wx * zoom, y: d.sy - wy * zoom });
       return;
     }
 
@@ -531,11 +627,20 @@ export default function CanvasView() {
     }
 
     if (d.kind === "zoom") {
-      setOverlay({ marquee: null });
-      const area = normalize(d.start.x, d.start.y, p.x, p.y);
-      // a drag zooms into the area you marked; a click zooms in on that spot, or out with Option
-      if (Math.hypot(p.sx - d.sx, p.sy - d.sy) >= 4 && area.width > 0 && area.height > 0) fitBox(area, sizeRef.current.w, sizeRef.current.h, MAX_ZOOM, 24);
-      else zoomAt(p.sx, p.sy, e.altKey ? 0.5 : 2);
+      if (!d.moved) {
+        const zoomIn = !e.altKey;
+        const vp = getState().viewport;
+        const baseZoom = d.priorGlide && d.priorGlide.zoomIn === zoomIn ? d.priorGlide.zoom : vp.zoom;
+        const targetZoom = nextZoomLevel(baseZoom, zoomIn);
+        const wx = (d.sx - vp.x) / vp.zoom;
+        const wy = (d.sy - vp.y) / vp.zoom;
+        glideTo({
+          zoom: targetZoom,
+          x: d.sx - wx * targetZoom,
+          y: d.sy - wy * targetZoom,
+          zoomIn,
+        });
+      }
       return;
     }
 
@@ -641,6 +746,7 @@ export default function CanvasView() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (getState().editingId) return;
+      stopGlide();
       const p = point(e);
       if (e.ctrlKey || e.metaKey) {
         if (pinch) return;
@@ -654,6 +760,7 @@ export default function CanvasView() {
     type GestureEvent = Event & { scale: number; clientX: number; clientY: number };
     const onGestureStart = (e: Event) => {
       e.preventDefault();
+      stopGlide();
       const vp = getState().viewport;
       const p = point(e as GestureEvent);
       // remember which point of the design sits under the fingers, and keep it there
