@@ -9,6 +9,7 @@ import { newId } from "../commands";
 import { useLayout } from "./layout";
 import { entranceOf, sceneOf, spanOf } from "../document/time";
 import type { Entrance } from "../document/time";
+import SpeedGraph from "./SpeedGraph";
 
 function NumField({ label, value, onCommit, min }: { label: string; value: number | ""; onCommit: (n: number) => void; min?: number }) {
   const [text, setText] = useState(String(value));
@@ -308,6 +309,13 @@ const KEY_GROUPS: { name: string; props: Moving[] }[] = [
   { name: "Turn", props: ["rotation"] },
 ];
 
+/** The seconds a group of properties has a moment at, in order. */
+function momentTimes(el: El, props: Moving[]): number[] {
+  const times = new Set<number>();
+  for (const p of props) for (const k of el.keys[p] ?? []) times.add(Math.round(k.t * 1000) / 1000);
+  return [...times].sort((a, b) => a - b);
+}
+
 function momentsCount(el: El, props: Moving[]): number {
   const times = new Set<number>();
   for (const p of props) {
@@ -386,17 +394,20 @@ function MotionSection({ el, scene }: { el: El; scene: El }) {
       <div className="hint2">Moves over time</div>
       {groupsWithKeys.length > 0 ? (
         groupsWithKeys.map((g) => (
-          <div key={g.name} className="motion-row">
-            <span>
-              {g.name}, {g.count} {g.count === 1 ? "moment" : "moments"}
-            </span>
-            <button
-              type="button"
-              className="mini"
-              onClick={() => dispatch("remove_key", { ids: [el.id], props: g.props })}
-            >
-              Clear
-            </button>
+          <div key={g.name}>
+            <div className="motion-row">
+              <span>
+                {g.name}, {g.count} {g.count === 1 ? "moment" : "moments"}
+              </span>
+              <button
+                type="button"
+                className="mini"
+                onClick={() => dispatch("remove_key", { ids: [el.id], props: g.props })}
+              >
+                Clear
+              </button>
+            </div>
+            {g.count > 1 && <SpeedGraph key={g.name + el.id} el={el} props={g.props} times={momentTimes(el, g.props)} />}
           </div>
         ))
       ) : (

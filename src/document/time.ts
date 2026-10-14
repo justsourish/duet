@@ -14,6 +14,35 @@ const EASE: Record<Key["ease"], (p: number) => number> = {
   "in-out": (p) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2),
 };
 
+/** Ready shapes for the speed of a move, as handles. The first four are what `ease` names; the rest are for a designer to pick. */
+export const CURVES = {
+  steady: [0, 0, 1, 1],
+  gentle: [0.65, 0, 0.35, 1],
+  snappy: [0.16, 1, 0.3, 1],
+  bouncy: [0.34, 1.56, 0.64, 1],
+} as const satisfies Record<string, readonly [number, number, number, number]>;
+export type CurveName = keyof typeof CURVES;
+
+/** How far along a move is, from how far along its time is, through a curve with two handles. */
+export function curveAt(c: readonly [number, number, number, number], p: number): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  const [x1, y1, x2, y2] = c;
+  const bez = (a: number, b: number, s: number) => 3 * a * (1 - s) * (1 - s) * s + 3 * b * (1 - s) * s * s + s * s * s;
+  // find the point along the curve where time is p, then read how far along it is there
+  let lo = 0;
+  let hi = 1;
+  let s = p;
+  for (let i = 0; i < 30; i++) {
+    const x = bez(x1, x2, s);
+    if (Math.abs(x - p) < 1e-5) break;
+    if (x < p) lo = s;
+    else hi = s;
+    s = (lo + hi) / 2;
+  }
+  return bez(y1, y2, s);
+}
+
 /** The value at one moment. Before the first key it holds the first value, after the last it holds the last. */
 export function valueAt(keys: Key[], t: number): number {
   if (t <= keys[0].t) return keys[0].v;
@@ -22,16 +51,20 @@ export function valueAt(keys: Key[], t: number): number {
     if (t > b.t) continue;
     const a = keys[i - 1];
     const p = b.t === a.t ? 1 : (t - a.t) / (b.t - a.t);
-    return a.v + (b.v - a.v) * (EASE[b.ease] ?? EASE.linear)(p);
+    return a.v + (b.v - a.v) * (b.curve ? curveAt(b.curve, p) : (EASE[b.ease] ?? EASE.linear)(p));
   }
   return keys[keys.length - 1].v;
 }
 
-/** The list with this key added, in order of time. A key at the same moment is replaced. */
-export function withKey(keys: Key[], key: Key): Key[] {
+/**
+ * The list with this key added, in order of time. A key at the same moment is replaced.
+ * `keepShape` is for changing the value of a moment by hand: the speed shape the designer gave it stays.
+ */
+export function withKey(keys: Key[], key: Key, keepShape = false): Key[] {
+  const old = keepShape && !key.curve ? keys.find((k) => Math.abs(k.t - key.t) <= 0.004)?.curve : undefined;
   return keys
     .filter((k) => Math.abs(k.t - key.t) > 0.004)
-    .concat(key)
+    .concat(old ? { ...key, curve: old } : key)
     .sort((a, b) => a.t - b.t);
 }
 
@@ -57,7 +90,11 @@ export function elAt(el: El, t: number): El {
   const out = { ...el };
   for (const p of MOVING) {
     const keys = el.keys[p];
-    if (keys?.length) out[p] = valueAt(keys, t);
+    if (keys?.length) {
+      const v = valueAt(keys, t);
+      // a bouncy shape overshoots: opacity stays between clear and solid, and a size never goes below a pixel
+      out[p] = p === "opacity" ? Math.min(1, Math.max(0, v)) : p === "width" || p === "height" ? Math.max(1, v) : v;
+    }
   }
   return out;
 }
@@ -200,7 +237,7 @@ export function settle(real: Doc, posed: Doc, out: Doc, sceneId: string, t: numb
     const el = { ...now, keys: { ...now.keys } };
     for (const p of MOVING) {
       if (!was.keys[p]?.length) continue;
-      if (now[p] !== shown[p] && el.keys[p]?.length) el.keys[p] = withKey(el.keys[p]!, { t: at, v: now[p], ease: "in-out" });
+      if (now[p] !== shown[p] && el.keys[p]?.length) el.keys[p] = withKey(el.keys[p]!, { t: at, v: now[p], ease: "in-out" }, true);
       el[p] = was[p];
     }
     elements[id] = el;

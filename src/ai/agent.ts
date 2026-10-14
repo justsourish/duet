@@ -38,6 +38,7 @@ const WORKING: Record<string, string> = {
   select_elements: "Pointing at things",
   create_element: "Adding something",
   create_elements: "Building a section",
+  set_curve: "Shaping a move",
   set_props: "Changing something",
   move_elements: "Moving things",
   resize_element: "Resizing something",

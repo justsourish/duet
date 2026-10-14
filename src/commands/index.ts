@@ -5,8 +5,8 @@ import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstan
 import { orderByPosition, relayout } from "../document/layout";
 import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../document/types";
-import { ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } from "../document/time";
-import type { Entrance } from "../document/time";
+import { CURVES, ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } from "../document/time";
+import type { CurveName, Entrance } from "../document/time";
 
 /**
  * Every change to a design goes through one of these named commands.
@@ -921,6 +921,39 @@ const setKeys: CommandDef<SetKeysArgs> = {
   },
 };
 
+// ---- set_curve ----
+export interface SetCurveArgs {
+  ids: string[];
+  props: Moving[];
+  /** The moment the move arrives at: the speed of the move that ends here is what changes. */
+  t: number;
+  /** A ready shape, or the two handles. */
+  shape: CurveName | [number, number, number, number];
+}
+
+const setCurve: CommandDef<SetCurveArgs> = {
+  label: () => "Change how a move speeds up and slows down",
+  run: (doc, a) => {
+    const curve = typeof a.shape === "string" ? (CURVES[a.shape] ? ([...CURVES[a.shape]] as [number, number, number, number]) : null) : a.shape;
+    if (!curve || curve.length !== 4 || curve.some((n) => !Number.isFinite(n))) return doc;
+    // the first handle of each pair must stay inside the time of the move, or time would run backwards
+    const shape: [number, number, number, number] = [Math.min(1, Math.max(0, curve[0])), Math.min(4, Math.max(-3, curve[1])), Math.min(1, Math.max(0, curve[2])), Math.min(4, Math.max(-3, curve[3]))];
+    const next = clone(doc);
+    let changed = false;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      if (!el) continue;
+      for (const prop of a.props) {
+        const key = el.keys[prop]?.find((k, i) => i > 0 && Math.abs(k.t - a.t) <= 0.004);
+        if (!key) continue;
+        key.curve = shape;
+        changed = true;
+      }
+    }
+    return changed ? next : doc;
+  },
+};
+
 // ---- key_now ----
 export interface KeyNowArgs {
   ids: string[];
@@ -943,7 +976,7 @@ const keyNow: CommandDef<KeyNowArgs> = {
       for (const prop of a.props) {
         if (!MOVING.includes(prop)) continue;
         const keys = el.keys[prop] ?? [];
-        el.keys[prop] = withKey(keys, { t, v: keys.length ? valueAt(keys, t) : el[prop], ease: "in-out" });
+        el.keys[prop] = withKey(keys, { t, v: keys.length ? valueAt(keys, t) : el[prop], ease: "in-out" }, true);
         changed = true;
       }
     }
@@ -1164,6 +1197,7 @@ export const commands = {
   set_key: setKey,
   set_keys: setKeys,
   key_now: keyNow,
+  set_curve: setCurve,
   remove_key: removeKey,
   move_key: moveKey,
   set_entrance: setEntrance,

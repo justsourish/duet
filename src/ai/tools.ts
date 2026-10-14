@@ -245,6 +245,16 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "set_curve",
+    description:
+      "Shape how fast a move goes, for things that already change over time. t is the second the move ends at (a moment made with animate; the first moment of a property has no move arriving at it). shape is a ready one: steady (the same speed all the way), gentle (slow, quick, slow), snappy (fast start, soft landing) or bouncy (goes a little past, then settles). Or give shape as four numbers [x1, y1, x2, y2], the two handles of a speed graph: x is time from 0 to 1, y is how far along the move is, and y above 1 goes past the end. Moves are gentle unless you change them.",
+    inputSchema: {
+      type: "object",
+      properties: { ids, props: { type: "array", items: str, description: "x, y, width, height, opacity or rotation." }, t: num, shape: { description: "steady, gentle, snappy, bouncy, or four numbers." } },
+      required: ["ids", "props", "t", "shape"],
+    },
+  },
+  {
     name: "place_video",
     description:
       "Put a video file from this computer into a frame that plays. path is the full path to an MP4, MOV, M4V or WebM file (~ for the home folder works). It appears at start (seconds, 0 if left out) and plays to its end, and the frame grows longer if it has to. Leave x, y, width and height out to fit it inside the frame, centred. The file stays where it is on the computer. Trim it afterwards with set_timing. The designer is asked first.",
@@ -267,7 +277,7 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate"]);
+const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate", "set_curve"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
 const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound"]);
 
@@ -344,6 +354,8 @@ export function summarise(tool: string, a: Args): string {
       return `Change when ${namesOf(a.ids)} ${Array.isArray(a.ids) && a.ids.length > 1 ? "show" : "shows"}`;
     case "set_entrance":
       return `${namesOf(a.ids)}: ${a.when === "out" ? "leave" : "arrive"} with ${String(a.kind)}`;
+    case "set_curve":
+      return `Change how ${namesOf(a.ids)} speeds up and slows down`;
     case "animate":
       return `Change ${String(a.prop)} of ${nameOf(a.id)} over time`;
     case "trace_image":
@@ -541,6 +553,17 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
         if (a.when !== "in" && a.when !== "out") return { error: "when must be in or out." };
         if (!(ENTRANCES as readonly string[]).includes(String(a.kind))) return { error: `kind must be one of: ${ENTRANCES.join(", ")}.` };
       }
+      return { args: a };
+    }
+    case "set_curve": {
+      const bad = missing(a.ids);
+      if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
+      const props = Array.isArray(a.props) ? a.props.map(String) : [];
+      if (!props.length || props.some((p) => !(MOVING as readonly string[]).includes(p))) return { error: "props must be a list of x, y, width, height, opacity or rotation." };
+      if (typeof a.t !== "number") return { error: "t must be a number of seconds." };
+      const shape = a.shape;
+      const ok = typeof shape === "string" ? ["steady", "gentle", "snappy", "bouncy"].includes(shape) : Array.isArray(shape) && shape.length === 4 && shape.every((n) => typeof n === "number");
+      if (!ok) return { error: "shape must be steady, gentle, snappy, bouncy, or four numbers." };
       return { args: a };
     }
     case "animate": {

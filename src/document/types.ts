@@ -47,6 +47,11 @@ export interface Key {
   v: number;
   /** How it arrives at this value from the one before: at a steady pace, or easing in, out, or both. */
   ease: "linear" | "in" | "out" | "in-out";
+  /**
+   * The shape of the speed, if the designer shaped it: a curve from 0,0 to 1,1 with two handles, x1 y1 x2 y2.
+   * Up is how far along the move it is, across is time. A handle above 1 or below 0 overshoots. It replaces `ease`.
+   */
+  curve?: [number, number, number, number];
 }
 
 /** A thing that plays a file: a video clip, or a sound with nothing to see. */

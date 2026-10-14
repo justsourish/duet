@@ -3402,3 +3402,52 @@ button.agent-perm {
   border-radius: 999px;
   padding: 3px;
 }
+
+/* speed graph */
+.speed {
+  margin: 6px 0 10px;
+}
+.sg {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  margin: 6px 0;
+  touch-action: none;
+}
+.sg-box {
+  fill: var(--panel-2);
+  stroke: var(--line);
+}
+.sg-line {
+  stroke: var(--line);
+  stroke-dasharray: 3 3;
+}
+.sg-curve {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.sg-arm {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+.sg-handle {
+  fill: var(--panel);
+  stroke: var(--accent);
+  stroke-width: 2;
+  cursor: grab;
+}
+.sg-handle:hover,
+.sg-handle.on {
+  fill: var(--accent);
+}
+.sg-label {
+  fill: var(--muted);
+  font-size: 9px;
+}
+.speed-ready {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

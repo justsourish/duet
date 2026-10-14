@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { commandLabel, runCommand } from "../commands";
 import { parseDoc, serializeDoc } from "./serialize";
-import { docAt, entranceOf, valueAt } from "./time";
+import { CURVES, curveAt, docAt, elAt, entranceOf, valueAt } from "./time";
 import { emptyDoc } from "./types";
 import { exportSize, soundsOf } from "../video/scene";
 import { currentDoc, dispatch, loadDoc, resetStore, seenDoc, setClock, workDoc } from "../state/store";
@@ -170,5 +170,40 @@ describe("time", () => {
     expect(exportSize({ width: 1920, height: 1080 }, 1280)).toEqual([1280, 720]);
     expect(exportSize({ width: 1080, height: 1920 }, 1280)).toEqual([720, 1280]);
     expect(exportSize({ width: 339.98, height: 179.46 }, 0)).toEqual([340, 178]);
+  });
+
+  it("a speed curve starts at 0, ends at 1 and follows its handles", () => {
+    expect(curveAt(CURVES.steady, 0.3)).toBeCloseTo(0.3, 3);
+    expect(curveAt(CURVES.gentle, 0)).toBe(0);
+    expect(curveAt(CURVES.gentle, 1)).toBe(1);
+    expect(curveAt(CURVES.gentle, 0.5)).toBeCloseTo(0.5, 2);
+    // slow at the start, quick in the middle
+    expect(curveAt(CURVES.gentle, 0.2)).toBeLessThan(0.2);
+    // fast at the start
+    expect(curveAt(CURVES.snappy, 0.2)).toBeGreaterThan(0.5);
+    // bouncy goes past the end before it settles
+    expect(Math.max(...[0.5, 0.6, 0.7, 0.8, 0.9].map((p) => curveAt(CURVES.bouncy, p)))).toBeGreaterThan(1);
+  });
+
+  it("set_curve shapes the move that arrives at a moment, and a hand change keeps the shape", () => {
+    let doc = runCommand(scene(), "set_key", { ids: ["r"], prop: "x", t: 0, v: 0 });
+    doc = runCommand(doc, "set_key", { ids: ["r"], prop: "x", t: 2, v: 100 });
+    doc = runCommand(doc, "set_curve", { ids: ["r"], props: ["x"], t: 2, shape: "snappy" });
+    expect(doc.elements.r.keys.x![1].curve).toEqual([0.16, 1, 0.3, 1]);
+    expect(doc.elements.r.keys.x![0].curve).toBeUndefined();
+    // the speed shows in the value halfway through the time
+    expect(elAt(doc.elements.r, 1).x).toBeGreaterThan(50);
+    // marking the same moment again keeps the shape
+    doc = runCommand(doc, "key_now", { ids: ["r"], props: ["x"], t: 2 });
+    expect(doc.elements.r.keys.x![1].curve).toEqual([0.16, 1, 0.3, 1]);
+    // the first moment has no move arriving at it
+    expect(runCommand(doc, "set_curve", { ids: ["r"], props: ["x"], t: 0, shape: "gentle" })).toBe(doc);
+  });
+
+  it("a bouncy move never makes opacity leave 0 to 1", () => {
+    let doc = runCommand(scene(), "set_key", { ids: ["r"], prop: "opacity", t: 0, v: 0 });
+    doc = runCommand(doc, "set_key", { ids: ["r"], prop: "opacity", t: 2, v: 1 });
+    doc = runCommand(doc, "set_curve", { ids: ["r"], props: ["opacity"], t: 2, shape: "bouncy" });
+    for (let t = 0; t <= 2; t += 0.1) expect(elAt(doc.elements.r, t).opacity).toBeLessThanOrEqual(1);
   });
 });
