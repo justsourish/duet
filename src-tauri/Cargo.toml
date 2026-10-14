@@ -40,7 +40,6 @@ libc = "0.2"
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
 strip = true
 
 # Only to give development builds their own Dock icon. Tauri already brings these in.

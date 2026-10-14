@@ -446,7 +446,34 @@ fn git_name_version(path: String, tag: String, title: String) -> Result<(), Stri
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub use ai::bridge;
 
+/// A thing that goes wrong on a background thread should stop that one job, not the whole app, and it should leave a note
+/// in `crash.log` beside the session file, so the cause can be found when a designer says Duet quit.
+fn note_panics() {
+    std::panic::set_hook(Box::new(|info| {
+        use std::io::Write;
+        let thread = std::thread::current();
+        let place = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let said = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        let line = format!("{} thread {} at {}: {}\n", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0), thread.name().unwrap_or("unnamed"), place, said);
+        eprint!("{line}");
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            let dir = std::path::Path::new(&home).join(duet_dir_name());
+            if fs::create_dir_all(&dir).is_ok() {
+                if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")) {
+                    let _ = f.write_all(line.as_bytes());
+                }
+            }
+        }
+    }));
+}
+
 pub fn run() {
+    note_panics();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
