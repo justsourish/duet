@@ -3451,3 +3451,41 @@ button.agent-perm {
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* keys in the timeline, one row for each kind of change */
+.time-row.kind .time-name {
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.time-kindspan {
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--line);
+}
+.kind-mark {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  transform: rotate(45deg);
+  background: var(--accent);
+  border: 0;
+  text-decoration: none;
+}
+.kind-mark:hover {
+  background: #fff;
+}
+.key-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+}
+.key-chips .mini {
+  padding: 1px 6px;
+  font-size: 10px;
+}

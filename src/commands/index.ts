@@ -1019,6 +1019,8 @@ export interface MoveKeyArgs {
   id: string;
   from: number;
   to: number;
+  /** Move only these kinds of change. Leave out to move everything marked at that moment. */
+  props?: Moving[];
 }
 
 const moveKey: CommandDef<MoveKeyArgs> = {
@@ -1031,7 +1033,7 @@ const moveKey: CommandDef<MoveKeyArgs> = {
     const to = Math.max(0, Math.min(scene.duration, round(a.to)));
     const next = clone(doc);
     let changed = false;
-    for (const prop of MOVING) {
+    for (const prop of a.props ?? MOVING) {
       const keys = next.elements[a.id].keys[prop];
       if (!keys) continue;
       const matching = keys.filter((k) => Math.abs(k.t - a.from) <= 0.004);

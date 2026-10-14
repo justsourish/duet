@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { cuttable, newId, runCommand } from "../commands";
-import { spanOf } from "../document/time";
+import { KEY_GROUPS, spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
-import type { Doc, El } from "../document/types";
+import type { Doc, El, Moving } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, getState, restoreDoc, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
+import { setKeyFocus } from "./keyFocus";
 import { QUALITIES, SIZES, addClips, addSounds, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
 import type { ExportChoice } from "../video/scene";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -29,6 +30,7 @@ function pageFrame(doc: Doc, id: string | undefined): El | null {
 export default function TimeStrip() {
   const mode = useLayout((d) => d.mode);
   const look = useLayout((d) => d.timeLook ?? "layers");
+  const keysOpen = useLayout((d) => d.keysOpen);
   const doc = useStore((s) => currentDoc(s));
   const selection = useStore((s) => s.selection);
   const clock = useStore((s) => s.clock);
@@ -395,7 +397,7 @@ export default function TimeStrip() {
   for (let t = 0; t <= length + 0.001; t += every) marks.push(t);
 
 
-  const dragMark = (e: React.PointerEvent, el: El, t: number) => {
+  const dragMark = (e: React.PointerEvent, el: El, t: number, props?: Moving[]) => {
     if (e.button !== 0) return;
     e.stopPropagation();
     select([el.id]);
@@ -419,7 +421,7 @@ export default function TimeStrip() {
         }
       }
       setSnap(snapTime);
-      dragPreview("move_key", { id: el.id, from: t, to });
+      dragPreview("move_key", { id: el.id, from: t, to, props });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -428,6 +430,7 @@ export default function TimeStrip() {
       if (moved) {
         dragCommit("Move a moment");
       } else {
+        setKeyFocus({ id: el.id, t });
         seek(t);
       }
     };
@@ -437,7 +440,8 @@ export default function TimeStrip() {
 
   const renderBar = (el: El) => {
     const span = spanOf(el, frame);
-    const keyTimes = [...new Set(MOVING.flatMap((p) => (el.keys[p] ?? []).map((k) => k.t)))];
+    // in Cut the bars stay clean: a thing's marks are listed in the panel on the right
+    const keyTimes = look === "cut" ? [] : [...new Set(MOVING.flatMap((p) => (el.keys[p] ?? []).map((k) => k.t)))];
     const isSelected = selection.includes(el.id);
     return (
       <div
@@ -480,6 +484,47 @@ export default function TimeStrip() {
       </div>
     );
   };
+
+  /** One row for each kind of change a thing has marks for: where its marks are, and nothing else. */
+  const renderKindRows = (el: El) =>
+    KEY_GROUPS.map((g) => {
+      const times = [...new Set(g.props.flatMap((p) => (el.keys[p] ?? []).map((k) => k.t)))].sort((a, b) => a - b);
+      if (!times.length) return null;
+      const first = times[0];
+      const last = times[times.length - 1];
+      return (
+        <div key={`${el.id}-${g.name}`} className={`time-row kind ${selection.includes(el.id) ? "on" : ""}`} data-name={`kind-${g.name}`}>
+          <span className="time-name" onClick={() => select([el.id])} title={`${el.name}, ${g.name}`}>
+            {g.name}
+          </span>
+          <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
+            <div className="time-kindspan" style={{ left: first * pps, width: Math.max(0, (last - first) * pps) }} />
+            {times.map((t) => (
+              <u
+                key={t}
+                className="kind-mark"
+                data-name="mark"
+                title={`${g.name}, ${clockText(t)}`}
+                style={{ left: t * pps, cursor: "ew-resize" }}
+                onPointerDown={(e) => dragMark(e, el, t, g.props)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (draggedMark.current) {
+                    draggedMark.current = false;
+                    return;
+                  }
+                  seek(t);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  dispatch("remove_key", { ids: [el.id], props: g.props, t });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    });
 
   return (
     <section className={`time ${look === "cut" ? "cut" : ""}`} data-name="time-strip" onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
@@ -634,14 +679,17 @@ export default function TimeStrip() {
           </div>
         </div>
         {displayRows.map((row) => (
-          <div key={row.key} className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""}`}>
-            <span className="time-name" onClick={row.onClick} title={row.name}>
-              {row.name}
-            </span>
-            <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
-              {row.items.map(renderBar)}
+          <Fragment key={row.key}>
+            <div className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""}`}>
+              <span className="time-name" onClick={row.onClick} title={row.name}>
+                {row.name}
+              </span>
+              <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
+                {row.items.map(renderBar)}
+              </div>
             </div>
-          </div>
+            {look === "layers" && keysOpen && row.items.map((el) => renderKindRows(el))}
+          </Fragment>
         ))}
         <div className="time-head" style={{ left: NAMES + clock.t * pps }} />
         {snap !== null && <div className="time-snap" style={{ left: NAMES + snap * pps }} />}

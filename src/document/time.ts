@@ -43,6 +43,14 @@ export function curveAt(c: readonly [number, number, number, number], p: number)
   return bez(y1, y2, s);
 }
 
+/** The changes over time a designer thinks of as one thing, in the order they are listed. */
+export const KEY_GROUPS: { name: string; props: Moving[] }[] = [
+  { name: "Position", props: ["x", "y"] },
+  { name: "Size", props: ["width", "height"] },
+  { name: "Opacity", props: ["opacity"] },
+  { name: "Turn", props: ["rotation"] },
+];
+
 /** The value at one moment. Before the first key it holds the first value, after the last it holds the last. */
 export function valueAt(keys: Key[], t: number): number {
   if (t <= keys[0].t) return keys[0].v;

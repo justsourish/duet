@@ -7,7 +7,9 @@ import { defaultLayout } from "../document/layout";
 import { COMMON_FONTS } from "../canvas/text";
 import { newId } from "../commands";
 import { useLayout } from "./layout";
-import { entranceOf, sceneOf, spanOf } from "../document/time";
+import { KEY_GROUPS, entranceOf, sceneOf, spanOf } from "../document/time";
+import { seek } from "../video/play";
+import { setKeyFocus } from "./keyFocus";
 import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
 
@@ -302,12 +304,6 @@ const ENTRANCE_CHOICES: [Entrance, string][] = [
   ["grow", "Grow"],
 ];
 
-const KEY_GROUPS: { name: string; props: Moving[] }[] = [
-  { name: "Position", props: ["x", "y"] },
-  { name: "Size", props: ["width", "height"] },
-  { name: "Opacity", props: ["opacity"] },
-  { name: "Turn", props: ["rotation"] },
-];
 
 /** The seconds a group of properties has a moment at, in order. */
 function momentTimes(el: El, props: Moving[]): number[] {
@@ -406,6 +402,22 @@ function MotionSection({ el, scene }: { el: El; scene: El }) {
               >
                 Clear
               </button>
+            </div>
+            <div className="key-chips">
+              {momentTimes(el, g.props).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className="mini"
+                  title="Go to this moment"
+                  onClick={() => {
+                    setKeyFocus({ id: el.id, t });
+                    seek(t);
+                  }}
+                >
+                  {Math.round(t * 100) / 100}s
+                </button>
+              ))}
             </div>
             {g.count > 1 && <SpeedGraph key={g.name + el.id} el={el} props={g.props} times={momentTimes(el, g.props)} />}
           </div>

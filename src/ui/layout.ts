@@ -21,12 +21,14 @@ export interface Dock {
   chatW: number;
   chatH: number;
   timeLook: TimeLook;
+  /** In the timeline, every thing that moves is opened into a row for each kind of change. */
+  keysOpen: boolean;
 }
 
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers" });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false });
 export const CHAT_MIN = { w: 280, h: 140 };
 export const CHAT_MAX = { w: 720, h: 900 };
 

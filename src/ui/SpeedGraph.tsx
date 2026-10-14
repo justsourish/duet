@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dispatch, dragCommit, dragPreview } from "../state/store";
 import type { El, Moving } from "../document/types";
 import { CURVES } from "../document/time";
+import { useKeyFocus } from "./keyFocus";
 import type { CurveName } from "../document/time";
 
 /** How a move speeds up and slows down, drawn as a curve the designer can pick or bend. */
@@ -39,6 +40,13 @@ export default function SpeedGraph({ el, props, times }: { el: El; props: Moving
   // the move that ends at one of these moments; the first moment has no move arriving at it
   const arrivals = times.slice(1);
   const [at, setAt] = useState(0);
+  // a moment picked in the timeline or in the list shows the move that ends there, or the first move if it is the first moment
+  const focus = useKeyFocus();
+  useEffect(() => {
+    if (!focus || focus.id !== el.id) return;
+    const i = times.findIndex((x) => Math.abs(x - focus.t) < 0.005);
+    if (i >= 0) setAt(Math.max(0, i - 1));
+  }, [focus, el.id, times]);
   const t = arrivals[Math.min(at, arrivals.length - 1)];
   const key = el.keys[props.find((p) => el.keys[p]?.some((k) => Math.abs(k.t - t) < 0.005)) ?? props[0]]?.find((k) => Math.abs(k.t - t) < 0.005);
   const curve: Curve = key?.curve ?? NAMED[key?.ease ?? "in-out"] ?? NAMED["in-out"];

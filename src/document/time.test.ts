@@ -206,4 +206,15 @@ describe("time", () => {
     doc = runCommand(doc, "set_curve", { ids: ["r"], props: ["opacity"], t: 2, shape: "bouncy" });
     for (let t = 0; t <= 2; t += 0.1) expect(elAt(doc.elements.r, t).opacity).toBeLessThanOrEqual(1);
   });
+
+  it("move_key can move only one kind of change at a moment", () => {
+    let doc = runCommand(scene(), "set_key", { ids: ["r"], prop: "x", t: 1, v: 10 });
+    doc = runCommand(doc, "set_key", { ids: ["r"], prop: "width", t: 1, v: 50 });
+    doc = runCommand(doc, "move_key", { id: "r", from: 1, to: 2, props: ["x"] });
+    expect(doc.elements.r.keys.x![0].t).toBe(2);
+    expect(doc.elements.r.keys.width![0].t).toBe(1);
+    // without props, everything at that moment moves
+    doc = runCommand(doc, "move_key", { id: "r", from: 1, to: 3 });
+    expect(doc.elements.r.keys.width![0].t).toBe(3);
+  });
 });
