@@ -1,7 +1,9 @@
 # Pinterest and other inspiration. Kept local, not shared.
-ref/
+ref/*
+!ref/README.md
 # Files made while testing the app. Kept local, not shared.
-scratch/
+scratch/*
+!scratch/README.md
 .DS_Store
 node_modules/
 target/
