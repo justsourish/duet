@@ -563,6 +563,9 @@ pub fn run() {
                     }
                 }
             }
+            if let tauri::RunEvent::Exit = &event {
+                ai::stop_agent(app);
+            }
             let _ = (&app, &event);
         });
 }

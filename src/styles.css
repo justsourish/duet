@@ -587,6 +587,9 @@ button {
 .status {
   color: var(--muted);
   font-size: 11px;
+  /* the words change on every save, so the bar must not shift with them */
+  display: inline-block;
+  min-width: 78px;
 }
 .status.saved {
   color: #4ade80;

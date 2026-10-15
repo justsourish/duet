@@ -89,8 +89,9 @@ export default function App() {
       void invoke<string | null>("launch_file").then((f) => f && void openProjectAt(f));
       void listen<string>("open-file", (e) => void openProjectAt(e.payload));
       // make sure the last save is in the file before the window closes
+      // a slow or failed save must never keep the window open
       void getCurrentWindow().onCloseRequested(async () => {
-        await flushPack();
+        await Promise.race([flushPack().catch(() => undefined), new Promise((done) => setTimeout(done, 4000))]);
       });
       // projects in Documents/Duet always show up in the list, even ones made before this app knew them
       void invoke<string>("default_projects_dir").then((d) => findProjects(d)).catch(() => undefined);

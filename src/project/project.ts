@@ -144,6 +144,17 @@ async function previewPng(doc: Doc): Promise<string | null> {
   return renderPng(doc, id, Math.min(1, 360 / Math.max(el.width, el.height, 1)));
 }
 
+let previewTimer: ReturnType<typeof setTimeout> | undefined;
+/** Drawing the preview takes a moment on a big design, so it waits until you pause, never during a save. */
+function previewLater(path: string, doc: Doc) {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    const draw = () => void writePreview(path, doc);
+    if (typeof requestIdleCallback === "function") requestIdleCallback(draw, { timeout: 4000 });
+    else draw();
+  }, 8000);
+}
+
 /** A small picture of the first screen, kept with the project in the list of projects. */
 async function writePreview(path: string, doc: Doc) {
   try {
@@ -233,7 +244,7 @@ async function bringBackThread(dir: string) {
 async function writeDesign(path: string, doc: Doc) {
   await flushPictures(path, doc);
   await invoke("write_text_file", { path: join(path, FILE), contents: serializeDoc(doc) });
-  void writePreview(path, doc);
+  previewLater(path, doc);
 }
 
 /** The text stored with each saved step. The first line is what the history strip shows. */

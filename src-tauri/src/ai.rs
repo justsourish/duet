@@ -475,6 +475,18 @@ pub fn agent_cancel(state: State<AgentState>) {
     }
 }
 
+/// Called when Duet quits: an AI it started must not be left running behind it.
+pub fn stop_agent(app: &AppHandle) {
+    use tauri::Manager;
+    if let Some(state) = app.try_state::<AgentState>() {
+        if let Some(child) = state.child.lock().unwrap().as_mut() {
+            #[cfg(unix)]
+            stop_session(child.id(), libc::SIGKILL);
+            let _ = child.kill();
+        }
+    }
+}
+
 const CLOSED: &str = "Duet is not open. Ask the designer to open Duet, then try again.";
 
 /// What the bridge says by itself while Duet is closed. An AI tool that starts before Duet still
