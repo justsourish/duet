@@ -63,7 +63,7 @@ type Drag =
   | { kind: "node"; hit: NodeHit; start: AbsNode[]; at: { x: number; y: number }; sx: number; sy: number; moved: boolean }
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
-  | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number }
+  | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number; duplicate?: boolean }
   | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number } }
   | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean }
   | { kind: "zoom"; sx: number; sy: number; startZoom: number; vx: number; vy: number; moved: boolean; priorGlide: { zoom: number; zoomIn?: boolean } | null }
@@ -123,6 +123,38 @@ export function pastePayload(payload: ClipPayload, duplicate = false) {
   const dy = pageFrame && sameSpot ? 0 : sameSpot || duplicate ? 16 : 0;
   dispatch("paste_elements", { payload, parentId, dx, dy, idMap, label: duplicate ? "Duplicate" : "Paste" });
   select(payload.rootIds.map((id) => idMap[id]));
+}
+
+/** Check whether an element can be picked up and moved. */
+export function isMovable(doc: Doc, id: string | null): boolean {
+  if (!id) return false;
+  const el = doc.elements[id];
+  if (!el || el.locked) return false;
+  let p = el.parentId;
+  while (p) {
+    if (doc.elements[p]?.locked) return false;
+    p = doc.elements[p]?.parentId;
+  }
+  return true;
+}
+
+/** Duplicate elements in place so their copies can be dragged while leaving originals behind. */
+export function prepareDuplicate(doc: Doc, ids: string[]): { base: Doc; copyIds: string[] } | null {
+  const payload = extractPayload(doc, ids);
+  if (!payload || payload.rootIds.length === 0) return null;
+  const idMap: Record<string, string> = {};
+  for (const [oldId, el] of Object.entries(payload.elements)) idMap[oldId] = newId(el.type);
+  const copyIds = payload.rootIds.map((id) => idMap[id]);
+  const parentId = doc.elements[ids[0]]?.parentId ?? null;
+  const base = runCommand(doc, "paste_elements", {
+    payload,
+    parentId,
+    dx: 0,
+    dy: 0,
+    idMap,
+    label: "Duplicate",
+  });
+  return { base, copyIds };
 }
 
 export const MIN_ZOOM = 0.02;
@@ -469,6 +501,7 @@ export default function CanvasView() {
     // Cmd or Ctrl click digs into groups
     const hit = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y, new Set(), e.metaKey || e.ctrlKey);
     if (hit) {
+      if (!isMovable(doc, hit)) return;
       if (e.shiftKey) {
         const has = s.selection.includes(hit);
         select(has ? s.selection.filter((i) => i !== hit) : [...s.selection, hit]);
@@ -477,6 +510,13 @@ export default function CanvasView() {
         select([hit]);
       }
       const ids = topLevelOnly(doc, getState().selection);
+      if (e.altKey) {
+        const dup = prepareDuplicate(dragBase(), ids);
+        if (dup) {
+          dragRef.current = { kind: "move", start: { x: p.x, y: p.y }, ids: dup.copyIds, base: dup.base, moved: false, sx: p.sx, sy: p.sy, duplicate: true };
+          return;
+        }
+      }
       dragRef.current = { kind: "move", start: { x: p.x, y: p.y }, ids, base: dragBase(), moved: false, sx: p.sx, sy: p.sy };
       return;
     }
@@ -503,12 +543,19 @@ export default function CanvasView() {
       if (CREATE_TOOLS.includes(s.tool)) return setCursor(s.tool === "text" ? "text" : "crosshair");
       if (s.tool === "zoom") return setCursor(e.altKey ? "zoom-out" : "zoom-in");
       const h = handleAt(p.sx, p.sy);
-      if (h) return setCursor(handleCursor(h, turnOf(workDoc(s).elements[s.selection[0]])));
-      if (turnAt(p.sx, p.sy)) return setCursor(TURN_CURSOR);
-      setCursor("default");
+      if (h) {
+        if (s.overlay.hoverId) setOverlay({ hoverId: null });
+        return setCursor(handleCursor(h, turnOf(workDoc(s).elements[s.selection[0]])));
+      }
+      if (turnAt(p.sx, p.sy)) {
+        if (s.overlay.hoverId) setOverlay({ hoverId: null });
+        return setCursor(TURN_CURSOR);
+      }
       const doc = workDoc(s);
       const hover = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y);
       if (hover !== s.overlay.hoverId) setOverlay({ hoverId: hover });
+      if (e.altKey && isMovable(doc, hover)) return setCursor("copy");
+      setCursor("default");
       return;
     }
 
@@ -548,7 +595,11 @@ export default function CanvasView() {
 
     if (d.kind === "move") {
       if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
-      d.moved = true;
+      if (!d.moved) {
+        d.moved = true;
+        if (d.duplicate) select(d.ids);
+      }
+      if (d.duplicate) setCursor("copy");
       let dx = p.x - d.start.x;
       let dy = p.y - d.start.y;
       let guidesX: number[] = [];
@@ -571,7 +622,11 @@ export default function CanvasView() {
           guidesY = snap.guidesY;
         }
       }
-      dragPreview("move_elements", { ids: d.ids, dx, dy });
+      if (d.duplicate) {
+        dragPreviewDoc(runCommand(d.base, "move_elements", { ids: d.ids, dx, dy }));
+      } else {
+        dragPreview("move_elements", { ids: d.ids, dx, dy });
+      }
       setOverlay({ guidesX, guidesY });
       return;
     }
@@ -671,7 +726,7 @@ export default function CanvasView() {
 
     if (d.kind === "move") {
       if (d.moved) {
-        let label = d.ids.length > 1 ? `Move ${d.ids.length} elements` : "Move element";
+        let label = d.duplicate ? "Duplicate" : d.ids.length > 1 ? `Move ${d.ids.length} elements` : "Move element";
         const doc = d.base;
         // Dropped over a different frame (or off every frame)? Change parent, like Figma.
         if (d.ids.every((id) => doc.elements[id]?.type !== "frame")) {
@@ -679,13 +734,18 @@ export default function CanvasView() {
           const changing = d.ids.filter((id) => (doc.elements[id].parentId ?? null) !== target);
           if (changing.length > 0) {
             const name = target ? doc.elements[target].name : null;
-            label = name ? `Move into ${name}` : "Move out of frame";
-            dragPreviewDoc(runCommand(workDoc(), "reparent_elements", { ids: changing, parentId: target, label }));
+            if (!d.duplicate) label = name ? `Move into ${name}` : "Move out of frame";
+            dragPreviewDoc(runCommand(workDoc(), "reparent_elements", { ids: changing, parentId: target, label: d.duplicate ? "Duplicate" : label }));
           }
         }
         dragCommit(label);
       } else dragCancel();
       setOverlay({ guidesX: [], guidesY: [] });
+      if (e.altKey) {
+        setCursor(isMovable(workDoc(), labelAt(p.sx, p.sy) ?? hitTest(workDoc(), p.x, p.y)) ? "copy" : "default");
+      } else {
+        setCursor("default");
+      }
       return;
     }
 
@@ -848,6 +908,7 @@ export default function CanvasView() {
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
       if (e.key === "Alt" && s.tool === "zoom") setCursor("zoom-out");
+      if (e.key === "Alt" && s.tool === "move" && isMovable(workDoc(s), s.overlay.hoverId)) setCursor("copy");
 
       if (editing()) {
         if (e.key === "Enter" || e.key === "Escape") {
@@ -1040,6 +1101,7 @@ export default function CanvasView() {
         setCursor("default");
       }
       if (e.key === "Alt" && getState().tool === "zoom") setCursor("zoom-in");
+      if (e.key === "Alt" && getState().tool === "move" && !dragRef.current) setCursor("default");
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
