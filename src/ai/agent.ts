@@ -214,7 +214,18 @@ function onLine(line: string) {
 }
 
 /** Turn technical failures into something a designer can act on. */
+/** Why Antigravity could not be joined to Duet, in words a designer can act on. */
+export function connectHelp(why: string, app: string): string {
+  const fix = app ? ` To do it yourself, open a terminal and run this once: agy mcp add duet "${app}" --mcp-bridge` : "";
+  const t = why.toLowerCase();
+  if (t.includes("could not start agy") || t.includes("not recognized") || t.includes("no such file") || t.includes("cannot find"))
+    return `Duet could not start Antigravity (agy). Check that Antigravity is installed and that "agy" works in a terminal, then try again.${fix}`;
+  return `Duet could not connect itself to Antigravity.${why.trim() ? ` Antigravity said: ${why.trim().slice(0, 160)}.` : ""}${fix}`;
+}
+
 function friendly(raw: string): string {
+  // already written for the designer
+  if (raw.includes("Duet could not")) return raw.replace(/^Error: /, "");
   const t = raw.toLowerCase();
   if (t.includes("login") || t.includes("authenticat") || t.includes("api key") || t.includes("sign in"))
     return "Your AI tool is not signed in. Open a terminal, run it once, sign in, then try again.";
@@ -297,7 +308,13 @@ export async function sendToAgent(text: string) {
     if (agent === "agy") {
       // Antigravity has no flag for instructions or per-run connections. Duet joins its list once
       // (a small bridge that finds the running Duet), and the instructions go in with the message.
-      await invoke("agy_connect");
+      try {
+        await invoke("agy_connect");
+      } catch (e) {
+        // the AI never started, so say what failed and the one command that fixes it by hand
+        const app = await invoke<string>("bridge_command").catch(() => "");
+        throw new Error(connectHelp(String(e), app));
+      }
       const whole = `${chatRules()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\n${past || "The designer says:\n"}${prompt}`;
       args = ["--print", whole, "--output-format", "stream-json"];
       if (getChat().models.agy) args.push("--model", getChat().models.agy as string);
