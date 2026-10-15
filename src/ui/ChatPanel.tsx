@@ -8,7 +8,7 @@ import { attachFiles } from "../ai/pictures";
 import type { ModelChoice, Mode, Msg } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { findStep } from "../memory/steps";
-import { goTo, useStore } from "../state/store";
+import { goTo, setFocus, useStore } from "../state/store";
 import ConnectAi from "./ConnectAi";
 import Rich from "./rich";
 import Icon from "./Icons";
@@ -98,6 +98,7 @@ export default function ChatPanel() {
   const effort = useChat((s) => s.effort);
   const pictures = useChat((s) => s.pictures);
   const cursor = useStore((s) => s.cursor);
+  const focusNames = useStore((s) => s.focus.filter((id) => s.timeline[s.cursor].doc.elements[id]).map((id) => s.timeline[s.cursor].doc.elements[id].name));
   const timeline = useStore((s) => s.timeline);
   const place = useLayout((d) => d.chat);
   const chatW = useLayout((d) => d.chatW);
@@ -1052,6 +1053,12 @@ export default function ChatPanel() {
                 </span>
               ))}
               {pictureNote && <em>{pictureNote}</em>}
+            </div>
+          )}
+          {focusNames.length > 0 && (
+            <div className="focus-chip" title="The AI is told to work here. Nothing else is blocked. Press Tab on the canvas to change it.">
+              <span>AI focus: {focusNames.slice(0, 3).join(", ")}{focusNames.length > 3 ? ` and ${focusNames.length - 3} more` : ""}</span>
+              <button aria-label="Clear focus" onClick={() => setFocus([])}>×</button>
             </div>
           )}
           <div className="cfoot">

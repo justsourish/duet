@@ -37,6 +37,7 @@ import {
   nudge,
   redo,
   select,
+  setFocus,
   setEditing,
   setOverlay,
   setTool,
@@ -1049,6 +1050,13 @@ export default function CanvasView() {
         e.preventDefault();
         setTool(tools[key]);
         setCursor(tools[key] === "hand" ? "grab" : tools[key] === "zoom" ? "zoom-in" : tools[key] === "move" ? "default" : "crosshair");
+        return;
+      }
+      // Tab points the AI at what is selected, and again takes it off. Only when no panel or field has the keys.
+      if (e.key === "Tab" && !mod && !e.shiftKey && !e.altKey && (e.target === document.body || (e.target as HTMLElement | null)?.tagName === "CANVAS")) {
+        e.preventDefault();
+        const same = s.selection.length === s.focus.length && s.selection.every((i) => s.focus.includes(i));
+        setFocus(!s.selection.length || same ? [] : s.selection);
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {

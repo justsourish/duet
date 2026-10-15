@@ -71,6 +71,8 @@ export interface State {
   /** Live preview while dragging. Not in history until committed. */
   transientDoc: Doc | null;
   selection: string[];
+  /** What the AI has been pointed at. It only guides the AI; nothing outside it is blocked. */
+  focus: string[];
   tool: Tool;
   viewport: Viewport;
   overlay: Overlay;
@@ -86,6 +88,7 @@ const initial = (): State => ({
   cursor: 0,
   transientDoc: null,
   selection: [],
+  focus: [],
   tool: "move",
   viewport: { x: 160, y: 100, zoom: 1 },
   overlay: noOverlay(),
@@ -174,6 +177,7 @@ function commit(doc: Doc, label: string, actor: Actor, by?: string) {
     cursor: timeline.length - 1,
     transientDoc: null,
     selection: cleanSelection(state.selection, doc),
+    focus: cleanSelection(state.focus, doc),
   });
 }
 
@@ -245,6 +249,7 @@ export function loadDoc(doc: Doc, label = "Opened") {
     cursor: 0,
     transientDoc: null,
     selection: [],
+    focus: [],
     editingId: null,
     overlay: noOverlay(),
     clock: { scene: null, t: 0, playing: false },
@@ -258,6 +263,7 @@ export function loadTimeline(entries: HistoryEntry[]) {
     cursor: entries.length - 1,
     transientDoc: null,
     selection: [],
+    focus: [],
     editingId: null,
     overlay: noOverlay(),
     clock: { scene: null, t: 0, playing: false },
@@ -279,7 +285,7 @@ export function restoreDoc(doc: Doc, label: string, actor: Actor = "you", by?: s
 export function goTo(index: number) {
   const i = Math.max(0, Math.min(state.timeline.length - 1, index));
   const doc = state.timeline[i].doc;
-  set({ cursor: i, transientDoc: null, selection: cleanSelection(state.selection, doc), editingId: null });
+  set({ cursor: i, transientDoc: null, selection: cleanSelection(state.selection, doc), focus: cleanSelection(state.focus, doc), editingId: null });
 }
 
 export const undo = () => goTo(state.cursor - 1);
@@ -288,6 +294,8 @@ export const redo = () => goTo(state.cursor + 1);
 // ---- ui state ----
 
 export const select = (ids: string[]) => set({ selection: ids });
+/** Point the AI at these things, or at nothing. */
+export const setFocus = (ids: string[]) => set({ focus: ids });
 export const setTool = (tool: Tool) => set({ tool });
 export const setViewport = (viewport: Viewport) => set({ viewport });
 export const setOverlay = (patch: Partial<Overlay>) => set({ overlay: { ...state.overlay, ...patch } });

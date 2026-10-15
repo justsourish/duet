@@ -3502,3 +3502,25 @@ button.agent-perm {
   padding: 1px 6px;
   font-size: 10px;
 }
+
+/* where the AI has been pointed */
+.focus-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 12px 6px;
+  padding: 4px 8px;
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 11px;
+}
+.focus-chip button {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}

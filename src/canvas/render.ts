@@ -434,6 +434,21 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     const r = screenRect(s, worldRect(doc, id));
     turned(ctx, r, turnOf(doc.elements[id]), () => ctx.strokeRect(r.x, r.y, r.width, r.height));
   }
+  // where the AI has been pointed: a dashed outline and a small label, so it is plain what it is looking at
+  const focused = s.focus.filter((id) => doc.elements[id]);
+  if (focused.length) {
+    ctx.save();
+    ctx.strokeStyle = COLORS.accent;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    for (const id of focused) {
+      const r = screenRect(s, worldBounds(doc, id));
+      ctx.strokeRect(r.x - 4, r.y - 4, r.width + 8, r.height + 8);
+    }
+    ctx.restore();
+    const boxes = focused.map((id) => screenRect(s, worldBounds(doc, id)));
+    pill(ctx, "AI focus", (Math.min(...boxes.map((r) => r.x)) + Math.max(...boxes.map((r) => r.x + r.width))) / 2, Math.min(...boxes.map((r) => r.y)) - 30);
+  }
   if (sel.length === 1 && !s.overlay.nodeEdit) {
     const r = screenRect(s, worldRect(doc, sel[0]));
     turned(ctx, r, turnOf(doc.elements[sel[0]]), () => {

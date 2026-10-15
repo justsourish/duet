@@ -944,6 +944,8 @@ function context(): string {
       saved: !!s.project.path,
       permission: getChat().mode,
       selection: s.selection.filter((i) => doc.elements[i]).map((i) => ({ id: i, name: doc.elements[i].name, type: doc.elements[i].type })),
+      // where the designer has pointed you. Work there. You may look elsewhere, nothing outside it is blocked.
+      focus: s.focus.filter((i) => doc.elements[i]).map((i) => ({ id: i, name: doc.elements[i].name, type: doc.elements[i].type })),
       frames,
       components: componentsIn(doc).map((c) => ({ id: c.id, name: c.name, width: c.width, height: c.height })),
       elementCount: Object.keys(doc.elements).length,
