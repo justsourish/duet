@@ -18,6 +18,7 @@ import { agentColour } from "../ai/colours";
 import { busyOutside } from "../ai/outside";
 import { useDismiss } from "./useDismiss";
 import { toggleSkill, useSkills } from "../ai/skills";
+import { pickWaitingLine } from "../ai/waitingLines";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
   { mode: "suggest", label: "Suggest", hint: "Duet only suggests. Nothing changes until you tap Apply." },
@@ -126,6 +127,36 @@ export default function ChatPanel() {
   const [mentionHidden, setMentionHidden] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
 
+  const chatTool = AGENTS.find((a) => a.id === agent)?.name || "AI";
+  const workingTool = running ? chatTool : busyName;
+  const isWorking = Boolean(workingTool);
+  const [waitingLine, setWaitingLine] = useState("");
+  const workStartRef = useRef<number | null>(null);
+  const lastLineRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isWorking) {
+      workStartRef.current = null;
+      lastLineRef.current = null;
+      setWaitingLine("");
+      return;
+    }
+
+    workStartRef.current = Date.now();
+    const first = pickWaitingLine();
+    lastLineRef.current = first;
+    setWaitingLine(first);
+
+    const interval = setInterval(() => {
+      const elapsed = workStartRef.current ? Date.now() - workStartRef.current : 0;
+      const next = pickWaitingLine(lastLineRef.current ?? undefined, elapsed);
+      lastLineRef.current = next;
+      setWaitingLine(next);
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [isWorking, workingTool]);
+
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const justMoved = useRef(false);
@@ -186,12 +217,12 @@ export default function ChatPanel() {
 
   useEffect(() => {
     if (list.current) list.current.scrollTop = connecting ? 0 : list.current.scrollHeight;
-  }, [messages, minimized, room, sizing, chatH, connecting, big]);
+  }, [messages, minimized, room, sizing, chatH, connecting, big, isWorking]);
 
   useEffect(() => setConnecting(false), [messages.length]);
 
   useEffect(() => {
-    const timer = setInterval(() => setBusyName(busyOutside()), 3000);
+    const timer = setInterval(() => setBusyName(busyOutside()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -894,17 +925,7 @@ export default function ChatPanel() {
               const isLit = litStep === m.step;
               const laterTitle = isLater ? "This comes after the moment you are looking at" : undefined;
 
-              if (m.role === "working")
-                return (
-                  <div
-                    key={m.id}
-                    data-step={m.step}
-                    className={`m working ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-                    title={laterTitle}
-                  >
-                    {m.text}
-                  </div>
-                );
+              if (m.role === "working") return null;
               if (m.role === "you")
                 return (
                   <div
@@ -1003,6 +1024,11 @@ export default function ChatPanel() {
                 </div>
               );
             })}
+            {isWorking && workingTool && waitingLine && (
+              <div className="chat-working-line">
+                <span className="chat-working-tool">{workingTool}</span>: {waitingLine}
+              </div>
+            )}
           </div>
 
           {messages.length === 0 && found !== false && (

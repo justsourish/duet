@@ -3116,6 +3116,16 @@ button {
   padding: 6px 0;
   user-select: none;
 }
+.chat-working-line {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 4px;
+  user-select: none;
+  line-height: 1.4;
+}
+.chat-working-tool {
+  font-weight: 500;
+}
 
 /* The chat's foot is one soft box: the words on top with room to breathe, and a quiet row under them
    for pictures, who answers, and sending. */
