@@ -3524,3 +3524,50 @@ button.agent-perm {
   font-size: 14px;
   line-height: 1;
 }
+
+/* the file the AI works on */
+.working-on {
+  margin: 0 12px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* open projects */
+.tabs {
+  display: flex;
+  gap: 4px;
+  max-width: 34vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.tab.active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tab button {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 7px;
+}
+.tab .tab-x {
+  padding: 3px 6px 3px 0;
+  opacity: 0.6;
+}
+.tab .tab-x:hover {
+  opacity: 1;
+}

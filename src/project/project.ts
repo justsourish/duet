@@ -116,7 +116,51 @@ export async function learnCheckCopy(): Promise<boolean> {
   return checkCopy;
 }
 
+// ---- open projects, shown as tabs. Only one is loaded at a time; the others are one click away and keep their history ----
+const TABS_KEY = "duet:tabs";
+let tabs: string[] | null = null;
+
+/** The projects you have open, in the order you opened them. */
+export function getTabs(): string[] {
+  if (tabs) return tabs;
+  try {
+    const raw = checkCopy ? [] : JSON.parse(localStorage.getItem(TABS_KEY) ?? "[]");
+    tabs = Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string" && /\.duet$/i.test(p)) : [];
+  } catch {
+    tabs = [];
+  }
+  return tabs;
+}
+
+function setTabs(next: string[]) {
+  tabs = next;
+  try {
+    // Duet dev shares this storage with the Duet a designer works in, and must leave it alone
+    if (!checkCopy) localStorage.setItem(TABS_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode: tabs last until Duet closes */
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("duet:tabs"));
+}
+
+/** Put a project among the open ones. */
+export function addTab(path: string) {
+  if (!getTabs().includes(path)) setTabs([...getTabs(), path].slice(-12));
+}
+
+/** Take a project off the open ones. Returns the one to show next, if there is one. */
+export function closeTab(path: string): string | null {
+  const list = getTabs();
+  const at = list.indexOf(path);
+  const rest = list.filter((p) => p !== path);
+  setTabs(rest);
+  return rest[Math.min(at, rest.length - 1)] ?? null;
+}
+
+export const tabName = (path: string) => getRecents().find((r) => r.path === path)?.name ?? baseName(path);
+
 function remember(path: string | null) {
+  if (path) addTab(path);
   try {
     // Duet dev shares this list with the Duet a designer works in, and must leave it alone
     if (!path || checkCopy) return;

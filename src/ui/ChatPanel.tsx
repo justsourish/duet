@@ -98,6 +98,7 @@ export default function ChatPanel() {
   const effort = useChat((s) => s.effort);
   const pictures = useChat((s) => s.pictures);
   const cursor = useStore((s) => s.cursor);
+  const projectName = useStore((s) => s.project.name);
   const focusNames = useStore((s) => s.focus.filter((id) => s.timeline[s.cursor].doc.elements[id]).map((id) => s.timeline[s.cursor].doc.elements[id].name));
   const timeline = useStore((s) => s.timeline);
   const place = useLayout((d) => d.chat);
@@ -1055,6 +1056,7 @@ export default function ChatPanel() {
               {pictureNote && <em>{pictureNote}</em>}
             </div>
           )}
+          {projectName && <div className="working-on" title="The AI works on the project that is open here.">Working on: {projectName}</div>}
           {focusNames.length > 0 && (
             <div className="focus-chip" title="The AI is told to work here. Nothing else is blocked. Press Tab on the canvas to change it.">
               <span>AI focus: {focusNames.slice(0, 3).join(", ")}{focusNames.length > 3 ? ` and ${focusNames.length - 3} more` : ""}</span>

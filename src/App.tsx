@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDismiss } from "./ui/useDismiss";
+import Tabs from "./ui/Tabs";
 import { detectAgent, startAgentListeners } from "./ai/agent";
 import { startMcp } from "./ai/mcp";
 import { loadSkills } from "./ai/skills";
@@ -177,6 +178,7 @@ export default function App() {
         <button className="pill" onClick={() => setHome(true)} title="All your projects">
           {project.name}
         </button>
+        <Tabs />
         <span className={`status ${project.status}`} title={project.error ?? undefined}>
           {project.path ? STATUS[project.status] : "Not saved yet"}
         </span>
