@@ -44,6 +44,7 @@ const WORKING: Record<string, string> = {
   resize_element: "Resizing something",
   reparent_elements: "Moving things between frames",
   delete_elements: "Clearing something away",
+  duplicate_elements: "Making a copy",
 };
 
 let sawText = false;

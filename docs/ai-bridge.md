@@ -15,7 +15,7 @@ A designer and an AI share the same controls. Every change in Duet is one named 
 
 ## Tools
 
-`get_context`, `get_working_rules`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `look_at_attachment`, `select_elements`, `create_element`, `create_instance`, `place_image`, `make_mask`, `trace_image`, `set_props`, `move_elements`, `resize_element`, `reparent_elements`, `delete_elements`.
+`get_context`, `get_working_rules`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `look_at_attachment`, `select_elements`, `create_element`, `create_instance`, `place_image`, `make_mask`, `trace_image`, `set_props`, `duplicate_elements`, `move_elements`, `resize_element`, `reparent_elements`, `delete_elements`.
 
 `get_working_rules` returns how to work in Duet and the turned-on skills in full. It is for an AI connected from outside, which has not been given them with the message.
 

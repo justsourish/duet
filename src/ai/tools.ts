@@ -5,6 +5,7 @@ import { lookAtAttachment } from "./pictures";
 import { commandLabel, newId, runCommand } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
+import { extractPayload } from "../document/clipboard";
 import { canMask, canTurn } from "../document/geometry";
 import { outlineFromData } from "../document/path";
 import { ENTRANCES, sceneOf } from "../document/time";
@@ -182,6 +183,16 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { ids, props }, required: ["ids", "props"] },
   },
   {
+    name: "duplicate_elements",
+    description:
+      "Make a copy of things and everything inside them, next to the original, so you can try another version and the first one stays. Use this to make a variation, never delete and rebuild. A screen is placed beside the original; give dx and dy to put the copy somewhere else, and parentId to copy into another frame (leave it out to stay where the original is). The result lists each new id beside the one it copies.",
+    inputSchema: {
+      type: "object",
+      properties: { ids, dx: num, dy: num, parentId: { type: "string", description: "A frame to put the copies in. Leave out to keep them where the original is." } },
+      required: ["ids"],
+    },
+  },
+  {
     name: "move_elements",
     description: "Move elements by dx and dy pixels.",
     inputSchema: { type: "object", properties: { ids, dx: num, dy: num }, required: ["ids", "dx", "dy"] },
@@ -277,7 +288,7 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate", "set_curve"]);
+const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "duplicate_elements", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate", "set_curve"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
 const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound"]);
 
@@ -369,6 +380,8 @@ export function summarise(tool: string, a: Args): string {
       // a shadow or a gradient is said by its name, not spelled out
       return `Change ${namesOf(a.ids)}: ${Object.entries(p).map(([k, v]) => (v && typeof v === "object" ? k : `${k} ${String(v)}`)).join(", ")}`;
     }
+    case "duplicate_elements":
+      return `Copy ${namesOf(a.ids)}`;
     case "move_elements":
       return `Move ${namesOf(a.ids)} by ${String(a.dx)}, ${String(a.dy)}`;
     case "resize_element":
@@ -602,6 +615,15 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
       a.id = newId("video");
       return { args: a };
     }
+    case "duplicate_elements": {
+      const bad = missing(a.ids);
+      if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
+      if (a.parentId != null && doc.elements[String(a.parentId)]?.type !== "frame") return { error: `parentId ${String(a.parentId)} is not a frame.` };
+      for (const k of ["dx", "dy"]) if (a[k] != null && typeof a[k] !== "number") return { error: `${k} must be a number.` };
+      const parents = new Set((a.ids as string[]).map((i) => doc.elements[i].parentId ?? null));
+      if (parents.size > 1 && a.parentId == null) return { error: "These things sit in different frames. Copy them one frame at a time, or give parentId." };
+      return { args: a };
+    }
     case "move_elements": {
       const bad = missing(a.ids);
       if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
@@ -763,11 +785,33 @@ async function traceImage(args: Args, by?: string): Promise<ToolResult> {
   return { text: `Made ${result.ids.length} ${result.ids.length === 1 ? "path" : "paths"}: ${result.ids.join(", ")}${where}. They sit exactly over the picture, which is still there. Change their fill with set_props.` };
 }
 
+async function duplicateElements(args: Args, by?: string): Promise<ToolResult> {
+  await ensureSaved();
+  const doc = currentDoc();
+  const payload = extractPayload(doc, args.ids as string[]);
+  if (!payload) return fail("Nothing to copy.");
+  const first = doc.elements[payload.rootIds[0]];
+  const parentId = args.parentId != null ? String(args.parentId) : first.parentId ?? null;
+  const idMap: Record<string, string> = {};
+  for (const [oldId, el] of Object.entries(payload.elements)) idMap[oldId] = newId(el.type);
+  // a screen goes beside its original, anything else is nudged so it does not hide the original
+  const sameParent = payload.rootIds.every((id) => (doc.elements[id].parentId ?? null) === parentId);
+  const beside = !first.parentId && first.type === "frame" && sameParent;
+  const dx = typeof args.dx === "number" ? args.dx : beside ? first.width + 40 : sameParent ? 16 : 0;
+  const dy = typeof args.dy === "number" ? args.dy : beside ? 0 : sameParent ? 16 : 0;
+  dispatch("paste_elements", { payload, parentId, dx, dy, idMap, label: "Duplicate" }, "ai", by);
+  addMsg({ role: "note", text: summarise("duplicate_elements", args), ...stepNow() });
+  saveIfHome();
+  const made = payload.rootIds.map((id) => `${id} -> ${idMap[id]}`).join(", ");
+  return { text: `Copied ${payload.rootIds.length === 1 ? "it" : `${payload.rootIds.length} things`} with everything inside. New ids: ${made}. The copy is a separate design now: change it with set_props and the original stays as it was.` };
+}
+
 async function apply(tool: string, args: Args, by?: string): Promise<ToolResult> {
   if (tool === "place_image") return placeImage(args, by);
   if (tool === "place_video") return placeVideo(args, by);
   if (tool === "place_sound") return placeSound(args, by);
   if (tool === "trace_image") return traceImage(args, by);
+  if (tool === "duplicate_elements") return duplicateElements(args, by);
   await ensureSaved();
   // changing a value over time is one tool for the AI and the set_keys command underneath
   const command = (tool === "animate" ? "set_keys" : tool) as CommandName;
