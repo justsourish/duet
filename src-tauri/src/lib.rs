@@ -1,4 +1,5 @@
 mod ai;
+mod files;
 mod package;
 mod video;
 

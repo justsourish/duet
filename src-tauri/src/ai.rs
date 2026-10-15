@@ -544,10 +544,17 @@ pub fn bridge() {
                 client = said;
             }
         }
-        let answer = forward(&line, &client).or_else(|| {
-            let left_behind = duet_dir().and_then(|d| read_json(d.join("agent-workspace").join("bridge.json")));
-            offline_answer(&request, left_behind.as_ref())
-        });
+        // making a new file needs no open Duet, so the bridge answers it itself
+        let file_tool = request["method"] == "tools/call" && request["params"]["name"].as_str().is_some_and(|n| crate::files::TOOL_NAMES.contains(&n));
+        let answer = if file_tool && request.get("id").is_some() {
+            Some(crate::files::call(request["params"]["name"].as_str().unwrap_or(""), &request["params"]["arguments"], &request["id"]))
+        } else {
+            let said = forward(&line, &client).or_else(|| {
+                let left_behind = duet_dir().and_then(|d| read_json(d.join("agent-workspace").join("bridge.json")));
+                offline_answer(&request, left_behind.as_ref())
+            });
+            if request["method"] == "tools/list" { said.map(|a| crate::files::add_to_list(&a)) } else { said }
+        };
         // Notifications carry no id and expect no answer.
         let Some(id) = request.get("id") else { continue };
         let body = answer.unwrap_or_else(|| rpc_error(id, -32603, "Duet is not open. Open Duet first."));

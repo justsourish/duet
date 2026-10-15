@@ -25,6 +25,12 @@ A designer and an AI share the same controls. Every change in Duet is one named 
 
 `place_image` reads a picture file from the computer by its full path and puts it on the canvas. Only picture files are accepted. Because a picture the AI then looks at is sent to the AI service, the designer is asked first in Ask first mode, the same as for deleting.
 
+## Making files without Duet open
+
+Two tools are answered by the bridge itself (`src-tauri/src/files.rs`), so an AI tool can use them while Duet is closed: `create_design_file` (a new `.duet` file, empty or from design JSON, with its first step in the history) and `create_media_file` (a picture, sound, video or plain text file, by copying a file, from text, or from base64). Any folder works. They only make something new and never replace a file. Hidden folders, system folders and `..` are refused, and only picture, sound, video and plain text types are allowed. Added 15 October 2026 (issue 97).
+
+Not done: these two skip the permission levels, because the level is held in the interface and the bridge cannot read it while Duet is closed (making a new file replaces nothing). Duet does not yet show new files from a folder. The design in a new file is checked only for its outline until Duet opens it.
+
 ## Permission levels
 
 Enforced inside Duet, not left to the agent.
