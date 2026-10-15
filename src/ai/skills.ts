@@ -7,6 +7,7 @@ import typeScale from "./skills/type-scale.md?raw";
 import plainWords from "./skills/plain-words.md?raw";
 import boldBlocks from "./skills/bold-blocks.md?raw";
 import bento from "./skills/bento.md?raw";
+import autoLayout from "./skills/auto-layout.md?raw";
 
 export interface Skill {
   id: string;
@@ -18,6 +19,7 @@ export interface Skill {
 }
 
 const SHIPPED: Record<string, string> = {
+  "auto-layout": autoLayout,
   "mobile-screens": mobile,
   spacing,
   "type-scale": typeScale,
