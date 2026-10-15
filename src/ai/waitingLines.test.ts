@@ -21,8 +21,6 @@ describe("waiting lines while an AI works", () => {
     expect(pickWaitingLine("Go stretch.", 60000)).toBe(PLAIN_LINE);
     expect(pickWaitingLine("Go stretch.", 75000)).toBe(PLAIN_LINE);
     expect(pickWaitingLine(undefined, 60000)).toBe(PLAIN_LINE);
-    expect(pickWaitingLine("Go stretch.", 60)).toBe(PLAIN_LINE);
-    expect(pickWaitingLine(undefined, 90)).toBe(PLAIN_LINE);
   });
 
   it("keeps picking witty lines before 60 seconds", () => {

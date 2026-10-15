@@ -10,7 +10,7 @@ export const WAITING_LINES: string[] = [
   "Arguing with a rectangle. The rectangle is losing.",
   "Cooking. Do not open the oven.",
   "Fetching the right shade of blue.",
-  "Nobody panic. Antigravity has the wheel.",
+  "Nobody panic. Someone has the wheel.",
   "Counting pixels. There are a lot.",
   "Almost there. Said every designer, ever.",
   "Still alive in here. Promise.",
@@ -21,11 +21,11 @@ export const WAITING_LINES: string[] = [
 
 /**
  * Pick a waiting line to show while an AI works.
- * After 60 seconds (60000ms or 60s), returns the plain reassurance line.
+ * After 60 seconds (60000 ms), returns the plain reassurance line.
  * Otherwise picks a random line from the starter list that does not repeat the last one.
  */
 export function pickWaitingLine(last?: string, elapsed = 0): string {
-  const isPlain = elapsed >= 60000 || (elapsed >= 60 && elapsed < 1000);
+  const isPlain = elapsed >= 60000;
   if (isPlain) {
     return PLAIN_LINE;
   }
