@@ -7,6 +7,7 @@ import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
 import { extractPayload } from "../document/clipboard";
 import { canMask, canTurn } from "../document/geometry";
+import { defaultLayout } from "../document/layout";
 import { outlineFromData } from "../document/path";
 import { ENTRANCES, sceneOf } from "../document/time";
 import { MOVING, emptyDoc } from "../document/types";
@@ -396,8 +397,32 @@ export function summarise(tool: string, a: Args): string {
 }
 
 /** Check the arguments and fill in anything that can be worked out. Returns an error message if it cannot be done. */
+/** An AI often sends a layout with only some of the fields. Fill the rest in, so no number is left empty. */
+export function fixLayouts(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(fixLayouts);
+  if (!v || typeof v !== "object") return v;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (k === "layout" && val && typeof val === "object" && !Array.isArray(val)) {
+      const l = val as Record<string, unknown>;
+      const d = defaultLayout();
+      const num = (x: unknown, fallback: number) => (typeof x === "number" && Number.isFinite(x) ? x : fallback);
+      out[k] = {
+        dir: l.dir === "row" ? "row" : "column",
+        gap: num(l.gap, d.gap),
+        padX: num(l.padX, 0),
+        padY: num(l.padY, 0),
+        align: ["start", "center", "end", "stretch"].includes(String(l.align)) ? l.align : d.align,
+        justify: ["start", "center", "end", "between"].includes(String(l.justify)) ? l.justify : d.justify,
+        hug: l.hug === true,
+      };
+    } else out[k] = fixLayouts(val);
+  }
+  return out;
+}
+
 function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | { error: string } {
-  const a: Args = { ...raw };
+  const a = fixLayouts(raw) as Args;
   switch (tool) {
     case "create_element": {
       if (!["frame", "rect", "ellipse", "text", "path"].includes(String(a.type))) return { error: "type must be frame, rect, ellipse, text or path." };
