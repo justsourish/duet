@@ -68,6 +68,8 @@ export interface CreateArgs {
   parentId?: string | null;
   id?: string;
   props?: Partial<El>;
+  /** Put it last among its siblings, in the order it was made, instead of where it sits along an auto layout row or column. */
+  keepOrder?: boolean;
 }
 
 const createElement: CommandDef<CreateArgs> = {
@@ -131,10 +133,6 @@ const createElement: CommandDef<CreateArgs> = {
       ...(a.type === "frame" && parent?.layout ? { fill: "#ffffff00" } : {}),
       ...a.props,
     };
-    // a frame inside an auto layout frame starts clear unless given a fill
-    if (el.type === "frame" && parent?.layout && !a.props?.fill) {
-      el.fill = "#ffffff00";
-    }
     if (el.type === "text" && a.props && TEXT_LOOK.some((k) => k in a.props!)) {
       const m = fitText(el);
       el.width = m.width;
@@ -145,7 +143,7 @@ const createElement: CommandDef<CreateArgs> = {
     next.elements[id] = el;
     if (parentId) next.elements[parentId].childIds.push(id);
     else next.rootIds.push(id);
-    orderByPosition(next, parentId);
+    if (!a.keepOrder) orderByPosition(next, parentId);
     return next;
   },
 };

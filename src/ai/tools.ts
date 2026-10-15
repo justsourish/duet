@@ -473,6 +473,8 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
       delete a.d;
       a.props = p;
       a.id = newId(String(a.type));
+      // the AI means the order it lists things in, so words made side by side do not swap places
+      a.keepOrder = true;
       return { args: a };
     }
     case "create_elements": {

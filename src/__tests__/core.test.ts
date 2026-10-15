@@ -2109,6 +2109,30 @@ describe("create_elements", () => {
     expect(getState().timeline.length).toBe(before + 1);
   });
 
+  it("keeps the order the AI lists things in, even when they start at the same spot", () => {
+    const row = defaultLayout();
+    const doc = runCommand(emptyDoc(), "create_elements", {
+      items: [
+        { id: "row", type: "frame", x: 0, y: 0, width: 400, height: 100, props: { layout: { ...row, dir: "row" } } },
+        { id: "first", type: "rect", x: 0, y: 0, width: 80, height: 20, parentId: "row", keepOrder: true },
+        { id: "second", type: "rect", x: 0, y: 0, width: 60, height: 20, parentId: "row", keepOrder: true },
+      ],
+    });
+    expect(doc.elements.row.childIds).toEqual(["first", "second"]);
+  });
+
+  it("still sorts by where a thing is dropped when it is not told to keep the order", () => {
+    const row = defaultLayout();
+    const doc = runCommand(emptyDoc(), "create_elements", {
+      items: [
+        { id: "row", type: "frame", x: 0, y: 0, width: 400, height: 100, props: { layout: { ...row, dir: "row" } } },
+        { id: "right", type: "rect", x: 300, y: 0, width: 40, height: 20, parentId: "row" },
+        { id: "left", type: "rect", x: 0, y: 0, width: 40, height: 20, parentId: "row" },
+      ],
+    });
+    expect(doc.elements.row.childIds).toEqual(["left", "right"]);
+  });
+
   it("starts clear when a wrapper frame inside an auto layout frame has no fill", () => {
     const doc = runCommand(emptyDoc(), "create_elements", {
       items: [
