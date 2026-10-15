@@ -78,6 +78,7 @@ const createElement: CommandDef<CreateArgs> = {
     const next = clone(doc);
     const id = a.id ?? newId(a.type);
     const parentId = a.parentId ?? null;
+    const parent = parentId ? doc.elements[parentId] : null;
     const el: El = {
       id,
       type: a.type,
@@ -127,8 +128,13 @@ const createElement: CommandDef<CreateArgs> = {
       volume: 1,
       childIds: [],
       ...defaults[a.type],
+      ...(a.type === "frame" && parent?.layout ? { fill: "#ffffff00" } : {}),
       ...a.props,
     };
+    // a frame inside an auto layout frame starts clear unless given a fill
+    if (el.type === "frame" && parent?.layout && !a.props?.fill) {
+      el.fill = "#ffffff00";
+    }
     if (el.type === "text" && a.props && TEXT_LOOK.some((k) => k in a.props!)) {
       const m = fitText(el);
       el.width = m.width;

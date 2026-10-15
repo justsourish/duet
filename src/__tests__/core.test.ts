@@ -2108,4 +2108,47 @@ describe("create_elements", () => {
     });
     expect(getState().timeline.length).toBe(before + 1);
   });
+
+  it("starts clear when a wrapper frame inside an auto layout frame has no fill", () => {
+    const doc = runCommand(emptyDoc(), "create_elements", {
+      items: [
+        { id: "parent", type: "frame", x: 0, y: 0, width: 400, height: 400, props: { layout: defaultLayout() } },
+        { id: "child", type: "frame", x: 0, y: 0, width: 100, height: 100, parentId: "parent" },
+      ],
+    });
+    expect(doc.elements.child.fill).toBe("#ffffff00");
+  });
+
+  it("keeps explicit fill when a frame inside an auto layout frame has fill", () => {
+    const doc = runCommand(emptyDoc(), "create_elements", {
+      items: [
+        { id: "parent", type: "frame", x: 0, y: 0, width: 400, height: 400, props: { layout: defaultLayout() } },
+        { id: "child", type: "frame", x: 0, y: 0, width: 100, height: 100, parentId: "parent", props: { fill: "#112233" } },
+      ],
+    });
+    expect(doc.elements.child.fill).toBe("#112233");
+  });
+
+  it("starts white when a top-level frame has no fill", () => {
+    const doc = runCommand(emptyDoc(), "create_elements", {
+      items: [{ id: "top", type: "frame", x: 0, y: 0, width: 400, height: 400 }],
+    });
+    expect(doc.elements.top.fill).toBe("#ffffff");
+  });
+
+  it("starts white when a frame inside a non-layout frame has no fill", () => {
+    const doc = runCommand(emptyDoc(), "create_elements", {
+      items: [
+        { id: "parent", type: "frame", x: 0, y: 0, width: 400, height: 400 },
+        { id: "child", type: "frame", x: 0, y: 0, width: 100, height: 100, parentId: "parent" },
+      ],
+    });
+    expect(doc.elements.child.fill).toBe("#ffffff");
+  });
+
+  it("starts clear when created inside an auto layout frame via create_element", () => {
+    let doc = runCommand(emptyDoc(), "create_element", { id: "parent", type: "frame", x: 0, y: 0, width: 400, height: 400, props: { layout: defaultLayout() } });
+    doc = runCommand(doc, "create_element", { id: "child", type: "frame", x: 0, y: 0, width: 100, height: 100, parentId: "parent" });
+    expect(doc.elements.child.fill).toBe("#ffffff00");
+  });
 });
