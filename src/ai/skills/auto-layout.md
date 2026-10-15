@@ -8,3 +8,4 @@ Frames that line up their children neatly and adapt when content changes.
 - Button rows and toolbars use row direction, align: "center", and a gap between items.
 - Set grow: 1 on items that fill space along the layout direction, and grow: 0 for items that keep their size.
 - Check that the side panel does not show "Add auto layout" on any screen, card, list, or button row you build.
+- Layout follows the order of the layers, so put things in the order they should appear, top to bottom. For a bottom bar or a footer button, give the content above it grow: 1, so the bar is pushed to the bottom edge instead of sitting right under the title.
