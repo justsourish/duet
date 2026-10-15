@@ -99,7 +99,10 @@ export default function ChatPanel() {
   const pictures = useChat((s) => s.pictures);
   const cursor = useStore((s) => s.cursor);
   const projectName = useStore((s) => s.project.name);
-  const focusNames = useStore((s) => s.focus.filter((id) => s.timeline[s.cursor].doc.elements[id]).map((id) => s.timeline[s.cursor].doc.elements[id].name));
+  // each selector hands back something that only changes when the thing itself changes; a fresh list here would loop forever
+  const focus = useStore((s) => s.focus);
+  const focusEls = useStore((s) => s.timeline[s.cursor].doc.elements);
+  const focusNames = focus.filter((id) => focusEls[id]).map((id) => focusEls[id].name);
   const timeline = useStore((s) => s.timeline);
   const place = useLayout((d) => d.chat);
   const chatW = useLayout((d) => d.chatW);
