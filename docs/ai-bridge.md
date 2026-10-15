@@ -15,7 +15,7 @@ A designer and an AI share the same controls. Every change in Duet is one named 
 
 ## Tools
 
-`get_context`, `get_working_rules`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `look_at_attachment`, `select_elements`, `create_element`, `create_instance`, `place_image`, `make_mask`, `trace_image`, `set_props`, `duplicate_elements`, `move_elements`, `resize_element`, `reparent_elements`, `delete_elements`.
+`get_context`, `get_working_rules`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `look_at_attachment`, `select_elements`, `create_element`, `create_instance`, `place_image`, `make_mask`, `trace_image`, `set_props`, `duplicate_elements`, `move_elements`, `resize_element`, `reparent_elements`, `export_frame`, `delete_elements`.
 
 `get_working_rules` returns how to work in Duet and the turned-on skills in full. It is for an AI connected from outside, which has not been given them with the message.
 
@@ -30,6 +30,8 @@ A designer and an AI share the same controls. Every change in Duet is one named 
 Two tools are answered by the bridge itself (`src-tauri/src/files.rs`), so an AI tool can use them while Duet is closed: `create_design_file` (a new `.duet` file, empty or from design JSON, with its first step in the history) and `create_media_file` (a picture, sound, video or plain text file, by copying a file, from text, or from base64). Any folder works. They only make something new and never replace a file. Hidden folders, system folders and `..` are refused, and only picture, sound, video and plain text types are allowed. Added 15 October 2026 (issue 97).
 
 Not done: these two skip the permission levels, because the level is held in the interface and the bridge cannot read it while Duet is closed (making a new file replaces nothing). Duet does not yet show new files from a folder. The design in a new file is checked only for its outline until Duet opens it.
+
+`export_frame` saves a frame or shape as a PNG file at its true size, or up to 4 times larger with `scale`. The path must be a full path to a new `.png`, outside hidden folders. It never replaces a file, and it does not change the design. It follows the Deleting column below: the designer is asked first in Ask first mode, and in Suggest mode it is only shown as a suggestion. Added 16 October 2026 (issue 99). Checked live in Duet dev: a 300 by 120 frame saved at 2x came out 600 by 240, saving over it was refused, and a relative path, a hidden folder, a missing id and a scale of 9 were each refused.
 
 ## Permission levels
 

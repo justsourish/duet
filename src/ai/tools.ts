@@ -2,6 +2,7 @@ import { outline } from "./outline";
 import { componentsIn } from "../document/components";
 import { lookAtDesign, lookAtImage } from "./vision";
 import { lookAtAttachment } from "./pictures";
+import { checkExport } from "./exportCheck";
 import { commandLabel, newId, runCommand } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
@@ -13,7 +14,8 @@ import { ENTRANCES, sceneOf } from "../document/time";
 import { MOVING, emptyDoc } from "../document/types";
 import type { El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
-import { addPicture, mimeFor } from "../project/assets";
+import { addPicture, mimeFor, preloadPictures } from "../project/assets";
+import { renderPng } from "../project/exporter";
 import { fileLength } from "../video/clips";
 import { saveNow } from "../project/project";
 import { tracePicture } from "../project/trace";
@@ -283,6 +285,16 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { path: str, parentId: { ...str, description: "A frame that plays." }, start: num, volume: num, name: str }, required: ["path", "parentId"] },
   },
   {
+    name: "export_frame",
+    description:
+      "Save a frame (or any shape) as a PNG picture file on this computer, at its true size, or larger with scale (2 gives twice the pixels). path is the full path of the new file and must end in .png (~ for the home folder works). Folders are made as needed. It never replaces a file that already exists: choose a new name. The designer may be asked to allow it.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { ...str, description: "The frame or shape to save, from get_document." }, path: str, scale: { ...num, description: "1 by default. Up to 4." } },
+      required: ["id", "path"],
+    },
+  },
+  {
     name: "delete_elements",
     description: "Delete elements and everything inside them. The designer may be asked to approve this.",
     inputSchema: { type: "object", properties: { ids }, required: ["ids"] },
@@ -290,8 +302,8 @@ export const TOOLS: ToolDef[] = [
 ];
 
 const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "duplicate_elements", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate", "set_curve"]);
-/** Things the designer is asked about first in Ask first mode: losing work, and reading a file from the computer. */
-const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound"]);
+/** Things the designer is asked about first in Ask first mode: losing work, and reading or writing a file on the computer. */
+const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound", "export_frame"]);
 
 type Args = Record<string, unknown>;
 
@@ -356,6 +368,8 @@ export function summarise(tool: string, a: Args): string {
       return `Place a copy of ${nameOf(a.componentId)}`;
     case "place_image":
       return `Bring in the picture at ${String(a.path)}`;
+    case "export_frame":
+      return `Save ${nameOf(a.id)} as a picture at ${String(a.path)}`;
     case "place_video":
       return `Bring in the clip at ${String(a.path)}`;
     case "place_sound":
@@ -505,6 +519,15 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
       a.path = path;
       a.parentId = a.parentId ?? null;
       a.id = newId("image");
+      return { args: a };
+    }
+    case "export_frame": {
+      const el = typeof a.id === "string" ? doc.elements[a.id] : undefined;
+      if (!el) return { error: `No element with id: ${String(a.id)}. Use get_document to see the ids.` };
+      const ask = checkExport(a.path, a.scale, el.width, el.height);
+      if ("error" in ask) return ask;
+      a.path = ask.path;
+      a.scale = ask.scale;
       return { args: a };
     }
     case "create_instance": {
@@ -767,6 +790,25 @@ async function placeVideo(args: Args, by?: string): Promise<ToolResult> {
   return { text: `Placed the clip as ${String(args.id)} named "${name}", ${width} by ${height}, showing from ${start}s to ${end}s (the file is ${info.duration}s long, ${info.width} by ${info.height}, ${info.sound ? "with" : "without"} sound). The frame now plays for ${currentDoc().elements[sceneId].duration}s.` };
 }
 
+/** Save a frame as a PNG file. A file that is already there is never replaced, and the design is not changed. */
+async function exportFrame(args: Args): Promise<ToolResult> {
+  let path = String(args.path);
+  if (path.startsWith("~")) path = (await invoke<string>("duet_home")).replace(/[\\/]\.duet[^\\/]*[\\/]?$/, "") + path.slice(1);
+  if ((await invoke<boolean>("path_exists", { path })) === true) return fail(`${String(args.path)} already exists. Choose a new file name; nothing was saved.`);
+  const doc = currentDoc();
+  const el = doc.elements[String(args.id)];
+  await preloadPictures(doc);
+  const scale = Number(args.scale) || 1;
+  try {
+    await invoke("write_binary_file", { path, dataBase64: renderPng(doc, el.id, scale) });
+  } catch (e) {
+    return fail(`Could not save the picture. ${String(e)}`);
+  }
+  const w = Math.max(1, Math.round(el.width * scale));
+  const h = Math.max(1, Math.round(el.height * scale));
+  return { text: `Saved "${el.name}" as ${path}, ${w} by ${h} pixels (before any turn). The design was not changed.` };
+}
+
 /** Put a sound file from the computer into a frame that plays. The file stays where it is. */
 async function placeSound(args: Args, by?: string): Promise<ToolResult> {
   let path = String(args.path);
@@ -832,6 +874,7 @@ async function duplicateElements(args: Args, by?: string): Promise<ToolResult> {
 }
 
 async function apply(tool: string, args: Args, by?: string): Promise<ToolResult> {
+  if (tool === "export_frame") return exportFrame(args);
   if (tool === "place_image") return placeImage(args, by);
   if (tool === "place_video") return placeVideo(args, by);
   if (tool === "place_sound") return placeSound(args, by);
@@ -946,7 +989,7 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
   }
   if (RISKY.has(name) && mode === "ask") {
     const ok = await askDesigner(summary);
-    if (!ok) return fail(name === "place_image" || name === "place_video" || name === "place_sound" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
+    if (!ok) return fail(name === "export_frame" ? "The designer said not now. Do not save this file." : name === "place_image" || name === "place_video" || name === "place_sound" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
   }
   return apply(name, check.args, by);
 }
