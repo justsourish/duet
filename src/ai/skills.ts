@@ -8,6 +8,8 @@ import plainWords from "./skills/plain-words.md?raw";
 import boldBlocks from "./skills/bold-blocks.md?raw";
 import bento from "./skills/bento.md?raw";
 import autoLayout from "./skills/auto-layout.md?raw";
+import calmAndTrusted from "./skills/calm-and-trusted.md?raw";
+import friendlyAndModern from "./skills/friendly-and-modern.md?raw";
 
 export interface Skill {
   id: string;
@@ -27,11 +29,13 @@ const SHIPPED: Record<string, string> = {
   "plain-words": plainWords,
   "bold-blocks": boldBlocks,
   bento,
+  "calm-and-trusted": calmAndTrusted,
+  "friendly-and-modern": friendlyAndModern,
 };
 
 /** Skills that change the whole look of a design. They ship switched off, and a designer turns one on when they want it. */
-const OFF_AT_FIRST = ["bold-blocks", "bento"];
-const SEEDED = "duet:skills-seeded-1";
+const OFF_AT_FIRST = ["bold-blocks", "bento", "calm-and-trusted", "friendly-and-modern"];
+const SEEDED = "duet:skills-seeded-2";
 
 const KEY = "duet:skills-off";
 
@@ -68,9 +72,15 @@ export function describeSkill(body: string, fallback: string): { name: string; s
 
 function offSet(): Set<string> {
   try {
-    const off = new Set(JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[]);
+    const raw = localStorage.getItem(KEY);
+    const off = new Set(JSON.parse(raw ?? "[]") as string[]);
     if (!localStorage.getItem(SEEDED)) {
-      for (const id of OFF_AT_FIRST) off.add(id);
+      if (raw !== null || localStorage.getItem("duet:skills-seeded-1")) {
+        off.add("calm-and-trusted");
+        off.add("friendly-and-modern");
+      } else {
+        for (const id of OFF_AT_FIRST) off.add(id);
+      }
       localStorage.setItem(SEEDED, "1");
       localStorage.setItem(KEY, JSON.stringify([...off]));
     }
