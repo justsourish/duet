@@ -17,6 +17,12 @@ function colour(c: string): { color: string; opacity: number } {
   return { color: c, opacity: 1 };
 }
 
+/** A colour as an SVG attribute, with its see-through part written separately so older vector tools keep it. */
+function paint(kind: "fill" | "stroke", c: string): string {
+  const { color, opacity } = colour(c);
+  return `${kind}="${esc(color)}"${opacity < 1 ? ` ${kind}-opacity="${num(opacity)}"` : ""}`;
+}
+
 /** Turn one element, with everything inside it, into a standalone SVG picture. */
 export function toSvg(doc: Doc, id: string): string {
   const root = doc.elements[id];
@@ -49,7 +55,7 @@ export function toSvg(doc: Doc, id: string): string {
         .join("");
       const family = el.fontFamily.trim() ? `"${el.fontFamily.replace(/"/g, "")}", ${FONT}` : FONT;
       const spacing = el.letterSpacing ? ` letter-spacing="${num(el.letterSpacing)}"` : "";
-      return `<text font-family="${esc(family)}" font-weight="${el.fontWeight || 400}" font-size="${num(el.fontSize)}" fill="${esc(el.fill)}"${spacing} dominant-baseline="text-before-edge"${op}>${spans}</text>`;
+      return `<text font-family="${esc(family)}" font-weight="${el.fontWeight || 400}" font-size="${num(el.fontSize)}" ${paint("fill", el.fill)}${spacing} dominant-baseline="text-before-edge"${op}>${spans}</text>`;
     }
 
     if (el.type === "image") {
@@ -88,8 +94,8 @@ export function toSvg(doc: Doc, id: string): string {
     if (el.type === "path") {
       const nodes = toAbs(el, x, y);
       if (nodes.length < 2) return "";
-      const stroke = el.stroke && el.strokeWidth > 0 ? ` stroke="${esc(el.stroke)}" stroke-width="${num(el.strokeWidth)}" stroke-linecap="round" stroke-linejoin="round"` : "";
-      let pfill = el.closed ? esc(el.fill) : "none";
+      const stroke = el.stroke && el.strokeWidth > 0 ? ` ${paint("stroke", el.stroke)} stroke-width="${num(el.strokeWidth)}" stroke-linecap="round" stroke-linejoin="round"` : "";
+      let pfill = el.closed ? paint("fill", el.fill) : `fill="none"`;
       if (el.closed && el.gradient) {
         const g = el.gradient;
         const a = (g.angle * Math.PI) / 180;
@@ -100,7 +106,7 @@ export function toSvg(doc: Doc, id: string): string {
         defs.push(
           `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${num(cx - Math.cos(a) * half)}" y1="${num(cy - Math.sin(a) * half)}" x2="${num(cx + Math.cos(a) * half)}" y2="${num(cy + Math.sin(a) * half)}"><stop offset="0" stop-color="${esc(g.from)}"/><stop offset="1" stop-color="${esc(g.to)}"/></linearGradient>`,
         );
-        pfill = `url(#${gid})`;
+        pfill = `fill="url(#${gid})"`;
       }
       let pfilter = "";
       if (el.shadow) {
@@ -111,10 +117,10 @@ export function toSvg(doc: Doc, id: string): string {
         );
         pfilter = ` filter="url(#${fid})"`;
       }
-      return `<path d="${pathData(nodes, el.closed)}" fill="${pfill}"${stroke}${pfilter}${op}/>`;
+      return `<path d="${pathData(nodes, el.closed)}" ${pfill}${stroke}${pfilter}${op}/>`;
     }
 
-    let fill = esc(el.fill);
+    let fill = paint("fill", el.fill);
     if (el.gradient) {
       const g = el.gradient;
       const a = (g.angle * Math.PI) / 180;
@@ -125,7 +131,7 @@ export function toSvg(doc: Doc, id: string): string {
       defs.push(
         `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${num(cx - Math.cos(a) * half)}" y1="${num(cy - Math.sin(a) * half)}" x2="${num(cx + Math.cos(a) * half)}" y2="${num(cy + Math.sin(a) * half)}"><stop offset="0" stop-color="${esc(g.from)}"/><stop offset="1" stop-color="${esc(g.to)}"/></linearGradient>`,
       );
-      fill = `url(#${gid})`;
+      fill = `fill="url(#${gid})"`;
     }
     let filter = "";
     if (el.shadow) {
@@ -136,12 +142,12 @@ export function toSvg(doc: Doc, id: string): string {
       );
       filter = ` filter="url(#${fid})"`;
     }
-    const stroke = el.stroke && el.strokeWidth > 0 ? ` stroke="${esc(el.stroke)}" stroke-width="${num(el.strokeWidth)}"` : "";
+    const stroke = el.stroke && el.strokeWidth > 0 ? ` ${paint("stroke", el.stroke)} stroke-width="${num(el.strokeWidth)}"` : "";
     const r = Math.max(0, Math.min(el.radius, el.width / 2, el.height / 2));
     const own =
       el.type === "ellipse"
-        ? `<ellipse cx="${num(x + el.width / 2)}" cy="${num(y + el.height / 2)}" rx="${num(el.width / 2)}" ry="${num(el.height / 2)}" fill="${fill}"${stroke}${filter}/>`
-        : `<rect x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}"${r ? ` rx="${num(r)}"` : ""} fill="${fill}"${stroke}${filter}/>`;
+        ? `<ellipse cx="${num(x + el.width / 2)}" cy="${num(y + el.height / 2)}" rx="${num(el.width / 2)}" ry="${num(el.height / 2)}" ${fill}${stroke}${filter}/>`
+        : `<rect x="${num(x)}" y="${num(y)}" width="${num(el.width)}" height="${num(el.height)}"${r ? ` rx="${num(r)}"` : ""} ${fill}${stroke}${filter}/>`;
 
     if (!el.childIds.length) return op ? `<g${op}>${own}</g>` : own;
 
