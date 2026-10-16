@@ -366,12 +366,12 @@ export async function stopAgent() {
  * into the next one. If it is in the middle of something the designer decides: let it finish here,
  * or stop it. Returns false to stay.
  */
-export async function readyToLeave(): Promise<boolean> {
+export async function readyToLeave(closing = false): Promise<boolean> {
   if (!getChat().running) return true;
-  const go = await ask("Duet is still working on this design. Stop it and open the other project?", {
+  const go = await ask(closing ? "Duet is still working on this design. Stop it and close the project?" : "Duet is still working on this design. Stop it and open the other project?", {
     title: "Duet",
     kind: "warning",
-    okLabel: "Stop and open",
+    okLabel: closing ? "Stop and close" : "Stop and open",
     cancelLabel: "Let it finish",
   });
   if (!go) return false;
@@ -383,6 +383,6 @@ export async function readyToLeave(): Promise<boolean> {
   workingId = null;
   declineAllWaiting();
   setRunning(false);
-  addMsg({ role: "note", text: "Stopped, because you opened another project." });
+  addMsg({ role: "note", text: closing ? "Stopped, because you closed the project." : "Stopped, because you opened another project." });
   return true;
 }

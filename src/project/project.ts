@@ -609,20 +609,23 @@ async function loadFrom(path: string, quiet: boolean, file: string): Promise<boo
   }
 }
 
-/** Open a project you already know the folder of, such as one from the projects list. */
-export async function openProjectAt(path: string): Promise<boolean> {
+/**
+ * Open a project you already know the folder of, such as one from the projects list. `closing` is set
+ * when it opens because the tab before it was closed, so the questions speak of closing.
+ */
+export async function openProjectAt(path: string, closing = false): Promise<boolean> {
   if (!inTauri()) return false;
   const s = getState();
   if (!s.project.path && s.timeline.length > 1) {
-    const go = await ask("Your current work has not been saved. Open another project anyway?", {
+    const go = await ask(closing ? "Your current work has not been saved. Close it anyway?" : "Your current work has not been saved. Open another project anyway?", {
       title: "Duet",
       kind: "warning",
-      okLabel: "Open",
-      cancelLabel: "Cancel",
+      okLabel: closing ? "Close" : "Open",
+      cancelLabel: closing ? "Keep working" : "Cancel",
     });
     if (!go) return false;
   }
-  if (!(await readyToLeave())) return false;
+  if (!(await readyToLeave(closing))) return false;
   return openAny(path);
 }
 

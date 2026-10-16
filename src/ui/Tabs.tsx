@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { addTab, closeProject, closeTab, getTabs, inTauri, openProjectAt, tabName } from "../project/project";
 import { currentDoc, useStore } from "../state/store";
+import { readyToLeave } from "../ai/agent";
 
 /**
  * The projects you have open, like tabs in a browser. One is live at a time; the others keep their
@@ -38,9 +39,10 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
   const afterClosing = async (rest: string[]) => {
     const next = rest[rest.length - 1];
     if (next) {
-      if (await openProjectAt(next)) setHome(false);
+      if (await openProjectAt(next, true)) setHome(false);
       return;
     }
+    if (!(await readyToLeave(true))) return;
     await closeProject();
     setHome(true);
   };
