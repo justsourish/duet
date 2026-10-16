@@ -718,8 +718,8 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     ctx.stroke();
   }
 
-  // empty hint
-  if (doc.rootIds.length === 0 && !s.overlay.draft) {
+  // empty hint, but not while an AI is at work: the canvas is about to fill
+  if (doc.rootIds.length === 0 && !s.overlay.draft && !s.aiWork) {
     ctx.fillStyle = COLORS.muted;
     ctx.font = `500 14px ${FONT_STACK}`;
     ctx.textAlign = "center";
