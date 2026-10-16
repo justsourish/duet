@@ -62,6 +62,8 @@ function Grip({ side }: { side: "l" | "r" }) {
 wireClips();
 wireKeys();
 
+const MAC = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+
 export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);
   const project = useStore((s) => s.project);
@@ -168,18 +170,21 @@ export default function App() {
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const appStyle = {
     gridTemplateColumns: dock.swapped ? `${rw}px 1fr ${lw}px` : `${lw}px 1fr ${rw}px`,
-    gridTemplateAreas: dock.swapped ? '"top top top" "right canvas left" "time time time" "hist hist hist"' : '"top top top" "left canvas right" "time time time" "hist hist hist"',
+    gridTemplateAreas: dock.swapped ? '"tabs tabs tabs" "top top top" "right canvas left" "time time time" "hist hist hist"' : '"tabs tabs tabs" "top top top" "left canvas right" "time time time" "hist hist hist"',
   };
 
   return (
-    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""}`} style={appStyle}>
+    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""}`} style={appStyle}>
+      {/* open projects, in their own row like a browser; on a Mac it shares the row with the window buttons */}
+      <div className="tabbar" data-tauri-drag-region>
+        <Tabs />
+      </div>
       <header className="top">
         <span className="logo">
           Du<b>et</b>
           <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
           {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
         </span>
-        <Tabs />
         <span className={`status ${project.status}`} title={project.error ?? undefined}>
           {project.path ? STATUS[project.status] : "Not saved yet"}
         </span>

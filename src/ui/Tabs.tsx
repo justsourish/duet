@@ -43,7 +43,7 @@ export default function Tabs() {
   };
 
   return (
-    <div className="project-tabs" role="tablist">
+    <div className="project-tabs" role="tablist" data-tauri-drag-region>
       {list.map((path) => (
         <div key={path} role="tab" aria-selected={path === file} className={`project-tab ${path === file ? "active" : ""}`} title={path}>
           <button className="tab-name" onClick={() => path !== file && void openProjectAt(path)}>

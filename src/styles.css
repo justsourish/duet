@@ -39,8 +39,8 @@ button {
   display: grid;
   height: 100vh;
   grid-template-columns: 232px 1fr 248px;
-  grid-template-rows: 44px 1fr auto 48px;
-  grid-template-areas: "top top top" "left canvas right" "time time time" "hist hist hist";
+  grid-template-rows: var(--tabbar-h) 44px 1fr auto 48px;
+  grid-template-areas: "tabs tabs tabs" "top top top" "left canvas right" "time time time" "hist hist hist";
 }
 
 /* top bar */
@@ -1295,6 +1295,7 @@ button {
 .home {
   position: fixed;
   inset: 0;
+  top: var(--tabbar-h); /* the open projects stay in view, like a new tab in a browser */
   z-index: 80;
   display: grid;
   grid-template-columns: 240px 1fr;
@@ -1615,7 +1616,7 @@ button {
 }
 
 /* Duet dev: a second Duet used only to check work on Duet itself. It must never be taken for the real one. */
-.app.check .top {
+.app.check .tabbar {
   box-shadow: inset 0 3px 0 #ff9f1c;
 }
 .checkmark {
@@ -3536,29 +3537,48 @@ button.agent-perm {
 }
 
 /* open projects */
+:root {
+  --tabbar-h: 38px;
+}
+/* the row of open projects, above the top bar */
+.tabbar {
+  grid-area: tabs;
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  padding: 0 10px;
+  background: var(--bg);
+  user-select: none;
+}
+.app.mac .tabbar {
+  padding-left: 80px; /* room for the window buttons */
+}
 .project-tabs {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 34vw;
+  align-items: flex-end;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  height: 100%;
   overflow-x: auto;
   scrollbar-width: none;
 }
 .project-tab {
   display: flex;
   align-items: center;
-  flex: none;
-  max-width: 180px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  flex: 0 1 200px;
+  min-width: 72px;
+  height: 30px;
+  border-radius: 9px 9px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .project-tab.active {
-  border-color: var(--accent);
+  background: var(--panel);
   color: var(--text);
 }
 .project-tab:not(.active):hover {
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
   color: var(--text);
 }
 .project-tab button {
@@ -3567,21 +3587,26 @@ button.agent-perm {
   color: inherit;
   cursor: pointer;
   font: inherit;
-  padding: 3px 7px;
 }
 .project-tab .tab-name {
-  display: block;
-  max-width: 140px;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
+  padding: 0 4px 0 12px;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .project-tab .tab-x {
   flex: none;
-  padding: 3px 6px 3px 0;
-  opacity: 0.6;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  border-radius: 6px;
+  opacity: 0.55;
 }
 .project-tab .tab-x:hover {
+  background: var(--line);
   opacity: 1;
 }
 .project-tab-add {
@@ -3589,17 +3614,18 @@ button.agent-perm {
   align-items: center;
   justify-content: center;
   flex: none;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  width: 26px;
+  height: 26px;
+  margin: 0 0 2px 4px;
+  border: 0;
+  border-radius: 7px;
   background: none;
   color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1;
-  padding: 3px 8px;
   cursor: pointer;
+  font: inherit;
+  font-size: 16px;
 }
 .project-tab-add:hover {
-  border-color: var(--accent);
+  background: var(--line);
   color: var(--text);
 }
