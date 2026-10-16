@@ -17,14 +17,14 @@ fn err<E: std::fmt::Display>(e: E) -> String {
 // ---------- files ----------
 
 /// Read a UTF-8 text file. Used to open a project's design.json.
-#[tauri::command]
+#[tauri::command(async)]
 fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("Could not read {path}: {e}"))
 }
 
 /// Write a text file safely: write to a temp file next to it, then rename.
 /// A crash mid-save can never leave a half-written design behind.
-#[tauri::command]
+#[tauri::command(async)]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
     let target = Path::new(&path);
     if let Some(parent) = target.parent() {
@@ -36,7 +36,7 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
 }
 
 /// Save a binary file (such as a PNG). The picture arrives as base64 text.
-#[tauri::command]
+#[tauri::command(async)]
 fn write_binary_file(path: String, data_base64: String) -> Result<(), String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
@@ -52,7 +52,7 @@ fn write_binary_file(path: String, data_base64: String) -> Result<(), String> {
 }
 
 /// Read a binary file (such as a picture) and hand it over as base64 text.
-#[tauri::command]
+#[tauri::command(async)]
 fn read_binary_file(path: String) -> Result<String, String> {
     use base64::Engine;
     let bytes = fs::read(&path).map_err(|e| format!("Could not read {path}: {e}"))?;
@@ -113,7 +113,7 @@ fn work_dir_for(file: String) -> Result<String, String> {
 }
 
 /// An empty working folder for a new project file.
-#[tauri::command]
+#[tauri::command(async)]
 fn fresh_work_dir(file: String) -> Result<String, String> {
     let dir = package::work_dir_for_file(&file)?;
     if dir.exists() {
@@ -123,16 +123,25 @@ fn fresh_work_dir(file: String) -> Result<String, String> {
     Ok(dir.to_string_lossy().to_string())
 }
 
+/// File work runs off the screen's thread so Duet never freezes on a big project. Packing,
+/// unpacking and history steps take turns, so a pack never reads a step half written.
+static FILE_WORK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+fn file_turn() -> std::sync::MutexGuard<'static, ()> {
+    FILE_WORK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Pack a project's working folder into its single file.
-#[tauri::command]
+#[tauri::command(async)]
 fn pack_project(dir: String, file: String) -> Result<(), String> {
+    let _turn = file_turn();
     package::pack(Path::new(&dir), Path::new(&file))
 }
 
 /// Make a second project file to hand to someone else. The working folder is only read.
-#[tauri::command]
+#[tauri::command(async)]
 fn pack_copy(dir: String, file: String, design: String, preview_base64: Option<String>, pictures: Vec<String>, history: bool, conversation: bool) -> Result<(), String> {
     use base64::Engine;
+    let _turn = file_turn();
     let preview = match preview_base64 {
         Some(text) => Some(base64::engine::general_purpose::STANDARD.decode(text.trim()).map_err(|e| format!("The picture data was not valid: {e}"))?),
         None => None,
@@ -141,8 +150,9 @@ fn pack_copy(dir: String, file: String, design: String, preview_base64: Option<S
 }
 
 /// Unpack a project file into its working folder, and say where it went.
-#[tauri::command]
+#[tauri::command(async)]
 fn unpack_project(file: String) -> Result<String, String> {
+    let _turn = file_turn();
     let dir = package::work_dir_for_file(&file)?;
     // a crash can leave the working copy newer than the file: keep that one, the next save packs it
     let design = dir.join(DESIGN_FILE);
@@ -187,7 +197,7 @@ struct FoundProject {
 }
 
 /// Look inside a folder, a few levels down, for Duet project files (.duet).
-#[tauri::command]
+#[tauri::command(async)]
 fn find_projects(root: String) -> Vec<FoundProject> {
     fn walk(dir: &Path, depth: u32, out: &mut Vec<FoundProject>) {
         if depth > 3 {
@@ -226,7 +236,7 @@ struct DirEntryInfo {
 }
 
 /// List the entries of a folder. Used to import skills that come as folders.
-#[tauri::command]
+#[tauri::command(async)]
 fn list_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(&path).map_err(|e| format!("Could not read {path}: {e}"))?.flatten() {
@@ -315,14 +325,15 @@ fn signature(repo: &Repository) -> Result<Signature<'static>, String> {
 }
 
 /// Make sure the project folder has a history store.
-#[tauri::command]
+#[tauri::command(async)]
 fn git_prepare(path: String) -> Result<(), String> {
     open_or_init(&path).map(|_| ())
 }
 
 /// Record the current design.json as a new step. Returns false if nothing changed.
-#[tauri::command]
+#[tauri::command(async)]
 fn git_commit(path: String, message: String) -> Result<bool, String> {
+    let _turn = file_turn();
     let repo = open_or_init(&path)?;
     let mut index = repo.index().map_err(err)?;
     index.add_path(Path::new(DESIGN_FILE)).map_err(err)?;
@@ -357,7 +368,7 @@ struct HistoryItem {
 }
 
 /// The saved steps of a project, oldest first, each with the design as it was then.
-#[tauri::command]
+#[tauri::command(async)]
 fn git_history(path: String, limit: usize) -> Result<Vec<HistoryItem>, String> {
     let repo = match Repository::open(&path) {
         Ok(r) => r,
@@ -431,7 +442,7 @@ fn git_history(path: String, limit: usize) -> Result<Vec<HistoryItem>, String> {
 }
 
 /// Give the latest saved step a name, like "Client round 1".
-#[tauri::command]
+#[tauri::command(async)]
 fn git_name_version(path: String, tag: String, title: String) -> Result<(), String> {
     let repo = open_or_init(&path)?;
     let target = repo
