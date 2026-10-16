@@ -23,6 +23,10 @@ jobs:
           - platform: macos-latest
             args: --target x86_64-apple-darwin
             rust-targets: x86_64-apple-darwin
+          # 22.04 so the app runs on older Linux systems too; ffmpeg comes from the system on Linux
+          - platform: ubuntu-22.04
+            args: ""
+            rust-targets: ""
           - platform: windows-latest
             args: ""
             rust-targets: ""
@@ -39,9 +43,15 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri -> target
+      - name: Linux build tools
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: npm ci
       # the ffmpeg that ships inside Duet, pinned and checked, for the computer type being built
       - run: bash scripts/fetch-ffmpeg ${{ matrix.rust-targets || 'x86_64-pc-windows-msvc' }}
+        if: matrix.platform != 'ubuntu-22.04'
         shell: bash
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -59,7 +69,7 @@ jobs:
 
             This is early access: some things are unfinished and you may meet bugs. Save versions of work that matters.
 
-            The AI chat works with Claude Code and the Antigravity CLI. Video and motion are experimental and have mostly been tried on a Mac. Duet carries its own ffmpeg (LGPL), so nothing extra needs installing. Windows builds are less tested than Mac.
+            The AI chat works with Claude Code and the Antigravity CLI. Video and motion are experimental and have mostly been tried on a Mac. On Mac and Windows Duet carries its own ffmpeg (LGPL), so nothing extra needs installing; on Linux the system's ffmpeg is installed with the app. Windows and Linux builds are less tested than Mac.
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
