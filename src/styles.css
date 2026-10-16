@@ -3609,6 +3609,24 @@ button.agent-perm {
   background: var(--line);
   opacity: 1;
 }
+.project-home {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 26px;
+  margin: 0 4px 2px 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.project-home:hover {
+  background: var(--line);
+  color: var(--text);
+}
 .project-tab-add {
   display: inline-flex;
   align-items: center;
