@@ -42,6 +42,7 @@ Be honest with yourself before you try it for real work.
 - Prototyping has no animation inside a screen yet, and no hover or timed triggers.
 - The AI chat works with **Claude Code** and the **Antigravity CLI** today (the command line tools, not the desktop apps). Codex and OpenCode are detected but not connected yet.
 - Windows builds are new and less tested than Mac. The AI chat on Windows is untested.
+- Linux builds (.deb, .rpm, AppImage) are new and less tested than Mac. On Linux the system's ffmpeg is used.
 - The app is not signed, so your computer will warn you the first time. See the install guide.
 
 ## Bring your own AI

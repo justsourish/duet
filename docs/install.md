@@ -31,9 +31,19 @@ Duet needs macOS 13 or newer.
 
 Windows builds are new. If something is broken, please open an issue and say what Windows version you use.
 
+## Linux
+
+Linux builds are new and less tested than Mac. Pick one:
+
+- **Ubuntu, Debian, Mint, Pop!_OS:** the `.deb` file. Open it in the Software app, or run `sudo apt install ./Duet_*_amd64.deb` in a terminal. ffmpeg is installed with it.
+- **Fedora, openSUSE:** the `.rpm` file. Open it, or run `sudo dnf install ./Duet-*.x86_64.rpm`. ffmpeg is installed with it.
+- **Any other Linux:** the `.AppImage` file. Make it runnable (right click, Properties, Allow executing, or `chmod +x Duet_*.AppImage`), then open it. It needs ffmpeg on the system: `sudo apt install ffmpeg` or your system's equivalent.
+
+If something is broken, please open an issue and say which Linux you use.
+
 ## Video and motion
 
-Duet carries its own ffmpeg (LGPL), so video playback, scrubbing and exports work straight away. You do not need to install ffmpeg. Credits and licence details are in [docs/third-party.md](third-party.md).
+On Mac and Windows Duet carries its own ffmpeg (LGPL), so video playback, scrubbing and exports work straight away. On Linux the system's ffmpeg is used; the `.deb` and `.rpm` install it for you. Credits and licence details are in [docs/third-party.md](third-party.md).
 
 ## Connect your AI (optional)
 
