@@ -92,7 +92,8 @@ export default function Home({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"recent" | "name">("recent");
   const [note, setNote] = useState("");
-  useDismiss(!!project.path, onClose, ".home-main, .home-side");
+  // the tabs decide for themselves whether to leave this screen
+  useDismiss(!!project.path, onClose, ".home-main, .home-side, .tabbar");
 
   useEffect(() => {
     const refresh = () => setRecents(getRecents());

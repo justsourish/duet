@@ -5,7 +5,7 @@ import { currentDoc, useStore } from "../state/store";
 
 /**
  * The projects you have open, like tabs in a browser. One is live at a time; the others keep their
- * history and are one click away. The home button and + show all your projects, the way a new tab does.
+ * history and are one click away. The home button shows all your projects; + starts a new design.
  */
 export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: boolean) => void }) {
   const project = useStore((s) => s.project);
@@ -25,7 +25,8 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
   useEffect(() => {
     if (file) addTab(file);
   }, [file]);
-  const list = getTabs();
+  // whatever project is open always has its tab
+  const list = file && !getTabs().includes(file) ? [...getTabs(), file] : getTabs();
   // an empty new project is not worth a tab while all your projects are showing
   const unsaved = !file && !(home && empty);
 
@@ -45,25 +46,26 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
   };
 
   const closeSaved = (path: string) => {
-    const rest = getTabs().filter((p) => p !== path);
+    const rest = list.filter((p) => p !== path);
     closeTab(path);
     if (path === file) void afterClosing(rest);
   };
 
+  /** Unsaved work is lost when it is left, so ask first. */
+  const okToLeaveUnsaved = async (question: string, okLabel: string) =>
+    file || empty || !inTauri() ? true : ask(question, { title: "Duet", kind: "warning", okLabel, cancelLabel: "Keep working" });
+
   const closeUnsaved = async () => {
     // opening another project asks about unsaved work by itself, so ask here only when none is left
-    if (!list.length && !empty) {
-      const go = inTauri()
-        ? await ask("Your current work has not been saved. Close it anyway?", {
-            title: "Duet",
-            kind: "warning",
-            okLabel: "Close",
-            cancelLabel: "Keep working",
-          })
-        : true;
-      if (!go) return;
-    }
+    if (!list.length && !(await okToLeaveUnsaved("Your current work has not been saved. Close it anyway?", "Close"))) return;
     await afterClosing(list);
+  };
+
+  /** + starts a new, empty design in its own tab, like a new tab in a browser. Saved projects stay in their tabs. */
+  const startNew = async () => {
+    if (!(await okToLeaveUnsaved("Your current work has not been saved. Start a new design anyway?", "Start new"))) return;
+    if (file || !empty) await closeProject();
+    setHome(false);
   };
 
   return (
@@ -96,7 +98,7 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
           </button>
         </div>
       )}
-      <button className="project-tab-add" aria-label="Open or start a project" title="Open or start a project" onClick={() => setHome(true)}>
+      <button className="project-tab-add" aria-label="New design" title="New design" onClick={() => void startNew()}>
         +
       </button>
     </div>
