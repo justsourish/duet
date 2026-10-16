@@ -25,6 +25,9 @@ export default function Tabs() {
   const list = getTabs();
 
   const closeUnsaved = async () => {
+    // opening another project asks about unsaved work by itself, so ask here only when none is left
+    const next = list[list.length - 1];
+    if (next) return void openProjectAt(next);
     if (!empty) {
       const go = inTauri()
         ? await ask("Your current work has not been saved. Close it anyway?", {
@@ -36,9 +39,7 @@ export default function Tabs() {
         : true;
       if (!go) return;
     }
-    const next = list[list.length - 1];
-    if (next) void openProjectAt(next);
-    else window.dispatchEvent(new Event("duet:home"));
+    window.dispatchEvent(new Event("duet:home"));
   };
 
   return (
