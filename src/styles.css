@@ -3623,6 +3623,10 @@ button.agent-perm {
   color: var(--muted);
   cursor: pointer;
 }
+.project-home.active {
+  background: var(--panel);
+  color: var(--text);
+}
 .project-home:hover {
   background: var(--line);
   color: var(--text);

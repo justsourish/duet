@@ -507,6 +507,16 @@ export async function keepTestDesign(file: string): Promise<string | null> {
   }
 }
 
+/** Close the project on screen and leave an empty, unsaved one behind it. Used when the last tab is closed. */
+export async function closeProject() {
+  await flushPack(); // what was said in the project being left goes into its file first
+  showConversationFor("", true);
+  setProject({ path: null, file: null, name: "Untitled", status: "unsaved", error: null });
+  loadDoc(emptyDoc(), "New file");
+  lastSaved = committed();
+  clearTimeout(timer);
+}
+
 /** Throw the test design away and bring back the project that was open before it. */
 export async function leaveTestDesign(): Promise<string | null> {
   // after a test design was kept as a file there is still a project to go back to
