@@ -323,6 +323,8 @@ export default function CanvasView() {
       const { w, h, dpr } = sizeRef.current;
       try {
         draw(ctx, getState(), w, h, dpr);
+        // the light running round an AI's working area keeps moving, at an easy pace
+        if (getState().aiWork) setTimeout(schedule, 33);
       } catch (e) {
         // A drawing error must never leave the canvas stuck. Starting the canvas afresh clears any
         // half-finished clipping, and the error is kept so it can be found.

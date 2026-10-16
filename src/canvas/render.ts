@@ -458,26 +458,46 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   const working = s.aiWork?.ids.filter((id) => doc.elements[id]) ?? [];
   if (working.length) {
     const boxes = working.map((id) => screenRect(s, worldBounds(doc, id)));
-    const x = Math.min(...boxes.map((r) => r.x)) - 8;
-    const y = Math.min(...boxes.map((r) => r.y)) - 8;
-    const w = Math.max(...boxes.map((r) => r.x + r.width)) + 8 - x;
-    const h = Math.max(...boxes.map((r) => r.y + r.height)) + 8 - y;
+    // roomy and tinted, so it reads as "the AI is busy here" and people leave it be; nothing is locked
+    const pad = 24;
+    const x = Math.min(...boxes.map((r) => r.x)) - pad;
+    const y = Math.min(...boxes.map((r) => r.y)) - pad;
+    const w = Math.max(...boxes.map((r) => r.x + r.width)) + pad - x;
+    const h = Math.max(...boxes.map((r) => r.y + r.height)) + pad - y;
     const by = s.aiWork?.by;
     const colour = by ? agentColour(plainName(by)) : DUET_ORANGE;
     ctx.save();
     ctx.fillStyle = colour;
-    ctx.globalAlpha = 0.06;
+    ctx.globalAlpha = 0.15;
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 8);
+    ctx.roundRect(x, y, w, h, 14);
     ctx.fill();
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.7;
     ctx.strokeStyle = colour;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 3;
     ctx.stroke();
-    ctx.globalAlpha = 0.9;
-    ctx.font = `600 11px ${FONT_STACK}`;
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`${by ? plainName(by) : "Duet"} is working here`, x + 2, y - 5);
+    // a thin, flat sweep of light runs round the edge while the AI is at work
+    const around = 2 * (w + h);
+    const sweep = Math.min(140, around / 6);
+    ctx.setLineDash([sweep, around - sweep]);
+    ctx.lineDashOffset = -((Date.now() % 2600) / 2600) * around;
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = colour;
+    // the label sits on the top edge, in the AI's colour
+    const label = `${by ? plainName(by) : "Duet"} is working here`;
+    ctx.globalAlpha = 1;
+    ctx.font = `600 12px ${FONT_STACK}`;
+    const lw = ctx.measureText(label).width + 16;
+    ctx.beginPath();
+    ctx.roundRect(x + 14, y - 11, lw, 22, 11);
+    ctx.fill();
+    ctx.fillStyle = "#101014";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x + 22, y + 0.5);
     ctx.restore();
   }
   if (sel.length === 1 && !s.overlay.nodeEdit) {
