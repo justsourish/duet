@@ -1091,7 +1091,11 @@ export default function ChatPanel() {
               >
                 <span className="agent-btn-badge" style={{ backgroundColor: agentColour(toolName) }}>{chatToolLetter}</span>
                 <span className="agent-btn-name">{toolName}</span>
-                <span className="agent-btn-v">v</span>
+                <span className="agent-btn-v">
+                  <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2 3.5l3 3 3-3" />
+                  </svg>
+                </span>
               </button>
               <button
                 type="button"
@@ -1103,8 +1107,12 @@ export default function ChatPanel() {
                   setPopOpen(false);
                 }}
               >
-                {MODES.find((m) => m.mode === mode)?.label}
-                <span className="agent-btn-v">v</span>
+                <span>{MODES.find((m) => m.mode === mode)?.label}</span>
+                <span className="agent-btn-v">
+                  <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2 3.5l3 3 3-3" />
+                  </svg>
+                </span>
               </button>
               {permOpen && (
                 <div className="agent-pop perm-pop">
