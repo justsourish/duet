@@ -3536,14 +3536,14 @@ button.agent-perm {
 }
 
 /* open projects */
-.tabs {
+.project-tabs {
   display: flex;
   gap: 4px;
   max-width: 34vw;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.tab {
+.project-tab {
   display: flex;
   align-items: center;
   flex: none;
@@ -3552,11 +3552,11 @@ button.agent-perm {
   color: var(--muted);
   font-size: 11px;
 }
-.tab.active {
+.project-tab.active {
   border-color: var(--accent);
   color: var(--text);
 }
-.tab button {
+.project-tab button {
   background: none;
   border: 0;
   color: inherit;
@@ -3564,10 +3564,10 @@ button.agent-perm {
   font: inherit;
   padding: 3px 7px;
 }
-.tab .tab-x {
+.project-tab .tab-x {
   padding: 3px 6px 3px 0;
   opacity: 0.6;
 }
-.tab .tab-x:hover {
+.project-tab .tab-x:hover {
   opacity: 1;
 }

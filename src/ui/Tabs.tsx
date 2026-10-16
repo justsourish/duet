@@ -22,9 +22,9 @@ export default function Tabs() {
   const list = getTabs();
   if (list.length < 2) return null;
   return (
-    <div className="tabs" role="tablist">
+    <div className="project-tabs" role="tablist">
       {list.map((path) => (
-        <div key={path} role="tab" aria-selected={path === file} className={`tab ${path === file ? "active" : ""}`} title={path}>
+        <div key={path} role="tab" aria-selected={path === file} className={`project-tab ${path === file ? "active" : ""}`} title={path}>
           <button className="tab-name" onClick={() => path !== file && void openProjectAt(path)}>
             {tabName(path)}
           </button>
