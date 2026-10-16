@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { addTab, closeTab, getTabs, openProjectAt, tabName } from "../project/project";
-import { useStore } from "../state/store";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { addTab, closeTab, getTabs, inTauri, openProjectAt, tabName } from "../project/project";
+import { currentDoc, useStore } from "../state/store";
 
 /** The projects you have open. One is live at a time; the others keep their history and are one click away. */
 export default function Tabs() {
-  const file = useStore((s) => s.project.file);
+  const project = useStore((s) => s.project);
+  const empty = useStore((s) => currentDoc(s).rootIds.length === 0);
+  const file = project.file;
   const [, again] = useState(0);
   useEffect(() => {
     const redo = () => again((n) => n + 1);
@@ -20,7 +23,24 @@ export default function Tabs() {
     if (file) addTab(file);
   }, [file]);
   const list = getTabs();
-  if (list.length < 2) return null;
+
+  const closeUnsaved = async () => {
+    if (!empty) {
+      const go = inTauri()
+        ? await ask("Your current work has not been saved. Close it anyway?", {
+            title: "Duet",
+            kind: "warning",
+            okLabel: "Close",
+            cancelLabel: "Keep working",
+          })
+        : true;
+      if (!go) return;
+    }
+    const next = list[list.length - 1];
+    if (next) void openProjectAt(next);
+    else window.dispatchEvent(new Event("duet:home"));
+  };
+
   return (
     <div className="project-tabs" role="tablist">
       {list.map((path) => (
@@ -42,6 +62,22 @@ export default function Tabs() {
           </button>
         </div>
       ))}
+      {!file && (
+        <div key="unsaved" role="tab" aria-selected={true} className="project-tab active" title={project.name}>
+          <button className="tab-name">{project.name}</button>
+          <button className="tab-x" aria-label={`Close ${project.name}`} onClick={() => void closeUnsaved()}>
+            ×
+          </button>
+        </div>
+      )}
+      <button
+        className="project-tab-add"
+        aria-label="Open or start a project"
+        title="Open or start a project"
+        onClick={() => window.dispatchEvent(new Event("duet:home"))}
+      >
+        +
+      </button>
     </div>
   );
 }

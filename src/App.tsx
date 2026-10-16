@@ -179,9 +179,6 @@ export default function App() {
           <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
           {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
         </span>
-        <button className="pill" onClick={() => setHome(true)} title="All your projects">
-          {project.name}
-        </button>
         <Tabs />
         <span className={`status ${project.status}`} title={project.error ?? undefined}>
           {project.path ? STATUS[project.status] : "Not saved yet"}

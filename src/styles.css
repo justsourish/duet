@@ -3538,6 +3538,7 @@ button.agent-perm {
 /* open projects */
 .project-tabs {
   display: flex;
+  align-items: center;
   gap: 4px;
   max-width: 34vw;
   overflow-x: auto;
@@ -3547,6 +3548,7 @@ button.agent-perm {
   display: flex;
   align-items: center;
   flex: none;
+  max-width: 180px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--muted);
@@ -3554,6 +3556,9 @@ button.agent-perm {
 }
 .project-tab.active {
   border-color: var(--accent);
+  color: var(--text);
+}
+.project-tab:not(.active):hover {
   color: var(--text);
 }
 .project-tab button {
@@ -3564,10 +3569,37 @@ button.agent-perm {
   font: inherit;
   padding: 3px 7px;
 }
+.project-tab .tab-name {
+  display: block;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .project-tab .tab-x {
+  flex: none;
   padding: 3px 6px 3px 0;
   opacity: 0.6;
 }
 .project-tab .tab-x:hover {
   opacity: 1;
+}
+.project-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.project-tab-add:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
