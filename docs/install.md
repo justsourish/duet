@@ -31,10 +31,20 @@ Duet needs macOS 13 or newer.
 
 Windows builds are new. If something is broken, please open an issue and say what Windows version you use.
 
+## Video and motion
+
+Duet carries its own ffmpeg (LGPL), so video playback, scrubbing and exports work straight away. You do not need to install ffmpeg. Credits and licence details are in [docs/third-party.md](third-party.md).
+
 ## Connect your AI (optional)
 
-Duet works without an AI. For the chat, install [Claude Code](https://claude.com/claude-code) or Antigravity (`agy`) and sign in once in a terminal. Then open Duet. The chat finds them by itself, and a switch at the top of the chat lets you choose. The first time you chat with Antigravity, Duet adds itself to Antigravity's list of connections (named `duet`). Codex and OpenCode are planned.
+Duet works without an AI. For the chat, install [Claude Code](https://claude.com/claude-code) or Antigravity (`agy`) and sign in once in a terminal. Then open Duet. The chat finds them by itself, and a switch at the top of the chat lets you choose. The first time you chat with Antigravity, Duet adds itself to Antigravity's list of connections (named `duet`). If Antigravity cannot be joined automatically, Duet explains why. You can run this command in a terminal once:
+
+```sh
+agy mcp add duet /Applications/Duet.app --mcp-bridge
+```
+
+Codex and OpenCode are planned.
 
 ## Your projects
 
-A project is one file that ends in `.duet`, with your design, your pictures and its whole history inside. Keep it anywhere you like, or let Duet put new ones in `Documents/Duet`. Duet saves as you work, so there is no Save button to remember.
+A project is one file that ends in `.duet`, with your design, your pictures and its whole history inside. Open projects show as tabs in their own row at the top, like a browser. A home button opens all your projects, `+` starts a new design, and `×` closes a tab. Duet always starts on your projects with your last one a click away, and saves automatically as you work, so there is no Save button to remember.

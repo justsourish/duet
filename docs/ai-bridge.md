@@ -15,7 +15,7 @@ A designer and an AI share the same controls. Every change in Duet is one named 
 
 ## Tools
 
-`get_context`, `get_working_rules`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `look_at_attachment`, `select_elements`, `create_element`, `create_instance`, `place_image`, `make_mask`, `trace_image`, `set_props`, `duplicate_elements`, `move_elements`, `resize_element`, `reparent_elements`, `export_frame`, `delete_elements`.
+`get_context`, `get_working_rules`, `get_outline`, `get_document`, `look_at_image`, `look_at_design`, `look_at_attachment`, `select_elements`, `create_element`, `create_elements`, `create_instance`, `place_image`, `make_mask`, `trace_image`, `set_props`, `duplicate_elements`, `move_elements`, `resize_element`, `reparent_elements`, `export_frame`, `delete_elements`, `create_design_file`, `create_media_file`, `set_duration`, `set_timing`, `set_entrance`, `animate`, `set_curve`, `place_video`, `place_sound`.
 
 `get_working_rules` returns how to work in Duet and the turned-on skills in full. It is for an AI connected from outside, which has not been given them with the message.
 
@@ -124,23 +124,23 @@ On 12 October 2026, from outside Duet and through the bridge:
 ## How each tool is connected from the chat
 
 - **Claude Code**: `--mcp-config` and `--append-system-prompt-file`, both pointing at private files in `~/.duet/agent-workspace/`. It is started with every built-in tool turned off.
-- **Antigravity**: only reads MCP servers from its global list. Duet adds one entry, `duet`, the first time you use it (`agy mcp add duet <duet app> --mcp-bridge`), the same bridge as above. Instructions go in with the message. Follow-up messages use `--conversation <id>`.
+- **Antigravity**: only reads MCP servers from its global list. Duet adds one entry, `duet`, the first time you use it (`agy mcp add duet <duet app> --mcp-bridge`), the same bridge as above. Instructions go in with the message. Follow-up messages use `--conversation <id>`. If Antigravity cannot be connected automatically, Duet explains why and gives the manual command (`agy mcp add duet "<duet app>" --mcp-bridge`).
 - **Codex, OpenCode**: detected, but not offered in the chat yet. Codex works from outside, as above.
 
 ## Not done yet
 
 - Codex and OpenCode as tools the chat itself can start.
-- Windows. The agent is started through `cmd`, which is untested, and so is the bridge.
+- Windows. The agent is started through `cmd`, which is untested, and so is the bridge (issue 106).
 - An outside AI keeps its own tools (files, commands). Duet only controls what happens on the canvas.
 
-## Plan: the AI works with Duet closed (issue 97, decided 16 October 2026)
+## Working while Duet is closed (issues 97, 103, 104, 105)
 
-One app, one copy. No second hidden version and no lock file.
+Built in Duet 0.6.0: one app, one copy, with no second hidden version and no lock file.
 
-- Closing the window while an AI is working hides it. Duet keeps running until the AI is done, then quits by itself. With no AI working, closing quits as it does today.
-- When an AI calls a tool and Duet is not running, the bridge starts Duet with no window. It quits after about a minute without calls. Opening Duet from the dock shows the window on that same running app.
-- Quit (Cmd+Q) always quits, with a warning first if an AI is mid-change.
-- An AI that is working marks its area on the canvas with a faint rectangle in its own colour, so the designer sees where it is and works elsewhere.
-- Files are identified by full path, as now. Folder mode is dropped: the AI names the path of what it made, and Duet opens it.
-
-Not built yet.
+- **Closing the window while an AI works:** hides the window and keeps Duet running in the background until the AI is done, then quits by itself. An icon in the menu bar shows it is running, with options to show the window or quit. With no AI working, closing the last project tab or window quits normally.
+- **Starting in the background:** when an outside AI calls a tool and Duet is closed, the bridge starts Duet in the background with no window. It exits after about a minute of inactivity once the AI finishes. Opening Duet from the dock shows the window on that same running instance.
+- **Bringing the window back:** if the AI asks a question, makes a suggestion in Suggest mode, or changes work that has not been saved, Duet brings the window back on screen (`bring_back`). Bringing the window back keeps Duet open after the AI finishes.
+- **Quitting:** Quit (Cmd+Q) stops the AI, asking for confirmation first if an AI is mid-change.
+- **AI working area on canvas:** an AI that is working marks its area on the canvas with a roomier tinted area, a flat glass shine sweeping across, and a thin light running around its edge in its colour, so the designer sees where it is working. Pressing Tab on a selection sets the AI focus area.
+- **Open projects and tabs:** open projects show as tabs in the top bar, and the chat clearly displays which project the AI is working on, with calm buttons and quiet reassurance showing which AI is active.
+- **File making:** `create_design_file` and `create_media_file` can create files anywhere even while Duet is closed, respecting Suggest mode (refuses in Suggest, proceeds in Ask first and Auto).

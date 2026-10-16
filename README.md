@@ -10,8 +10,9 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 
 ## What works today
 
+- Open projects show as tabs in their own row at the top, beside the window buttons, like a browser. A home button opens all your projects, `+` starts a new design, and `×` closes a tab. Duet always starts on your projects, with your last one a click away. Closing never waits on a slow save, and closing an unsaved tab asks once.
 - An infinite canvas with frames, rectangles, ellipses, text, pictures and drawn lines. Pan, zoom, select, move, resize (Shift keeps proportions, Option scales from the centre), snapping guides. A zoom tool on Z: click to zoom in, Option click to zoom out, drag to zoom into an area.
-- A pen tool with corners and smooth curves, and point editing: double-click a line to move points, pull handles, add and remove points.
+- A pen tool with corners and smooth curves, and path editing: select, drag, nudge and delete several anchor points at once. Hold Option while dragging to duplicate elements.
 - Rotation: drag just outside a corner to turn a shape, text, picture, drawn line or group (Shift turns in steps of 15), or type an angle. Frames and copies of components stay upright.
 - Pictures: drag them in, paste them, or use the Image button. They are kept once inside your project file.
 - Auto layout: Shift A lines up what is inside a frame in a row or a column, with gap, padding, alignment, hug and fill.
@@ -21,14 +22,17 @@ Duet is early. It is built in public, and it is being shaped by the designers wh
 - Trace: choose a picture with a plain or see-through background, then Design, Trace picture into shapes. Each separate part becomes a flat drawn shape you can recolour, reshape and turn. The picture stays underneath.
 - Pictures keep their see-through parts, so a PNG logo sits on any background, and its shadow follows the logo.
 - Groups (Cmd G), locking (Shift Cmd L), select all in context (Cmd A), and a selection box that picks a frame's contents.
-- Layers panel with drag and drop in and out of frames. Properties for position, size, corners, fill, gradient, stroke, shadow, opacity and text.
+- Layers panel with drag and drop in and out of frames. Properties for position, size, corners, fill, gradient, stroke, shadow, opacity and text. Fill and stroke have separate opacity controls next to each colour.
 - Copy, paste and duplicate (Cmd or Ctrl + D), including between projects.
-- Export PNG (1x, 2x, 3x) and SVG, for one thing or every screen.
+- Export PNG (1x, 2x, 3x) and SVG, for one thing or every screen. Exported SVG keeps fill and stroke opacity, also in older vector tools.
+- Video and motion: a frame with a duration plays as a scene. Video plays and scrubs smoothly: clips lead the clock, scrubbing lands on the exact frame when you let go, and Duet makes a light preview copy of each clip in the background while exports use the original. Duet carries its own ffmpeg (LGPL), so there is nothing extra to install. Credits are in [docs/third-party.md](docs/third-party.md).
 - Prototype: link anything to a screen and choose what a click does (go there, open it on top as an overlay, or go back), how it arrives (dissolve or push in any direction, with its own time), and let tall screens scroll. Press Present to click through, with an optional phone frame. Selecting a linked thing draws an arrow to its screen.
-- A project is one `.duet` file. It holds your design, your pictures and your whole history, and it saves itself as you work. You can export the design as plain JSON any time.
+- A project is one `.duet` file. It holds your design, your pictures and your whole history, and it saves itself as you work. Duet no longer freezes while it saves or opens a big project. You can export the design as plain JSON any time.
 - A history that survives closing the app, drawn as two lanes: **You** and **Duet**. Save a named version ("Client round 1") and go back to it any time. Nothing is ever lost when you go back.
-- A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. It can draw its own shapes with curves, like leaves and arches, and turn them. It can bring a picture file from your computer onto the canvas, and asks you first. It can cut a picture to any shape, and trace a picture into shapes. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
-- Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens). Turn them on and off, write your own, or import skill files and folders.
+- A chat with an AI that works on your canvas, and can look at your pictures and your design when it needs to. It can draw its own shapes with curves, like leaves and arches, and turn them. It can bring a picture file from your computer onto the canvas, and asks you first. It can cut a picture to any shape, and trace a picture into shapes. The AI's working area is roomier and tinted, with a flat glass shine sweeping across and a thin light running round its edge to show where it is working. Press Tab on a selection to set the AI focus. Calm chat pickers with drawn chevrons match the attach button, with quiet reassurance showing which AI is working on which project.
+- Closing the window while an AI works keeps Duet running until it finishes, shown by an icon in your menu bar. An AI can open Duet with no window when it needs it, and Duet comes back on screen whenever the AI needs you.
+- AI capabilities: the AI can build sections with auto layout, duplicate designs beside originals, export a frame as a full-size PNG, and make new design or media files anywhere even with Duet closed. Three permission levels: Suggest, Ask first, Auto. Pick your AI tool: Claude Code or the Antigravity CLI.
+- Skills: short rule files that shape how the AI designs (spacing, type, contrast, mobile screens, Calm and trusted, Friendly and modern look, and auto layout). Turn them on and off, write your own, or import skill files and folders.
 
 ## What does not exist yet
 
@@ -74,6 +78,7 @@ cargo test --manifest-path src-tauri/Cargo.toml   # history and files
 - Every change to a design is a named command. The interface and the AI use the same ones. See [docs/principles.md](docs/principles.md).
 - The AI talks to Duet over a small local MCP server. See [docs/ai-bridge.md](docs/ai-bridge.md).
 - History is Git, bundled inside the app, so designers never need to install it or learn it.
+- Video and sound use bundled **ffmpeg** (LGPL). See [docs/third-party.md](docs/third-party.md).
 - The plan for the first version is in [docs/v1-scope.md](docs/v1-scope.md).
 
 ## Contributing
