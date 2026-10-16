@@ -8,7 +8,7 @@ import { findStep, newStepId, stepsLine, wordsBehind } from "../memory/steps";
 import { leftOut } from "../ui/SendCopy";
 import { richParts } from "../ui/rich";
 import { defaultLayout, relayout } from "../document/layout";
-import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, splitSegment, toggleSmooth } from "../document/path";
+import { distanceToLine, flatten, fromAbs, isSmooth, nearestOnLine, pathData, removeNode, removeNodes, splitSegment, toggleSmooth } from "../document/path";
 import { resizeRect } from "../canvas/handles";
 import { outline } from "../ai/outline";
 import { wrapLines } from "../canvas/text";
@@ -687,6 +687,57 @@ describe("editing the points of a line", () => {
     expect(removeNode([corner(0, 0), corner(1, 1), corner(2, 0)], true, 0)).toHaveLength(3);
     expect(removeNode([corner(0, 0), corner(1, 1), corner(2, 0)], false, 1)).toHaveLength(2);
   });
+
+  it("removes several points at once and respects minimum point counts", () => {
+    const line = [corner(0, 0), corner(10, 0), corner(20, 0), corner(30, 0)];
+    expect(removeNodes(line, false, [1, 2])).toHaveLength(2);
+    expect(removeNodes(line, false, [0, 1, 2])).toHaveLength(4); // would leave 1 point on open line, refused
+    const loop = [corner(0, 0), corner(10, 0), corner(20, 0), corner(30, 0), corner(40, 0)];
+    expect(removeNodes(loop, true, [1, 2])).toHaveLength(3);
+    expect(removeNodes(loop, true, [1, 2, 3])).toHaveLength(5); // would leave 2 points on closed line, refused
+  });
+
+  it("selects, toggles, nudges, and deletes multiple points in store", () => {
+    resetStore();
+    const corner = (x: number, y: number) => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0 });
+    const shape = fromAbs([corner(0, 0), corner(50, 0), corner(100, 0), corner(150, 0)]);
+    dispatch("create_element", {
+      id: "p1",
+      type: "path",
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      props: { nodes: shape.nodes, closed: false },
+    });
+    enterNodeEdit("p1");
+    expect(getState().overlay.nodeEdit?.selected).toEqual([]);
+
+    selectNodes([0, 2]);
+    expect(getState().overlay.nodeEdit?.selected).toEqual([0, 2]);
+
+    toggleNode(1);
+    expect(getState().overlay.nodeEdit?.selected).toEqual([0, 2, 1]);
+    toggleNode(0);
+    expect(getState().overlay.nodeEdit?.selected).toEqual([2, 1]);
+
+    // Nudge selected points [2, 1] by 10px horizontally
+    nudgeSelectedNodes(10, 0);
+    const doc = currentDoc();
+    const pts = toAbs(doc.elements.p1, doc.elements.p1.x, doc.elements.p1.y);
+    expect(pts[0].x).toBeCloseTo(0, 1);
+    expect(pts[1].x).toBeCloseTo(60, 1);
+    expect(pts[2].x).toBeCloseTo(110, 1);
+    expect(pts[3].x).toBeCloseTo(150, 1);
+
+    // Delete selected points
+    deleteSelectedNodes();
+    const afterDelete = currentDoc();
+    expect(afterDelete.elements.p1.nodes).toHaveLength(2);
+    expect(getState().overlay.nodeEdit?.selected).toEqual([]);
+    exitNodeEdit();
+    expect(getState().overlay.nodeEdit).toBeNull();
+  });
 });
 
 describe("auto layout", () => {
@@ -1154,7 +1205,16 @@ describe("prototype", () => {
 import { canTurn, keepInPlace, tidyAngle, turnPoint, turnedBox, worldBounds } from "../document/geometry";
 import { outlineFromData, parsePathData, toAbs } from "../document/path";
 import { handleCursor, resizeTurned } from "../canvas/handles";
-import { withNodes } from "../canvas/nodes";
+import {
+  deleteSelectedNodes,
+  enterNodeEdit,
+  exitNodeEdit,
+  nudgeSelectedNodes,
+  selectNodes,
+  toggleNode,
+  withNodes,
+  worldNodesOf,
+} from "../canvas/nodes";
 
 describe("rotation", () => {
   const bar = (rotation = 0) => runCommand(emptyDoc(), "create_element", { id: "r", type: "rect", x: 100, y: 100, width: 200, height: 20, props: { rotation } });
@@ -1274,6 +1334,29 @@ describe("rotation", () => {
     near(moved.elements.p.height, 120);
     near(where(moved).x, where(d).x);
     near(where(moved).y, where(d).y);
+  });
+
+  it("computes world positions of anchor points and moves several points together", () => {
+    const corner = (x: number, y: number) => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0 });
+    const shape = fromAbs([corner(0, 0), corner(50, 0), corner(100, 50)]);
+    const d = runCommand(emptyDoc(), "create_element", { id: "p", type: "path", x: shape.x, y: shape.y, width: shape.width, height: shape.height, props: { nodes: shape.nodes, closed: false } });
+    const pts = worldNodesOf(d, "p");
+    expect(pts).toHaveLength(3);
+    near(pts[0].x, 0);
+    near(pts[0].y, 0);
+    near(pts[1].x, 50);
+    near(pts[1].y, 0);
+    near(pts[2].x, 100);
+    near(pts[2].y, 50);
+
+    const moved = withNodes(d, "p", [corner(10, 20), corner(60, 20), corner(100, 50)]);
+    const movedPts = toAbs(moved.elements.p, moved.elements.p.x, moved.elements.p.y);
+    expect(movedPts[0].x).toBeCloseTo(10, 2);
+    expect(movedPts[0].y).toBeCloseTo(20, 2);
+    expect(movedPts[1].x).toBeCloseTo(60, 2);
+    expect(movedPts[1].y).toBeCloseTo(20, 2);
+    expect(movedPts[2].x).toBeCloseTo(100, 2);
+    expect(movedPts[2].y).toBeCloseTo(50, 2);
   });
 
   it("is saved only when something is turned, and older files open upright", () => {

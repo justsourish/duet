@@ -594,7 +594,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
       return { x: a.x, y: a.y, ix: i.x * z, iy: i.y * z, ox: o.x * z, oy: o.y * z };
     });
     nodes.forEach((n, i) => {
-      const chosen = ne.selected === i;
+      const chosen = ne.selected.includes(i);
       if (chosen && (n.ox || n.oy || n.ix || n.iy)) {
         ctx.strokeStyle = COLORS.accent;
         ctx.lineWidth = 1;

@@ -39,8 +39,8 @@ export interface Overlay {
   hoverId: string | null;
   /** The line being drawn with the pen, in page pixels, and where the pointer is. */
   pen: { nodes: AbsNode[]; cursor: { x: number; y: number } | null } | null;
-  /** The line whose points are being edited, and which point is chosen. */
-  nodeEdit: { id: string; selected: number | null } | null;
+  /** The line whose points are being edited, and which points are chosen. */
+  nodeEdit: { id: string; selected: number[] } | null;
   /** The angle being shown while something is turned by hand, or null. */
   turning: number | null;
 }
