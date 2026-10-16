@@ -191,12 +191,27 @@ pub fn create_media_file(args: &Value) -> Result<String, String> {
     Ok(format!("Made {}.", path.display()))
 }
 
+/// The permission level Duet last wrote down. Only "suggest" stops file making: it means the
+/// designer wants to see ideas first and nothing made. Asking first cannot work with Duet closed,
+/// and a new file replaces nothing, so "ask first" and "auto" both go ahead. No note means go ahead.
+fn level_allows_files(note: Option<Value>) -> Result<(), String> {
+    if note.is_some_and(|v| v["level"] == "suggest") {
+        return Err("Duet is set to Suggest, so the AI may not make files. Ask the designer to change the level to Ask first or Auto, then try again.".into());
+    }
+    Ok(())
+}
+
+fn saved_level() -> Option<Value> {
+    let file = home()?.join(crate::duet_dir_name()).join("agent-workspace").join("permission.json");
+    serde_json::from_str(&fs::read_to_string(file).ok()?).ok()
+}
+
 /// The answer to a call of one of these tools, in the shape MCP expects.
 pub fn call(name: &str, args: &Value, id: &Value) -> String {
-    let outcome = match name {
+    let outcome = level_allows_files(saved_level()).and_then(|_| match name {
         "create_design_file" => create_design_file(args),
         _ => create_media_file(args),
-    };
+    });
     let (text, is_error) = match outcome {
         Ok(t) => (t, false),
         Err(e) => (e, true),
@@ -270,6 +285,14 @@ mod tests {
         assert!(check_design("{\"version\":1,\"rootIds\":[],\"elements\":{}}").is_ok());
         assert!(check_design("{\"version\":2}").is_err());
         assert!(check_design("nope").is_err());
+    }
+
+    #[test]
+    fn suggest_level_stops_making_files() {
+        assert!(level_allows_files(Some(json!({"level": "suggest"}))).is_err());
+        assert!(level_allows_files(Some(json!({"level": "ask"}))).is_ok());
+        assert!(level_allows_files(Some(json!({"level": "auto"}))).is_ok());
+        assert!(level_allows_files(None).is_ok());
     }
 
     #[test]

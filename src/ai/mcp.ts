@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { outsideRules } from "./rules";
 import { outsideWorking } from "./outside";
 import { TOOLS, callTool } from "./tools";
+import { getChat, subscribeChat } from "./chat";
 import { fromChat, OUTSIDE, toolName } from "./who";
 
 /** Answers the questions agents ask over MCP. Duet owns the design, so the answers come from here. */
@@ -63,7 +64,18 @@ export async function startMcp(): Promise<() => void> {
   // The bridge answers from this while Duet is closed, so an outside AI tool that starts first
   // still learns what Duet can do, and only has to be told to open Duet.
   void invoke("write_agent_file", { name: "bridge.json", body: JSON.stringify({ version, instructions: outsideRules(), tools: TOOLS }) }).catch(() => undefined);
-  const stop = await listen<{ id: number; body: Rpc; client?: string | null }>("mcp-request", async (e) => {
+  // The two file tools are answered by the bridge, which cannot ask the interface. It reads the
+  // permission level from this file instead, and it keeps the last level when Duet is closed.
+  let level = "";
+  const publishLevel = () => {
+    const mode = getChat().mode;
+    if (mode === level) return;
+    level = mode;
+    void invoke("write_agent_file", { name: "permission.json", body: JSON.stringify({ level: mode }) }).catch(() => undefined);
+  };
+  publishLevel();
+  const stopLevel = subscribeChat(publishLevel);
+  const stopRequests = await listen<{ id: number; body: Rpc; client?: string | null }>("mcp-request", async (e) => {
     const { id, body, client } = e.payload;
     let response: unknown;
     try {
@@ -75,5 +87,8 @@ export async function startMcp(): Promise<() => void> {
     await invoke("mcp_reply", { id, response: JSON.stringify(response) });
   });
   await invoke("mcp_ready");
-  return stop;
+  return () => {
+    stopLevel();
+    stopRequests();
+  };
 }
