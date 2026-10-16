@@ -459,7 +459,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   if (working.length) {
     const boxes = working.map((id) => screenRect(s, worldBounds(doc, id)));
     // roomy and tinted, so it reads as "the AI is busy here" and people leave it be; nothing is locked
-    const pad = 24;
+    const pad = 48;
     const x = Math.min(...boxes.map((r) => r.x)) - pad;
     const y = Math.min(...boxes.map((r) => r.y)) - pad;
     const w = Math.max(...boxes.map((r) => r.x + r.width)) + pad - x;
@@ -470,22 +470,38 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     ctx.fillStyle = colour;
     ctx.globalAlpha = 0.15;
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 14);
+    ctx.roundRect(x, y, w, h, 16);
     ctx.fill();
-    ctx.globalAlpha = 0.7;
+    ctx.globalAlpha = 0.45;
     ctx.strokeStyle = colour;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.stroke();
-    // a thin, flat sweep of light runs round the edge while the AI is at work
-    const around = 2 * (w + h);
-    const sweep = Math.min(140, around / 6);
-    ctx.setLineDash([sweep, around - sweep]);
-    ctx.lineDashOffset = -((Date.now() % 2600) / 2600) * around;
-    ctx.globalAlpha = 0.85;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // a flat glass shine, one wide band and one thin, sweeps across now and then while the AI works
+    const cycle = 3200;
+    const run = (Date.now() % cycle) / cycle;
+    if (run < 0.6) {
+      const slant = h * 0.18;
+      const travel = w + slant + 160;
+      const left = x - slant - 120 + (run / 0.6) * travel;
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 14);
+      ctx.clip();
+      ctx.fillStyle = "#ffffff";
+      ctx.globalAlpha = 0.16;
+      const band = (from: number, width: number) => {
+        ctx.beginPath();
+        ctx.moveTo(from + slant, y);
+        ctx.lineTo(from + slant + width, y);
+        ctx.lineTo(from + width, y + h);
+        ctx.lineTo(from, y + h);
+        ctx.closePath();
+        ctx.fill();
+      };
+      band(left, 70);
+      band(left + 92, 18);
+      ctx.restore();
+    }
     ctx.fillStyle = colour;
     // the label sits on the top edge, in the AI's colour
     const label = `${by ? plainName(by) : "Duet"} is working here`;
