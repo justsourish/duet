@@ -46,3 +46,9 @@ Focus mode (the designer points the AI at a selection with Tab) overlaps with th
 ## Update, 16 October 2026 (later)
 
 103 and 104 are on `main`. Project tabs now always show, include unsaved work, and have + for the projects screen (built by Antigravity, checked). Next: #105, after the creator answers the focus question above. Nothing pushed.
+
+## Update, 16 October 2026 (late morning)
+
+On `main` and pushed: 103, 104, 105 done and closed. Tabs work like a browser (home button, + for a new design, own top row beside the window buttons). File work no longer freezes the screen. Fill and stroke opacity, multiple anchor points, calmer chat pickers.
+
+Left: #106 (Windows), designer focus meaning "stay inside this" (built once, taken out on request, easy to bring back from the 105 history), #107 video lag, #108 drawing mode. Skills, custom MCPs and plugins are the next big conversation.
