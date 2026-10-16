@@ -1,10 +1,20 @@
 {
   "bundle": {
     "externalBin": [],
-    "resources": {},
+    "resources": null,
     "linux": {
-      "deb": { "depends": ["ffmpeg", "libayatana-appindicator3-1"] },
-      "rpm": { "depends": ["ffmpeg", "libayatana-appindicator-gtk3"] }
+      "deb": {
+        "depends": [
+          "ffmpeg",
+          "libayatana-appindicator3-1"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "ffmpeg",
+          "libayatana-appindicator-gtk3"
+        ]
+      }
     }
   }
 }
