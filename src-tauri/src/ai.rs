@@ -110,6 +110,11 @@ fn handle(mut req: tiny_http::Request, state: Arc<McpState>, app: AppHandle) {
         return respond(req, 200, &rpc_error(&rpc_id, -32603, "Duet is still opening. Try again in a moment."));
     }
 
+    let activity = app.try_state::<Arc<crate::keepalive::Activity>>();
+    let is_call = parsed["method"] == "tools/call";
+    if let (true, Some(a)) = (is_call, activity.as_ref()) {
+        a.touch();
+    }
     let id = state.next_id.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = mpsc::channel::<String>();
     state.pending.lock().unwrap().insert(id, tx);
@@ -117,7 +122,11 @@ fn handle(mut req: tiny_http::Request, state: Arc<McpState>, app: AppHandle) {
         state.pending.lock().unwrap().remove(&id);
         return respond(req, 500, &rpc_error(&rpc_id, -32603, "Duet is not ready"));
     }
-    match rx.recv_timeout(REQUEST_TIMEOUT) {
+    let outcome = rx.recv_timeout(REQUEST_TIMEOUT);
+    if let (true, Some(a)) = (is_call, activity.as_ref()) {
+        a.touch();
+    }
+    match outcome {
         Ok(answer) => respond(req, 200, &answer),
         Err(_) => {
             state.pending.lock().unwrap().remove(&id);
@@ -165,6 +174,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
     write_session_file(port, &state.token);
     app.manage(state.clone());
     app.manage(AgentState::default());
+    app.manage(Arc::new(crate::keepalive::Activity::default()));
     let app = app.clone();
     std::thread::spawn(move || {
         for req in server.incoming_requests() {
@@ -473,6 +483,16 @@ pub fn agent_cancel(state: State<AgentState>) {
         stop_session(child.id(), libc::SIGKILL);
         let _ = child.kill();
     }
+}
+
+/// A request from an outside AI is waiting for the interface to answer.
+pub fn request_waiting(app: &AppHandle) -> bool {
+    app.try_state::<Arc<McpState>>().is_some_and(|s| !s.pending.lock().unwrap().is_empty())
+}
+
+/// Duet's own chat has an AI tool running.
+pub fn chat_agent_running(app: &AppHandle) -> bool {
+    app.try_state::<AgentState>().is_some_and(|s| s.child.lock().unwrap().is_some())
 }
 
 /// Called when Duet quits: an AI it started must not be left running behind it.

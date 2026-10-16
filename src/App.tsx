@@ -91,7 +91,11 @@ export default function App() {
       void listen<string>("open-file", (e) => void openProjectAt(e.payload));
       // make sure the last save is in the file before the window closes
       // a slow or failed save must never keep the window open
-      void getCurrentWindow().onCloseRequested(async () => {
+      void getCurrentWindow().onCloseRequested(async (e) => {
+        // an AI is still working: hide the window and let it finish; Duet quits when it is done
+        if (await invoke<boolean>("keep_running_for_ai").catch(() => false)) {
+          e.preventDefault();
+        }
         await Promise.race([flushPack().catch(() => undefined), new Promise((done) => setTimeout(done, 4000))]);
       });
       // projects in Documents/Duet always show up in the list, even ones made before this app knew them

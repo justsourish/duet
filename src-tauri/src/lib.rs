@@ -1,5 +1,6 @@
 mod ai;
 mod files;
+mod keepalive;
 mod package;
 mod video;
 
@@ -524,7 +525,8 @@ pub fn run() {
             ai::write_agent_file,
             ai::agent_available,
             ai::agent_run,
-            ai::agent_cancel
+            ai::agent_cancel,
+            keepalive::keep_running_for_ai
         ])
         .setup(|app| {
             if is_check_copy() {
@@ -562,6 +564,17 @@ pub fn run() {
                         let _ = app.emit("open-file", p.to_string_lossy().to_string());
                     }
                 }
+            }
+            // quitting on purpose while an AI is mid-change asks first; the window closing never gets here
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
+                if keepalive::hold_quit(app) {
+                    api.prevent_exit();
+                }
+            }
+            // the Dock icon clicked while the window is hidden
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = &event {
+                keepalive::show_window(app);
             }
             if let tauri::RunEvent::Exit = &event {
                 ai::stop_agent(app);
