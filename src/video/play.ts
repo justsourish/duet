@@ -1,5 +1,5 @@
 import { currentDoc, getState, setClock, subscribe } from "../state/store";
-import { onClipPicture, syncClips } from "./clips";
+import { clockFromClip, onClipPicture, syncClips } from "./clips";
 
 /** Playing a frame that has a length: the clock runs, the canvas follows, and clips keep in step. */
 
@@ -14,7 +14,9 @@ function tick(now: number) {
     if (s.clock.playing) setClock({ playing: false });
     return;
   }
-  const t = s.clock.t + (now - last) / 1000;
+  // a playing clip sets the pace; with none, the clock runs on its own
+  const own = s.clock.t + (now - last) / 1000;
+  const t = clockFromClip(currentDoc(s), scene.id, s.clock.t) ?? own;
   last = now;
   if (t >= scene.duration) {
     raf = 0;

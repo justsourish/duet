@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { spanOf } from "../document/time";
 import { playsFile } from "../document/types";
 import type { Doc } from "../document/types";
@@ -7,9 +7,16 @@ import { logError } from "../errorLog";
 /**
  * The players behind video clips on the canvas. Each file has one hidden player. The canvas draws
  * whatever picture that player is on, so a clip is kept in step with the clock from here.
+ *
+ * On the canvas a player plays a light copy of the file once Duet has made one: smaller, and quick to
+ * jump around in. Making a video uses players on the original file, so nothing is lost in the result.
  */
 
 const players = new Map<string, HTMLVideoElement>();
+/** Players on the original files, used only while a video is being made. */
+const fullPlayers = new Map<string, HTMLVideoElement>();
+/** Files whose light copy has been asked for, so it is asked for once. */
+const previewAsked = new Set<string>();
 let changed: () => void = () => {};
 /** While a video is being made, the players are moved frame by frame and the clock leaves them alone. */
 let held = false;
@@ -23,25 +30,89 @@ export const holdClips = (on: boolean) => {
   held = on;
 };
 
-function player(src: string): HTMLVideoElement {
-  let v = players.get(src);
-  if (v) return v;
-  v = document.createElement("video");
+function makePlayer(src: string, into: Map<string, HTMLVideoElement>): HTMLVideoElement {
+  const v = document.createElement("video");
   v.crossOrigin = "anonymous";
   v.preload = "auto";
   v.playsInline = true;
   v.src = convertFileSrc(src);
   for (const ev of ["loadeddata", "seeked"]) v.addEventListener(ev, () => changed());
+  v.addEventListener("seeked", () => seekedNext(v));
   v.addEventListener("error", () => logError("clip", new Error(`This clip could not be played: ${src}`)));
-  players.set(src, v);
+  into.set(src, v);
   return v;
+}
+
+function player(src: string): HTMLVideoElement {
+  const v = players.get(src) ?? makePlayer(src, players);
+  askPreview(src, v);
+  return v;
+}
+
+const fullPlayer = (src: string) => fullPlayers.get(src) ?? makePlayer(src, fullPlayers);
+
+/** Have Duet make the light copy in the background, then move the player over to it where it was. */
+function askPreview(src: string, v: HTMLVideoElement) {
+  if (previewAsked.has(src) || !("__TAURI_INTERNALS__" in window)) return;
+  previewAsked.add(src);
+  invoke<string>("clip_preview", { path: src })
+    .then((copy) => {
+      const at = v.currentTime;
+      const wasPlaying = !v.paused;
+      v.addEventListener(
+        "loadedmetadata",
+        () => {
+          v.currentTime = at;
+          if (wasPlaying) void v.play().catch(() => undefined);
+        },
+        { once: true },
+      );
+      v.src = convertFileSrc(copy);
+    })
+    // without a copy the original keeps playing, as before
+    .catch((e) => logError("clip preview", e));
 }
 
 /** The picture a clip is on right now, or null while it is not ready. */
 export function clipPicture(src: string): HTMLVideoElement | null {
   if (!src) return null;
-  const v = player(src);
+  const v = held ? fullPlayer(src) : player(src);
   return v.readyState >= 2 ? v : null;
+}
+
+// ---- scrubbing: one jump at a time, and only to where the playhead is now ----
+
+/** Where each player should be, and where its jump in flight is heading. */
+const wanted = new Map<HTMLVideoElement, number>();
+const heading = new Map<HTMLVideoElement, number>();
+const settleTimers = new Map<HTMLVideoElement, ReturnType<typeof setTimeout>>();
+
+function jump(v: HTMLVideoElement, at: number, quick: boolean) {
+  heading.set(v, at);
+  // a quick jump lands on the nearest picture that is fast to show; the exact one follows when the hand stops
+  if (quick && typeof v.fastSeek === "function") v.fastSeek(at);
+  else v.currentTime = at;
+}
+
+function seekedNext(v: HTMLVideoElement) {
+  const want = wanted.get(v);
+  if (want === undefined || want === heading.get(v)) return;
+  jump(v, want, true);
+}
+
+/** Move a paused player to a moment. Called on every move of the playhead while scrubbing. */
+function seekTo(v: HTMLVideoElement, at: number) {
+  wanted.set(v, at);
+  if (!v.seeking) jump(v, at, true);
+  clearTimeout(settleTimers.get(v));
+  settleTimers.set(
+    v,
+    setTimeout(() => {
+      if (Math.abs(v.currentTime - at) <= 0.01 || wanted.get(v) !== at) return;
+      if (v.seeking) v.addEventListener("seeked", () => wanted.get(v) === at && jump(v, at, false), { once: true });
+      else jump(v, at, false);
+    }, 150),
+  );
 }
 
 /** How long a sound or video file is, in seconds. Waits until the file has said so. */
@@ -98,15 +169,37 @@ export function syncClips(doc: Doc, sceneId: string | null, t: number, playing: 
       const at = t - start + el.clipFrom;
       v.volume = Math.max(0, Math.min(1, el.volume));
       if (playing) {
-        if (Math.abs(v.currentTime - at) > 0.25) v.currentTime = at;
+        // while playing, the clip leads the clock (see clockFromClip); only a big gap means a jump
+        if (v.paused || Math.abs(v.currentTime - at) > 1) v.currentTime = at;
         if (v.paused) void v.play().catch((e) => logError("clip", e));
       } else {
         if (!v.paused) v.pause();
-        if (Math.abs(v.currentTime - at) > 0.02) v.currentTime = at;
+        if (Math.abs(v.currentTime - at) > 0.02) seekTo(v, at);
       }
     }
   }
   for (const [src, v] of players) if (!live.has(src) && !v.paused) v.pause();
+}
+
+/**
+ * While a frame plays, the clock follows the clip that is playing, so the clip never has to jump to
+ * catch the clock. Returns the frame time the clip is at, or null when no clip is playing.
+ */
+export function clockFromClip(doc: Doc, sceneId: string, t: number): number | null {
+  const scene = doc.elements[sceneId];
+  if (!scene?.duration) return null;
+  for (const id of clipsIn(doc, sceneId)) {
+    const el = doc.elements[id];
+    const { start, end } = spanOf(el, scene);
+    if (t < start || t >= end) continue;
+    const v = players.get(el.src);
+    if (!v || v.paused || v.seeking || v.readyState < 3) continue;
+    const at = start + v.currentTime - el.clipFrom;
+    // a clip that has not started yet, or has run out, does not lead
+    if (at < t - 1 || at > t + 1) continue;
+    return Math.max(t, at);
+  }
+  return null;
 }
 
 /** Move every clip of a frame to one moment and wait until its picture is there. Used when a video is made. */
@@ -119,7 +212,7 @@ export async function seekClips(doc: Doc, sceneId: string, t: number) {
     const { start, end } = spanOf(el, scene);
     if (t < start || t >= end || done.has(el.src)) continue;
     done.add(el.src);
-    const v = player(el.src);
+    const v = fullPlayer(el.src);
     v.pause();
     const at = Math.min(t - start + el.clipFrom, (v.duration || Infinity) - 0.001);
     waits.push(

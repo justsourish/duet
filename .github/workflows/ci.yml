@@ -26,4 +26,6 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri -> target
+      # the app build expects the ffmpeg that ships inside Duet
+      - run: scripts/fetch-ffmpeg
       - run: cargo test --manifest-path src-tauri/Cargo.toml

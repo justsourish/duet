@@ -520,6 +520,7 @@ pub fn run() {
             git_name_version,
             video::video_ready,
             video::video_info,
+            video::clip_preview,
             video::video_export,
             video::clip_keep_begin,
             video::clip_keep_part,

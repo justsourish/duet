@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Fetch the ffmpeg that ships inside Duet, for one computer type, and check it is exactly the pinned file.
+# The files live on the tools-ffmpeg-8.1 release of this repository (LGPL builds; licences in ffmpeg-licences.zip).
+#
+#   scripts/fetch-ffmpeg                         for this computer
+#   scripts/fetch-ffmpeg x86_64-apple-darwin     for another one (as the release build does)
+#
+# It lands in src-tauri/binaries/, which is never committed. The app build needs it there.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+TARGET="${1:-$(rustc -vV | sed -n 's/^host: //p')}"
+BASE="https://github.com/justsourish/duet/releases/download/tools-ffmpeg-8.1"
+case "$TARGET" in
+  aarch64-apple-darwin) FILE=ffmpeg-aarch64-apple-darwin; SUM=5bea4e7be361c9557334f5ae50640c82944304eb5f97d8c248622cf8d1e9bb33 ;;
+  x86_64-apple-darwin) FILE=ffmpeg-x86_64-apple-darwin; SUM=5bcc8a083c65bfa5360ccd34cbf762d0cd04535343146e5c78828801cb0b576a ;;
+  x86_64-pc-windows-msvc) FILE=ffmpeg-x86_64-pc-windows-msvc.exe; SUM=3b57117b384df98f2b8d01876df0a596a0b6ebf45f756b30f15d6f65ab8251c5 ;;
+  *) echo "No ffmpeg is pinned for $TARGET."; exit 1 ;;
+esac
+LICENCES_SUM=196aaa2c0e2aaf1ea8f1f93c35281587e9f7b2f62a24eb6923b97677bcdf2d87
+
+DIR=src-tauri/binaries
+mkdir -p "$DIR"
+sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+
+get() { # url, place, expected checksum
+  if [ -f "$2" ] && [ "$(sha "$2")" = "$3" ]; then return 0; fi
+  curl -fsSL "$1" -o "$2.part"
+  if [ "$(sha "$2.part")" != "$3" ]; then rm -f "$2.part"; echo "The download of $(basename "$2") did not match its pinned checksum. Stopped."; exit 1; fi
+  mv "$2.part" "$2"
+}
+
+get "$BASE/$FILE" "$DIR/$FILE" "$SUM"
+chmod +x "$DIR/$FILE"
+get "$BASE/ffmpeg-licences.zip" "$DIR/ffmpeg-licences.zip" "$LICENCES_SUM"
+rm -rf "$DIR/ffmpeg-licences" && mkdir -p "$DIR/ffmpeg-licences"
+unzip -q -o "$DIR/ffmpeg-licences.zip" -d "$DIR/ffmpeg-licences"
+echo "ffmpeg for $TARGET is ready."

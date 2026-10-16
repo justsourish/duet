@@ -22,6 +22,8 @@ if running; then
   exit 0
 fi
 
+# the ffmpeg that ships inside Duet has to be in place before the app builds
+ls src-tauri/binaries/ffmpeg-* >/dev/null 2>&1 || scripts/fetch-ffmpeg || exit 1
 cargo build --quiet --manifest-path src-tauri/Cargo.toml || { echo "The build failed."; exit 1; }
 
 # The interface is served by the development server. Start one only if none is running.

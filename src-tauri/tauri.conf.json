@@ -25,7 +25,10 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/**", "/Volumes/**"]
+        "scope": [
+          "$HOME/**",
+          "/Volumes/**"
+        ]
       }
     }
   },
@@ -42,7 +45,9 @@
     "category": "GraphicsAndDesign",
     "fileAssociations": [
       {
-        "ext": ["duet"],
+        "ext": [
+          "duet"
+        ],
         "name": "Duet project",
         "description": "A Duet design, with its history inside",
         "role": "Editor",
@@ -53,6 +58,12 @@
     "longDescription": "An opinionated design tool, built by designers, for designers. You and your AI work hand in hand on one canvas.",
     "macOS": {
       "minimumSystemVersion": "13.0"
+    },
+    "externalBin": [
+      "binaries/ffmpeg"
+    ],
+    "resources": {
+      "binaries/ffmpeg-licences/*": "ffmpeg-licences/"
     }
   }
 }

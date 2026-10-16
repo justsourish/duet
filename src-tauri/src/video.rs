@@ -1,8 +1,8 @@
 //! Cutting video: read what a clip is, and join trimmed clips into one file.
-//! The work is done by ffmpeg, which has to be on the computer already. Duet does not ship it.
+//! The work is done by ffmpeg. Duet carries its own copy next to the app; one installed on the
+//! computer is used only when that copy is missing (as while Duet is being built).
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -10,7 +10,9 @@ use std::sync::Mutex;
 
 /// Where a tool such as ffmpeg lives. An app started from the Dock does not get the folders a terminal knows.
 fn find(program: &str) -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    // the copy that ships with Duet sits next to the app itself
+    let mut dirs: Vec<PathBuf> = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())).into_iter().collect();
+    dirs.extend(std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default());
     for d in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
         dirs.push(d.into());
     }
@@ -20,10 +22,35 @@ fn find(program: &str) -> Option<PathBuf> {
 
 const MISSING: &str = "Cutting video needs ffmpeg on this computer. Install it, then open Duet again.";
 
+/// The H.264 encoder settings for a finished video. The ffmpeg that ships with Duet uses the computer's
+/// own video chip; a full ffmpeg installed for development may have x264, which is used when present.
+/// `quality` is on ffmpeg's crf scale: lower is finer.
+fn h264(quality: u32) -> Vec<String> {
+    static HAS_X264: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let x264 = *HAS_X264.get_or_init(|| {
+        find("ffmpeg")
+            .and_then(|f| Command::new(f).args(["-hide_banner", "-encoders"]).output().ok())
+            .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains("libx264"))
+    });
+    let crf = quality.clamp(10, 34);
+    // the chip's own 1 to 100 quality scale, higher is finer
+    let q = (100 - crf * 2).to_string();
+    let args: Vec<&str> = if x264 {
+        return ["-c:v", "libx264", "-preset", "veryfast", "-crf"].iter().map(|s| s.to_string()).chain([crf.to_string()]).collect();
+    } else if cfg!(target_os = "macos") {
+        vec!["-c:v", "h264_videotoolbox", "-q:v", &q]
+    } else if cfg!(windows) {
+        vec!["-c:v", "h264_mf", "-rate_control", "quality", "-quality", &q]
+    } else {
+        vec!["-c:v", "libx264", "-crf", "20"]
+    };
+    args.into_iter().map(String::from).collect()
+}
+
 /// True when this computer has what cutting video needs.
 #[tauri::command]
 pub fn video_ready() -> bool {
-    find("ffmpeg").is_some() && find("ffprobe").is_some()
+    find("ffmpeg").is_some()
 }
 
 #[derive(Serialize)]
@@ -36,37 +63,52 @@ pub struct VideoInfo {
 }
 
 fn probe(path: &str) -> Result<VideoInfo, String> {
-    let ffprobe = find("ffprobe").ok_or(MISSING)?;
-    let out = Command::new(ffprobe)
-        .args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path])
-        .output()
-        .map_err(|e| e.to_string())?;
-    let json: Value = serde_json::from_slice(&out.stdout).map_err(|_| "That file could not be read as a video.".to_string())?;
-    let streams = json["streams"].as_array().cloned().unwrap_or_default();
-    let picture = streams.iter().find(|s| s["codec_type"] == "video").ok_or("That file has no picture in it.")?;
-    let number = |v: &Value| v.as_str().and_then(|s| s.parse::<f64>().ok()).or_else(|| v.as_f64());
-    let (mut width, mut height) = (picture["width"].as_u64().unwrap_or(0) as u32, picture["height"].as_u64().unwrap_or(0) as u32);
+    let text = describe(path)?;
+    parse_info(&text).ok_or_else(|| "That file has no picture in it.".to_string())
+}
+
+/// What ffmpeg says about a file when asked to read it and do nothing else. Only ffmpeg ships with
+/// Duet, so this stands in for a separate probing tool.
+fn describe(path: &str) -> Result<String, String> {
+    let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
+    let out = Command::new(ffmpeg).args(["-hide_banner", "-i", path]).output().map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out.stderr).to_string();
+    if !text.contains("Stream #") {
+        return Err("That file could not be read as a video.".into());
+    }
+    Ok(text)
+}
+
+/// Length, picture size and sound, read from ffmpeg's description of a file.
+fn parse_info(text: &str) -> Option<VideoInfo> {
+    let duration = text.split("Duration: ").nth(1).and_then(|r| r.split(',').next()).and_then(|t| {
+        let parts: Vec<f64> = t.trim().split(':').filter_map(|p| p.parse().ok()).collect();
+        (parts.len() == 3).then(|| parts[0] * 3600.0 + parts[1] * 60.0 + parts[2])
+    });
+    let picture = text.lines().find(|l| l.contains("Stream #") && l.contains("Video:") && !l.contains("attached pic"))?;
+    // the size is the first "wide x high" pair of plain numbers on the picture line
+    let (mut width, mut height) = picture
+        .split(|c: char| c == ',' || c == ' ')
+        .find_map(|w| {
+            let (a, b) = w.split_once('x')?;
+            Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?))
+        })?;
     // a phone clip filmed upright is stored on its side with a note to turn it
-    let turned = picture["side_data_list"].as_array().and_then(|l| l.iter().find_map(|d| d["rotation"].as_i64())).unwrap_or(0);
-    if turned.abs() % 180 == 90 {
+    let turned = text
+        .split("rotation of ")
+        .nth(1)
+        .and_then(|r| r.split_whitespace().next())
+        .and_then(|n| n.parse::<f64>().ok())
+        .unwrap_or(0.0);
+    if (turned.abs().round() as i64) % 180 == 90 {
         std::mem::swap(&mut width, &mut height);
     }
-    Ok(VideoInfo {
-        duration: number(&json["format"]["duration"]).or_else(|| number(&picture["duration"])).unwrap_or(0.0),
-        width,
-        height,
-        sound: streams.iter().any(|s| s["codec_type"] == "audio"),
-    })
+    Some(VideoInfo { duration: duration.unwrap_or(0.0), width, height, sound: text.lines().any(|l| l.contains("Stream #") && l.contains("Audio:")) })
 }
 
 /// Whether a file has sound in it. Works for a sound file too, which has no picture.
 fn has_sound(path: &str) -> Result<bool, String> {
-    let ffprobe = find("ffprobe").ok_or(MISSING)?;
-    let out = Command::new(ffprobe)
-        .args(["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", path])
-        .output()
-        .map_err(|e| e.to_string())?;
-    Ok(String::from_utf8_lossy(&out.stdout).contains("audio"))
+    Ok(describe(path)?.lines().any(|l| l.contains("Stream #") && l.contains("Audio:")))
 }
 
 /// What a clip is: how long, how big, and whether it has sound.
@@ -105,7 +147,8 @@ fn join_args(clips: &[(Clip, bool)], width: u32, height: u32, out: &str) -> Vec<
     }
     graph += &format!("concat=n={}:v=1:a=1[v][a]", clips.len());
     args.extend(["-filter_complex".into(), graph, "-map".into(), "[v]".into(), "-map".into(), "[a]".into()]);
-    args.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"].map(String::from));
+    args.extend(h264(20));
+    args.extend(["-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"].map(String::from));
     args.push(out.into());
     args
 }
@@ -233,8 +276,8 @@ fn scene_args(fps: u32, seconds: f64, quality: u32, sounds: &[Sound], out: &str)
         args.extend(["-filter_complex".into(), graph, "-map".into(), "[a]".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "160k".into()]);
     }
     // quality is ffmpeg's own scale: lower is finer and makes a bigger file
-    let crf = quality.clamp(10, 34).to_string();
-    args.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", crf.as_str(), "-pix_fmt", "yuv420p", "-movflags", "+faststart"].map(String::from));
+    args.extend(h264(quality));
+    args.extend(["-pix_fmt", "yuv420p", "-movflags", "+faststart"].map(String::from));
     args.push(out.into());
     args
 }
@@ -313,6 +356,18 @@ pub fn scene_export_stop() {
 mod tests {
     use super::*;
 
+    #[test]
+    fn reads_length_size_and_sound_from_ffmpeg_text() {
+        let text = "  Duration: 00:16:10.20, start: 0.000000, bitrate: 6168 kb/s\n  Stream #0:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuvj420p(pc, bt709), 3684x1080, 5996 kb/s, 60 fps\n  Stream #0:1[0x2](und): Audio: aac (LC), 48000 Hz, stereo";
+        let info = parse_info(text).unwrap();
+        assert!((info.duration - 970.2).abs() < 0.01);
+        assert_eq!((info.width, info.height, info.sound), (3684, 1080, true));
+        // an upright phone clip stored on its side
+        let phone = "  Duration: 00:00:05.00, start: 0\n  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps\n      Side data:\n        displaymatrix: rotation of -90.00 degrees";
+        let info = parse_info(phone).unwrap();
+        assert_eq!((info.width, info.height, info.sound), (1080, 1920, false));
+    }
+
     fn clip(path: &str, start: f64, end: f64) -> Clip {
         Clip { path: path.into(), start, end }
     }
@@ -343,4 +398,51 @@ mod tests {
         let silent = scene_args(30, 10.0, 18, &[], "out.mp4").join(" ");
         assert!(!silent.contains("filter_complex"));
     }
+}
+
+/// A light copy of a clip for playing and scrubbing on the canvas: smaller, with a picture to land on
+/// every few frames. Kept in Duet's own folder and made once per file. Making a video still uses the
+/// original. Returns where the copy is.
+#[tauri::command(async)]
+pub fn clip_preview(path: String) -> Result<String, String> {
+    use std::hash::{Hash, Hasher};
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut h);
+    meta.len().hash(&mut h);
+    meta.modified().ok().hash(&mut h);
+    let name = format!("{:016x}", h.finish());
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).map_err(|e| e.to_string())?;
+    let dir = PathBuf::from(home).join(crate::duet_dir_name()).join("previews");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let out = dir.join(format!("{name}.mp4"));
+    if out.is_file() {
+        return Ok(out.to_string_lossy().to_string());
+    }
+    let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
+    let part = dir.join(format!("{name}.part.mp4"));
+    // the computer's own video chip, so the copy is made quickly and quietly
+    let encoder: &[&str] = if cfg!(target_os = "macos") {
+        &["-c:v", "h264_videotoolbox", "-b:v", "4M"]
+    } else if cfg!(windows) {
+        &["-c:v", "h264_mf", "-b:v", "4M"]
+    } else {
+        &["-c:v", "libx264", "-preset", "veryfast", "-crf", "26"]
+    };
+    let status = Command::new(&ffmpeg)
+        .args(["-y", "-v", "error", "-i", &path, "-vf", "scale=w=min(1280\\,iw):h=min(1280\\,ih):force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2", "-g", "12", "-pix_fmt", "yuv420p"])
+        .args(encoder)
+        .args(["-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"])
+        .arg(&part)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| e.to_string())?;
+    if !status.success() {
+        let _ = std::fs::remove_file(&part);
+        return Err("A light copy of this clip could not be made. The original plays instead.".into());
+    }
+    std::fs::rename(&part, &out).map_err(|e| e.to_string())?;
+    Ok(out.to_string_lossy().to_string())
 }
