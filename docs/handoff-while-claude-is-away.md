@@ -4,14 +4,14 @@ Written 16 October 2026. For Antigravity, or anyone carrying on until Claude's c
 
 ## What is built
 
-- Duet 0.5.x on `main`. Last save: AI tools can make new design and media files anywhere, even with Duet closed (`src-tauri/src/files.rs`, tools `create_design_file` and `create_media_file`, answered by the bridge). Described in `docs/ai-bridge.md`.
+- Duet 0.6.0 on `main`. Features: browser-style tabs, smooth video with bundled ffmpeg, path editing with multiple anchor points, separate fill/stroke opacity, AI working area, running while Duet is closed, AI file creation tools (`create_design_file`, `create_media_file`, `export_frame`). Described in `docs/ai-bridge.md`.
 - Duet dev (orange, `scripts/dev-duet.sh`) is for building and tests. The purple Duet in Applications is the creator's real work. Never open, draw in or reload it.
 
 ## What is next
 
-1. Issue 97, rest of it: show files from a folder when Duet opens it; let an AI edit a design while Duet is closed; permission levels for the two file tools; later an agent mode.
+1. Windows checks (issue 106), designer focus "stay inside this area" (held back), drawing mode decision (issue 108).
 2. Issue 98: a talking-character video format for daily content. The studied reel is in `ref/references/reels/DefJ92VxeGs/`.
-3. From the cover agent's log (`scratch/linkedin-cover/agent-log.md`): there is no MCP tool to export a design as a picture. `look_at_design` gives a picture capped at 1536 pixels on the long side. File an issue if it still holds.
+3. Skills, custom MCPs and plugins conversation. (Note: full size PNG export was added via `export_frame` in issue 99).
 
 ## Rules for any helper
 

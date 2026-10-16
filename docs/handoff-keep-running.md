@@ -51,4 +51,4 @@ Focus mode (the designer points the AI at a selection with Tab) overlaps with th
 
 On `main` and pushed: 103, 104, 105 done and closed. Tabs work like a browser (home button, + for a new design, own top row beside the window buttons). File work no longer freezes the screen. Fill and stroke opacity, multiple anchor points, calmer chat pickers.
 
-Left: #106 (Windows), designer focus meaning "stay inside this" (built once, taken out on request, easy to bring back from the 105 history), #107 video lag, #108 drawing mode. Skills, custom MCPs and plugins are the next big conversation.
+Left: #106 (Windows), designer focus meaning "stay inside this" (built once, taken out on request, easy to bring back from the 105 history), #107 video lag (done in 0.6.0 with smooth playback/scrubbing and bundled ffmpeg), #108 drawing mode. Skills, custom MCPs and plugins are the next big conversation.
