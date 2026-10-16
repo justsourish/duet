@@ -9,8 +9,8 @@ One app, one copy, no lock file, no folder mode. Closing the window while an AI 
 ## Issues
 
 - 97 parent. Done: permission levels for the two file tools (Suggest refuses). On `main`.
-- 103 keep running while the AI finishes. **In progress, on branch `wip/103-keep-running`.**
-- 104 start in the background when the AI needs it. Not started.
+- 103 keep running while the AI finishes. Done, on `main`, tried in Duet dev and click tested.
+- 104 start in the background when the AI needs it. Done, on `main`, tried in Duet dev. The window comes back when the AI asks, suggests, or changes work that is saved nowhere (`bring_back`).
 - 105 show where the AI works (faint rectangle). Not started.
 - 106 Windows checks in CI, and Windows system folders off limits to the file tools (`safe_path` in `src-tauri/src/files.rs` only lists Mac and Linux folders). Not started.
 
@@ -42,3 +42,7 @@ Written, compiles, Rust tests pass (27), `tsc` clean. **Not tried in the running
 ## Separate topic, raised and not decided
 
 Focus mode (the designer points the AI at a selection with Tab) overlaps with the AI marking its own working area (#105). Question to settle first: if the AI chooses its own area, what is the designer's focus for? Idea: the designer's focus becomes "stay inside this", and the AI's rectangle is where it is actually working.
+
+## Update, 16 October 2026 (later)
+
+103 and 104 are on `main`. Project tabs now always show, include unsaved work, and have + for the projects screen (built by Antigravity, checked). Next: #105, after the creator answers the focus question above. Nothing pushed.
