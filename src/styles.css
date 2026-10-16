@@ -2618,21 +2618,28 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 6px 3px 3px;
+  height: 24px;
+  padding: 0 8px 0 3px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: var(--panel-2);
+  background: transparent;
   cursor: pointer;
   flex: none;
   font: inherit;
-  color: inherit;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
 }
 .agent-btn:hover {
   border-color: var(--accent);
+  background: var(--line);
+}
+.agent-btn:hover .agent-btn-v {
+  color: var(--text);
 }
 .agent-btn-badge {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--duet);
   color: #141315;
@@ -2645,24 +2652,33 @@ button {
   flex: none;
 }
 .agent-btn-name {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   color: var(--text);
 }
 .agent-btn-v {
-  font-size: 9px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
   color: var(--muted);
+  flex: none;
+}
+.agent-btn-v svg {
+  display: block;
+  width: 10px;
+  height: 10px;
 }
 .agent-perm {
-  font-size: 10px;
-  color: var(--muted);
+  font-size: 12px;
+  color: var(--text);
   line-height: 1;
   user-select: none;
   flex: none;
 }
 .agent-perm.auto {
-  color: #ff9f1c;
+  color: var(--duet);
 }
 .agent-pop {
   position: absolute;
@@ -3323,18 +3339,35 @@ button.agent-perm:hover {
 }
 /* how much agents may do is a button, like who answers beside it */
 button.agent-perm {
-  padding: 5px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px 0 9px;
   border: 1px solid var(--line);
-  font-size: 11px;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
   color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 button.agent-perm.auto {
-  border-color: var(--duet);
+  border-color: var(--line);
   color: var(--duet);
 }
-button.agent-perm:hover {
+button.agent-perm:hover,
+button.agent-perm.auto:hover {
   border-color: var(--accent);
-  background: transparent;
+  background: var(--line);
+}
+button.agent-perm:hover .agent-btn-v,
+button.agent-perm.auto:hover .agent-btn-v {
+  color: var(--text);
 }
 /* a written brief that goes with a message shows as its name */
 .pic-text {
@@ -3412,9 +3445,22 @@ button.agent-perm {
   color: var(--muted);
 }
 .cfoot .attach {
+  height: 24px;
+  width: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 3px;
+  background: transparent;
+  color: var(--muted);
+  box-sizing: border-box;
+}
+.cfoot .attach:hover:not(:disabled) {
+  background: var(--line);
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 /* speed graph */
