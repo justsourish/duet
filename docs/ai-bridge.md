@@ -132,3 +132,15 @@ On 12 October 2026, from outside Duet and through the bridge:
 - Codex and OpenCode as tools the chat itself can start.
 - Windows. The agent is started through `cmd`, which is untested, and so is the bridge.
 - An outside AI keeps its own tools (files, commands). Duet only controls what happens on the canvas.
+
+## Plan: the AI works with Duet closed (issue 97, decided 16 October 2026)
+
+One app, one copy. No second hidden version and no lock file.
+
+- Closing the window while an AI is working hides it. Duet keeps running until the AI is done, then quits by itself. With no AI working, closing quits as it does today.
+- When an AI calls a tool and Duet is not running, the bridge starts Duet with no window. It quits after about a minute without calls. Opening Duet from the dock shows the window on that same running app.
+- Quit (Cmd+Q) always quits, with a warning first if an AI is mid-change.
+- An AI that is working marks its area on the canvas with a faint rectangle in its own colour, so the designer sees where it is and works elsewhere.
+- Files are identified by full path, as now. Folder mode is dropped: the AI names the path of what it made, and Duet opens it.
+
+Not built yet.
