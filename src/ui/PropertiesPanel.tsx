@@ -12,6 +12,7 @@ import { seek } from "../video/play";
 import { setKeyFocus } from "./keyFocus";
 import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
+import { applyColorPreservingOpacity, colorHex, colorOpacity, withOpacity } from "./color";
 
 function NumField({ label, value, onCommit, min }: { label: string; value: number | ""; onCommit: (n: number) => void; min?: number }) {
   const [text, setText] = useState(String(value));
@@ -528,7 +529,15 @@ export default function PropertiesPanel() {
               <NumField label="Angle" value={first.gradient.angle} onCommit={(n) => set({ gradient: { ...first.gradient!, angle: n } }, "Change gradient angle")} />
             </>
           ) : (
-            <ColorField value={first.fill} onCommit={(c) => c && set({ fill: c }, "Change fill")} />
+            <div className="field">
+              <ColorField value={colorHex(first.fill)} onCommit={(c) => c && set({ fill: applyColorPreservingOpacity(c, first.fill) }, "Change fill")} />
+              <NumField
+                label="%"
+                value={colorOpacity(first.fill)}
+                min={0}
+                onCommit={(n) => set({ fill: withOpacity(first.fill, Math.min(100, Math.max(0, n))) }, "Change fill opacity")}
+              />
+            </div>
           )}
         </div>
       )}
@@ -559,7 +568,19 @@ export default function PropertiesPanel() {
       {!allText && !allGroups && (
         <div className="sec">
           <h4>Stroke</h4>
-          <ColorField none value={first.stroke} onCommit={(c) => set({ stroke: c }, "Change stroke")} />
+          <div className="field">
+            <ColorField
+              none
+              value={first.stroke ? colorHex(first.stroke) : null}
+              onCommit={(c) => set({ stroke: c ? applyColorPreservingOpacity(c, first.stroke) : null }, "Change stroke")}
+            />
+            <NumField
+              label="%"
+              value={colorOpacity(first.stroke)}
+              min={0}
+              onCommit={(n) => set({ stroke: withOpacity(first.stroke ?? "#000000", Math.min(100, Math.max(0, n))) }, "Change stroke opacity")}
+            />
+          </div>
           <div className="gap" />
           <NumField label="Width" value={first.strokeWidth} min={0} onCommit={(n) => set({ strokeWidth: n }, "Change stroke width")} />
         </div>
