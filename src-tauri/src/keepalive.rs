@@ -62,6 +62,14 @@ fn watch(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(2));
+        // the designer brought the window back: Duet stays open, the next close decides afresh
+        let shown = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+        if shown {
+            if let Some(activity) = app.try_state::<Arc<Activity>>() {
+                activity.watching.store(false, Ordering::SeqCst);
+            }
+            return;
+        }
         if !working(&app) {
             app.exit(0);
             return;
