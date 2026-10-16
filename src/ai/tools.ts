@@ -12,14 +12,14 @@ import { defaultLayout } from "../document/layout";
 import { outlineFromData } from "../document/path";
 import { ENTRANCES, sceneOf } from "../document/time";
 import { MOVING, emptyDoc } from "../document/types";
-import type { El } from "../document/types";
+import type { Doc, El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
 import { addPicture, mimeFor, preloadPictures } from "../project/assets";
 import { renderPng } from "../project/exporter";
 import { fileLength } from "../video/clips";
 import { saveNow } from "../project/project";
 import { tracePicture } from "../project/trace";
-import { currentDoc, dispatch, getState, goTo, select } from "../state/store";
+import { currentDoc, dispatch, getState, goTo, noteAiWork, select } from "../state/store";
 import { addMsg, askDesigner, getChat, setMinimized, updateMsg } from "./chat";
 import { outsideRules, skillsText } from "./rules";
 import { getSkills } from "./skills";
@@ -959,6 +959,14 @@ function context(): string {
   );
 }
 
+/** Ids whose element was added, changed or removed between two versions of the design. */
+function changedIds(a: Doc, b: Doc): string[] {
+  const out: string[] = [];
+  for (const id in b.elements) if (a.elements[id] !== b.elements[id]) out.push(id);
+  for (const id in a.elements) if (!b.elements[id]) out.push(id);
+  return out;
+}
+
 /** Run one tool call from an agent. `by` is the name of the AI tool that asked, when it said who it is. */
 export async function callTool(name: string, raw: unknown, by?: string): Promise<ToolResult> {
   const a = (raw && typeof raw === "object" ? raw : {}) as Args;
@@ -1000,5 +1008,10 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
     const ok = await askDesigner(summary);
     if (!ok) return fail(name === "export_frame" ? "The designer said not now. Do not save this file." : name === "place_image" || name === "place_video" || name === "place_sound" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
   }
-  return apply(name, check.args, by);
+  // where the AI changed things shows on the canvas for a moment, in its colour
+  const before = currentDoc();
+  const result = await apply(name, check.args, by);
+  const after = currentDoc();
+  noteAiWork(changedIds(before, after).filter((id) => after.elements[id]), by);
+  return result;
 }

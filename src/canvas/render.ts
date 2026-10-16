@@ -8,6 +8,8 @@ import { isLooseCopy } from "../document/components";
 import { getPicture } from "../project/assets";
 import { clipPicture } from "../video/clips";
 import { HANDLES } from "./handles";
+import { agentColour } from "../ai/colours";
+import { plainName } from "../ai/who";
 import { FONT_STACK, fontCss, layoutText, lineStep, lineWidth, measureText } from "./text";
 
 /** How far each scrolling screen is scrolled while presenting. Empty in the editor. */
@@ -367,6 +369,9 @@ function drawGrid(ctx: CanvasRenderingContext2D, s: State, w: number, h: number)
   }
 }
 
+/** Duet's own AI, the same orange as in the history line. */
+const DUET_ORANGE = "#ff8a5c";
+
 function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number) {
   ctx.font = `600 11px ${FONT_STACK}`;
   const w = ctx.measureText(text).width + 12;
@@ -448,6 +453,32 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     ctx.restore();
     const boxes = focused.map((id) => screenRect(s, worldBounds(doc, id)));
     pill(ctx, "AI focus", (Math.min(...boxes.map((r) => r.x)) + Math.max(...boxes.map((r) => r.x + r.width))) / 2, Math.min(...boxes.map((r) => r.y)) - 30);
+  }
+  // where an AI is working right now: a faint rectangle in its colour, so the designer can work elsewhere
+  const working = s.aiWork?.ids.filter((id) => doc.elements[id]) ?? [];
+  if (working.length) {
+    const boxes = working.map((id) => screenRect(s, worldBounds(doc, id)));
+    const x = Math.min(...boxes.map((r) => r.x)) - 8;
+    const y = Math.min(...boxes.map((r) => r.y)) - 8;
+    const w = Math.max(...boxes.map((r) => r.x + r.width)) + 8 - x;
+    const h = Math.max(...boxes.map((r) => r.y + r.height)) + 8 - y;
+    const by = s.aiWork?.by;
+    const colour = by ? agentColour(plainName(by)) : DUET_ORANGE;
+    ctx.save();
+    ctx.fillStyle = colour;
+    ctx.globalAlpha = 0.06;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 8);
+    ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = 0.9;
+    ctx.font = `600 11px ${FONT_STACK}`;
+    ctx.textBaseline = "bottom";
+    ctx.fillText(`${by ? plainName(by) : "Duet"} is working here`, x + 2, y - 5);
+    ctx.restore();
   }
   if (sel.length === 1 && !s.overlay.nodeEdit) {
     const r = screenRect(s, worldRect(doc, sel[0]));

@@ -64,6 +64,14 @@ export interface Clock {
   playing: boolean;
 }
 
+export interface AiWork {
+  ids: string[];
+  /** The AI tool, as in history entries. */
+  by?: string;
+  /** When it last changed something. */
+  at: number;
+}
+
 export interface State {
   project: Project;
   timeline: HistoryEntry[];
@@ -73,6 +81,8 @@ export interface State {
   selection: string[];
   /** What the AI has been pointed at. It only guides the AI; nothing outside it is blocked. */
   focus: string[];
+  /** Where an AI is working right now, shown as a faint rectangle in its colour. Null when no AI is at work. */
+  aiWork: AiWork | null;
   tool: Tool;
   viewport: Viewport;
   overlay: Overlay;
@@ -89,6 +99,7 @@ const initial = (): State => ({
   transientDoc: null,
   selection: [],
   focus: [],
+  aiWork: null,
   tool: "move",
   viewport: { x: 160, y: 100, zoom: 1 },
   overlay: noOverlay(),
@@ -250,6 +261,7 @@ export function loadDoc(doc: Doc, label = "Opened") {
     transientDoc: null,
     selection: [],
     focus: [],
+    aiWork: null,
     editingId: null,
     overlay: noOverlay(),
     clock: { scene: null, t: 0, playing: false },
@@ -264,6 +276,7 @@ export function loadTimeline(entries: HistoryEntry[]) {
     transientDoc: null,
     selection: [],
     focus: [],
+    aiWork: null,
     editingId: null,
     overlay: noOverlay(),
     clock: { scene: null, t: 0, playing: false },
@@ -296,6 +309,21 @@ export const redo = () => goTo(state.cursor + 1);
 export const select = (ids: string[]) => set({ selection: ids });
 /** Point the AI at these things, or at nothing. */
 export const setFocus = (ids: string[]) => set({ focus: ids });
+
+/** How long the AI's working area stays on the canvas after its last change. */
+export const AI_WORK_SHOWN_MS = 12000;
+let aiWorkTimer: ReturnType<typeof setTimeout> | undefined;
+/** An AI just changed these. Changes close together in time make one working area. */
+export function noteAiWork(ids: string[], by?: string) {
+  if (!ids.length) return;
+  const now = Date.now();
+  const last = state.aiWork;
+  const same = last && last.by === by && now - last.at < AI_WORK_SHOWN_MS;
+  const all = same ? [...new Set([...last.ids, ...ids])] : ids;
+  set({ aiWork: { ids: all.slice(-200), by, at: now } });
+  clearTimeout(aiWorkTimer);
+  aiWorkTimer = setTimeout(() => set({ aiWork: null }), AI_WORK_SHOWN_MS);
+}
 export const setTool = (tool: Tool) => set({ tool });
 export const setViewport = (viewport: Viewport) => set({ viewport });
 export const setOverlay = (patch: Partial<Overlay>) => set({ overlay: { ...state.overlay, ...patch } });
