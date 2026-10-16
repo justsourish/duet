@@ -17,6 +17,7 @@ import {
   turnCentre,
   turnOf,
   turnPoint,
+  pointInRect,
   unionRect,
   worldBounds,
   worldPos,
@@ -50,7 +51,19 @@ import type { Tool } from "../state/store";
 import { HANDLES, TURN_CURSOR, TURN_REACH, handleCursor, resizeTurned } from "./handles";
 import type { HandleKey } from "./handles";
 import { pickImages, placeFiles } from "../project/imageImport";
-import { deleteSelectedNode, doubleClickNode, dragNode, editing, enterNodeEdit, exitNodeEdit, hitNode, nodesOf, selectNode } from "./nodes";
+import {
+  deleteSelectedNode,
+  doubleClickNode,
+  dragNode,
+  editing,
+  enterNodeEdit,
+  exitNodeEdit,
+  hitNode,
+  nodesOf,
+  nudgeSelectedNodes,
+  selectNodes,
+  worldNodesOf,
+} from "./nodes";
 import type { NodeHit } from "./nodes";
 import type { AbsNode } from "../document/path";
 import { logError } from "../errorLog";
@@ -62,6 +75,7 @@ import { fontCss, layoutText, lineStep, textLift } from "./text";
 type Drag =
   | { kind: "pen"; index: number | null }
   | { kind: "node"; hit: NodeHit; start: AbsNode[]; at: { x: number; y: number }; sx: number; sy: number; moved: boolean }
+  | { kind: "node-marquee"; start: { x: number; y: number }; prev: number[]; additive: boolean; pathId: string; moved: boolean; sx: number; sy: number }
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number; duplicate?: boolean }
@@ -475,15 +489,48 @@ export default function CanvasView() {
     if (ne) {
       const nh = hitNode(p.sx, p.sy);
       if (nh) {
-        selectNode(nh.index);
+        if (nh.part === "anchor") {
+          if (e.shiftKey) {
+            if (ne.selected.includes(nh.index)) {
+              selectNodes(ne.selected.filter((i) => i !== nh.index));
+              return;
+            } else {
+              selectNodes([...ne.selected, nh.index]);
+            }
+          } else if (!ne.selected.includes(nh.index)) {
+            selectNodes([nh.index]);
+          }
+        }
         dragRef.current = { kind: "node", hit: nh, start: nodesOf(doc, ne.id), at: { x: p.x, y: p.y }, sx: p.sx, sy: p.sy, moved: false };
         return;
       }
-      if (hitTest(doc, p.x, p.y) === ne.id) {
-        selectNode(null);
+      const hit = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y);
+      const isSelfOrAncestor = (id: string | null): boolean => {
+        let cur: string | null = ne.id;
+        while (cur) {
+          if (cur === id) return true;
+          cur = doc.elements[cur]?.parentId ?? null;
+        }
+        return false;
+      };
+      if (hit && !isSelfOrAncestor(hit)) {
+        exitNodeEdit();
+      } else {
+        if (!e.shiftKey) {
+          selectNodes([]);
+        }
+        dragRef.current = {
+          kind: "node-marquee",
+          start: { x: p.x, y: p.y },
+          prev: e.shiftKey ? ne.selected : [],
+          additive: e.shiftKey,
+          pathId: ne.id,
+          moved: false,
+          sx: p.sx,
+          sy: p.sy,
+        };
         return;
       }
-      exitNodeEdit();
     }
     const handle = handleAt(p.sx, p.sy);
     if (handle) {
@@ -564,6 +611,21 @@ export default function CanvasView() {
       if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
       d.moved = true;
       dragNode(d.hit, d.start, p.x - d.at.x, p.y - d.at.y, e.altKey);
+      return;
+    }
+
+    if (d.kind === "node-marquee") {
+      if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
+      d.moved = true;
+      const rect = normalize(d.start.x, d.start.y, p.x, p.y);
+      const doc = workDoc(s);
+      const pts = worldNodesOf(doc, d.pathId);
+      const inside: number[] = [];
+      pts.forEach((pt, idx) => {
+        if (pointInRect(pt.x, pt.y, rect)) inside.push(idx);
+      });
+      const selected = d.additive ? Array.from(new Set([...d.prev, ...inside])) : inside;
+      setOverlay({ marquee: rect, nodeEdit: { id: d.pathId, selected } });
       return;
     }
 
@@ -670,8 +732,14 @@ export default function CanvasView() {
     const p = point(e);
 
     if (d.kind === "node") {
-      if (d.moved) dragCommit("Edit points");
-      else dragCancel();
+      if (d.moved) {
+        dragCommit("Edit points");
+      } else {
+        dragCancel();
+        if (d.hit.part === "anchor" && !e.shiftKey) {
+          selectNodes([d.hit.index]);
+        }
+      }
       return;
     }
 
@@ -762,7 +830,7 @@ export default function CanvasView() {
       return;
     }
 
-    if (d.kind === "marquee") setOverlay({ marquee: null });
+    if (d.kind === "marquee" || d.kind === "node-marquee") setOverlay({ marquee: null });
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -775,6 +843,10 @@ export default function CanvasView() {
     const doc = workDoc();
     if (editing()) {
       if (doubleClickNode(p.x, p.y, hitNode(p.sx, p.sy))) return;
+      if (!hitTest(doc, p.x, p.y)) {
+        exitNodeEdit();
+        return;
+      }
     }
     const hit = hitTest(doc, p.x, p.y);
     if (hit && doc.elements[hit].type === "path") {
@@ -920,6 +992,15 @@ export default function CanvasView() {
         if ((e.key === "Backspace" || e.key === "Delete") && deleteSelectedNode()) {
           e.preventDefault();
           return;
+        }
+        const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        if (arrows[e.key]) {
+          const step = e.shiftKey ? 10 : 1;
+          const [ax, ay] = arrows[e.key];
+          if (nudgeSelectedNodes(ax * step, ay * step)) {
+            e.preventDefault();
+            return;
+          }
         }
       }
 

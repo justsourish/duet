@@ -1,5 +1,5 @@
 import { keepInPlace, turnOf, turnPoint, turnVector, worldPos, worldRect } from "../document/geometry";
-import { fromAbs, isSmooth, nearestOnLine, removeNode, splitSegment, toAbs, toggleSmooth } from "../document/path";
+import { fromAbs, isSmooth, nearestOnLine, removeNodes, splitSegment, toAbs, toggleSmooth } from "../document/path";
 import type { AbsNode } from "../document/path";
 import type { Doc } from "../document/types";
 import { workDoc, dispatch, dragBase, dragPreviewDoc, getState, select, setOverlay } from "../state/store";
@@ -19,7 +19,7 @@ export const editing = () => getState().overlay.nodeEdit;
 
 export function enterNodeEdit(id: string) {
   select([id]);
-  setOverlay({ nodeEdit: { id, selected: null } });
+  setOverlay({ nodeEdit: { id, selected: [] } });
 }
 
 export function exitNodeEdit() {
@@ -28,7 +28,20 @@ export function exitNodeEdit() {
 
 export function selectNode(index: number | null) {
   const e = editing();
-  if (e) setOverlay({ nodeEdit: { ...e, selected: index } });
+  if (e) setOverlay({ nodeEdit: { ...e, selected: index === null ? [] : [index] } });
+}
+
+export function selectNodes(indices: number[]) {
+  const e = editing();
+  if (e) setOverlay({ nodeEdit: { ...e, selected: Array.from(new Set(indices)) } });
+}
+
+export function toggleNode(index: number) {
+  const e = editing();
+  if (!e) return;
+  const has = e.selected.includes(index);
+  const next = has ? e.selected.filter((i) => i !== index) : [...e.selected, index];
+  setOverlay({ nodeEdit: { ...e, selected: next } });
 }
 
 /** The points of the line being edited, in page pixels, as they sit before the line is turned. */
@@ -37,6 +50,16 @@ export function nodesOf(doc: Doc, id: string): AbsNode[] {
   if (!el || el.type !== "path") return [];
   const at = worldPos(doc, id);
   return toAbs(el, at.x, at.y);
+}
+
+/** The world positions of all anchor points of the path (following rotation if turned). */
+export function worldNodesOf(doc: Doc, id: string): { x: number; y: number }[] {
+  const el = doc.elements[id];
+  if (!el || el.type !== "path") return [];
+  const r = worldRect(doc, id);
+  const turn = turnOf(el);
+  const nodes = toAbs(el, r.x, r.y);
+  return nodes.map((n) => (turn ? turnPoint(n.x, n.y, r.x + r.width / 2, r.y + r.height / 2, turn) : { x: n.x, y: n.y }));
 }
 
 /** A spot on the page, turned back so it lines up with the points of a turned line. */
@@ -59,7 +82,7 @@ export function withNodes(doc: Doc, id: string, nodes: AbsNode[]): Doc {
   return runCommand(doc, "set_props", { ids: [id], props: refit(doc, id, nodes) });
 }
 
-/** Which point or handle is under the pointer. Handles only show for the chosen point. */
+/** Which point or handle is under the pointer. Handles show for chosen points. */
 export function hitNode(sx: number, sy: number): NodeHit | null {
   const s = getState();
   const e = s.overlay.nodeEdit;
@@ -69,10 +92,12 @@ export function hitNode(sx: number, sy: number): NodeHit | null {
   // where the pointer is on the page, turned back to meet the points
   const at = upright(workDoc(s), e.id, (sx - s.viewport.x) / z, (sy - s.viewport.y) / z);
   const near = (x: number, y: number) => Math.hypot(at.x - x, at.y - y) * z <= GRAB;
-  if (e.selected !== null && nodes[e.selected]) {
-    const n = nodes[e.selected];
-    if ((n.ox || n.oy) && near(n.x + n.ox, n.y + n.oy)) return { part: "out", index: e.selected };
-    if ((n.ix || n.iy) && near(n.x + n.ix, n.y + n.iy)) return { part: "in", index: e.selected };
+  for (const idx of e.selected) {
+    if (nodes[idx]) {
+      const n = nodes[idx];
+      if ((n.ox || n.oy) && near(n.x + n.ox, n.y + n.oy)) return { part: "out", index: idx };
+      if ((n.ix || n.iy) && near(n.x + n.ix, n.y + n.iy)) return { part: "in", index: idx };
+    }
   }
   for (let i = nodes.length - 1; i >= 0; i--) if (near(nodes[i].x, nodes[i].y)) return { part: "anchor", index: i };
   return null;
@@ -87,12 +112,17 @@ export function dragNode(hit: NodeHit, start: AbsNode[], dx: number, dy: number,
   dx = along.x;
   dy = along.y;
   const nodes = start.map((n) => ({ ...n }));
-  const n = nodes[hit.index];
   const was = start[hit.index];
   if (hit.part === "anchor") {
-    n.x = was.x + dx;
-    n.y = was.y + dy;
+    const indices = e.selected.includes(hit.index) ? e.selected : [hit.index];
+    for (const idx of indices) {
+      if (nodes[idx] && start[idx]) {
+        nodes[idx].x = start[idx].x + dx;
+        nodes[idx].y = start[idx].y + dy;
+      }
+    }
   } else if (hit.part === "out") {
+    const n = nodes[hit.index];
     n.ox = was.ox + dx;
     n.oy = was.oy + dy;
     if (!alt && isSmooth(was)) {
@@ -103,13 +133,14 @@ export function dragNode(hit: NodeHit, start: AbsNode[], dx: number, dy: number,
       n.iy = (-n.oy / l) * len;
     }
   } else {
+    const n = nodes[hit.index];
     n.ix = was.ix + dx;
     n.iy = was.iy + dy;
     if (!alt && isSmooth(was)) {
       const len = Math.hypot(was.ox, was.oy);
       const l = Math.hypot(n.ix, n.iy) || 1;
       n.ox = (-n.ix / l) * len;
-      n.oy = (-n.iy / l) * len;
+      n.oy = (-n.oy / l) * len;
     }
   }
   dragPreviewDoc(withNodes(dragBase(), e.id, nodes));
@@ -146,16 +177,38 @@ export function doubleClickNode(wx: number, wy: number, hit: NodeHit | null): bo
   return false;
 }
 
-/** Delete the chosen point. */
-export function deleteSelectedNode(): boolean {
+/** Delete the chosen points. */
+export function deleteSelectedNodes(): boolean {
   const e = editing();
-  if (!e || e.selected === null) return false;
+  if (!e || e.selected.length === 0) return false;
   const doc = workDoc();
   const el = doc.elements[e.id];
   const nodes = nodesOf(doc, e.id);
-  const next = removeNode(nodes, el.closed, e.selected);
+  const next = removeNodes(nodes, el.closed, e.selected);
   if (next === nodes) return true;
-  commitNodes(next, "Remove a point");
-  selectNode(null);
+  const label = e.selected.length > 1 ? `Remove ${e.selected.length} points` : "Remove a point";
+  commitNodes(next, label);
+  selectNodes([]);
+  return true;
+}
+
+export const deleteSelectedNode = deleteSelectedNodes;
+
+/** Nudge all selected points with arrow keys. */
+export function nudgeSelectedNodes(dx: number, dy: number): boolean {
+  const e = editing();
+  if (!e || e.selected.length === 0) return false;
+  const doc = workDoc();
+  const el = doc.elements[e.id];
+  if (!el) return false;
+  const along = turnVector(dx, dy, -turnOf(el));
+  const nodes = nodesOf(doc, e.id).map((n, i) => {
+    if (e.selected.includes(i)) {
+      return { ...n, x: n.x + along.x, y: n.y + along.y };
+    }
+    return { ...n };
+  });
+  const label = e.selected.length > 1 ? `Nudge ${e.selected.length} points` : "Nudge point";
+  commitNodes(nodes, label);
   return true;
 }

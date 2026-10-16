@@ -240,10 +240,18 @@ export function toggleSmooth(nodes: AbsNode[], closed: boolean, index: number): 
   return nodes.map((m, k) => (k === index ? { ...m, ox: dx * reachOut, oy: dy * reachOut, ix: -dx * reachIn, iy: -dy * reachIn } : m));
 }
 
+/** Take points out. Keeps at least two points on an open line and three on a closed one. */
+export function removeNodes(nodes: AbsNode[], closed: boolean, indices: number[]): AbsNode[] {
+  const toRemove = new Set(indices.filter((i) => i >= 0 && i < nodes.length));
+  if (toRemove.size === 0) return nodes;
+  const min = closed ? 3 : 2;
+  if (nodes.length - toRemove.size < min) return nodes;
+  return nodes.filter((_, k) => !toRemove.has(k));
+}
+
 /** Take a point out. Keeps at least two points on an open line and three on a closed one. */
 export function removeNode(nodes: AbsNode[], closed: boolean, index: number): AbsNode[] {
-  if (nodes.length <= (closed ? 3 : 2)) return nodes;
-  return nodes.filter((_, k) => k !== index);
+  return removeNodes(nodes, closed, [index]);
 }
 
 // ---- reading an outline written as SVG path text ----
