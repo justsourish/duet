@@ -985,6 +985,11 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
   const check = prepare(name, a);
   if ("error" in check) return fail(check.error);
   const summary = summarise(name, check.args);
+  // Duet may be running with no window for an outside AI: anything the designer must answer,
+  // or a change to work that is saved nowhere, brings the window back so nothing is missed or lost
+  if (mode === "suggest" || (RISKY.has(name) && mode === "ask") || !getState().project.path) {
+    void invoke("bring_back").catch(() => undefined);
+  }
 
   if (mode === "suggest") {
     addMsg({ role: "note", text: "", proposal: { tool: name, args: check.args, summary, status: "open", by } });

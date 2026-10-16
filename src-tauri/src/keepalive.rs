@@ -53,6 +53,29 @@ pub fn keep_running_for_ai(app: AppHandle) -> bool {
     true
 }
 
+/// The word an AI's bridge adds when it opens Duet with no window.
+pub const BACKGROUND_ARG: &str = "--for-ai";
+
+pub fn started_for_ai() -> bool {
+    std::env::args().any(|a| a == BACKGROUND_ARG)
+}
+
+/// Opened by an AI: no window, the sign in the menu bar, and quit once the AI is done. The AI's
+/// first call is still on its way while Duet starts, so that start counts as working.
+pub fn run_hidden(app: &AppHandle) {
+    if let Some(activity) = app.try_state::<Arc<Activity>>() {
+        activity.touch();
+    }
+    show_sign(app);
+    watch(app);
+}
+
+/// The AI needs the designer (a question, a suggestion, or a change to work saved nowhere).
+#[tauri::command]
+pub fn bring_back(app: AppHandle) {
+    show_window(&app);
+}
+
 /// Quit once the AI is done. One watcher is enough however many times the window is closed.
 fn watch(app: &AppHandle) {
     let Some(activity) = app.try_state::<Arc<Activity>>() else { return };

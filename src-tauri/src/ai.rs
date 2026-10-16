@@ -533,6 +533,28 @@ fn offline_answer(request: &Value, left_behind: Option<&Value>) -> Option<String
 /// command, not a changing address (Claude Code in a terminal, Claude desktop, Cursor, Codex,
 /// Antigravity). Each request is passed on to the Duet that is running right now, found through
 /// ~/.duet/session.json, so the bridge is set up once and keeps working when Duet is restarted.
+/// How long the bridge waits for Duet to open before telling the AI it could not.
+const OPEN_WAIT: std::time::Duration = std::time::Duration::from_secs(40);
+
+/// Open Duet with no window, for an AI that called a tool while it was closed.
+fn open_for_ai() {
+    use std::process::{Command, Stdio};
+    let Ok(exe) = std::env::current_exe() else { return };
+    // the installed app opens through the system, so a later click on its icon finds this same copy
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")) {
+        let _ = Command::new("open").arg("-g").arg("-a").arg(bundle).args(["--args", crate::keepalive::BACKGROUND_ARG]).spawn();
+        return;
+    }
+    let mut cmd = Command::new(exe);
+    cmd.arg(crate::keepalive::BACKGROUND_ARG);
+    // Duet dev is found and closed by this word (scripts/dev-duet.sh)
+    if std::env::var_os("DUET_DEV").is_some() {
+        cmd.arg("DUET_DEV_MARK");
+    }
+    let _ = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+}
+
 pub fn bridge() {
     use std::io::Read;
     use std::net::TcpStream;
@@ -565,6 +587,8 @@ pub fn bridge() {
     let mut out = std::io::stdout();
     // The AI tool says who it is once, when it connects. The bridge passes that on with every request.
     let mut client = String::new();
+    // when this bridge last opened Duet, so a slow start is not answered with a second copy
+    let mut opened: Option<std::time::Instant> = None;
     for line in stdin.lock().lines().map_while(Result::ok) {
         if line.trim().is_empty() {
             continue;
@@ -582,6 +606,23 @@ pub fn bridge() {
             Some(crate::files::call(request["params"]["name"].as_str().unwrap_or(""), &request["params"]["arguments"], &request["id"]))
         } else {
             let said = forward(&line, &client).or_else(|| {
+                // a tool call needs Duet itself: open it with no window and wait until it answers
+                if request["method"] != "tools/call" {
+                    return None;
+                }
+                if opened.is_none_or(|t: std::time::Instant| t.elapsed() > OPEN_WAIT) {
+                    open_for_ai();
+                    opened = Some(std::time::Instant::now());
+                }
+                let start = std::time::Instant::now();
+                while start.elapsed() < OPEN_WAIT {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    if let Some(answer) = forward(&line, &client).filter(|a| !a.contains("still opening") && !a.contains("not ready")) {
+                        return Some(answer);
+                    }
+                }
+                None
+            }).or_else(|| {
                 let left_behind = duet_dir().and_then(|d| read_json(d.join("agent-workspace").join("bridge.json")));
                 offline_answer(&request, left_behind.as_ref())
             });

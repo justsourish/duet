@@ -526,7 +526,8 @@ pub fn run() {
             ai::agent_available,
             ai::agent_run,
             ai::agent_cancel,
-            keepalive::keep_running_for_ai
+            keepalive::keep_running_for_ai,
+            keepalive::bring_back
         ])
         .setup(|app| {
             if is_check_copy() {
@@ -536,6 +537,12 @@ pub fn run() {
                 }
             }
             ai::start(app.handle()).map_err(|e| format!("Could not start the agent bridge: {e}"))?;
+            // the window starts hidden; it stays hidden only when an AI opened Duet to work in it
+            if keepalive::started_for_ai() {
+                keepalive::run_hidden(app.handle());
+            } else {
+                keepalive::show_window(app.handle());
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
