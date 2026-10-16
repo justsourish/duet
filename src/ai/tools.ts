@@ -22,7 +22,7 @@ import { tracePicture } from "../project/trace";
 import { currentDoc, dispatch, getState, goTo, keepAiWorkWhile, noteAiArea, noteAiWork, select, touchAiWork } from "../state/store";
 import { addMsg, askDesigner, getChat, setMinimized, updateMsg } from "./chat";
 import { outsideRules, skillsText } from "./rules";
-import { getSkills } from "./skills";
+import { getSkills, keepTaughtSkill } from "./skills";
 
 /**
  * What an agent can do in Duet. These are the same commands the interface uses.
@@ -118,7 +118,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "create_element",
     description:
-      "Add a frame, rectangle, ellipse, text or path. x and y are relative to parentId (a frame), or to the page when parentId is left out. For text, put the words in props.text and leave width and height out so they fit the words. A path is any shape you draw yourself, like a leaf, a petal, a wave or an arch: give its outline in d and leave width and height out. A closed outline (ending in Z) is filled with props.fill; set props.stroke to null for a flat shape with no line around it. A path is one unbroken outline with no holes, so use several paths for several pieces.",
+      "Add a frame, rectangle, ellipse, text or path. x and y are relative to parentId (a frame), or to the page when parentId is left out. For text, put the words in props.text and leave width and height out so they fit the words. A path is any shape you draw yourself, like a leaf, a petal, a wave or an arch: give its outline in d and leave width and height out. A closed outline (ending in Z) is filled with props.fill and has no line around it; give props.stroke a colour to add one. A path is one unbroken outline with no holes, so use several paths for several pieces.",
     inputSchema: {
       type: "object",
       properties: {
@@ -301,6 +301,20 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "save_skill",
+    description:
+      "Save rules the designer taught you as one of their own skills, so every later conversation follows them. Use it when the designer asks you to keep, learn, remember or install their rules as a skill. Write the rules in the designer's own words, one per line starting with \"- \", and keep every rule they gave, not only the latest. Saving under a name they already have brings that skill up to date, so include the old rules that still hold. The designer is always asked first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "A short name, like Flat botanical silhouettes." },
+        summary: { type: "string", description: "One line on what the skill is for." },
+        rules: { type: "string", description: "The rules, one per line, each starting with \"- \". Headings starting with ## may group them." },
+      },
+      required: ["name", "rules"],
+    },
+  },
+  {
     name: "delete_elements",
     description: "Delete elements and everything inside them. The designer may be asked to approve this.",
     inputSchema: { type: "object", properties: { ids }, required: ["ids"] },
@@ -467,6 +481,8 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
           a.height = typeof a.height === "number" ? a.height : shape.height;
           p.nodes = shape.nodes;
           p.closed = shape.closed;
+          // a filled shape has no line around it unless one is asked for
+          if (shape.closed && !("stroke" in p)) p.stroke = null;
         } catch (e) {
           return { error: e instanceof Error ? e.message : String(e) };
         }
@@ -1032,6 +1048,18 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
     return { text: "Selected." };
   }
 
+  if (name === "save_skill") {
+    if (typeof a.name !== "string" || typeof a.rules !== "string" || !a.rules.trim()) return fail("Give a name and the rules.");
+    const summary = typeof a.summary === "string" ? a.summary : "";
+    const mine = getSkills().some((k) => k.source === "mine" && k.name.trim().toLowerCase() === (a.name as string).trim().toLowerCase());
+    // a skill shapes every later conversation, so the designer always says yes first, whatever the mode
+    void invoke("bring_back").catch(() => undefined);
+    const ok = await askDesigner(`${mine ? "Update" : "Save"} the skill "${a.name.trim()}"`);
+    if (!ok) return fail("The designer said not now. Do not save this skill.");
+    const saved = await keepTaughtSkill(a.name, summary, a.rules);
+    if ("error" in saved) return fail(saved.error);
+    return { text: saved.updated ? `Updated the skill "${a.name.trim()}". It is on, and every later conversation follows it.` : `Saved the skill "${a.name.trim()}". It is on, and every later conversation follows it. The designer can see it in Skills.` };
+  }
   if (!EDITS.has(name) && !RISKY.has(name)) return fail(`Unknown tool ${name}.`);
   const check = prepare(name, a);
   if ("error" in check) return fail(check.error);

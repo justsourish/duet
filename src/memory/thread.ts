@@ -2,7 +2,7 @@
  * The thread: what was said and done in a project's conversation, as Duet keeps it.
  *
  * Duet holds this itself, inside the project. The AI tool does not have to remember anything:
- * it starts fresh and is handed a short note made from the thread. Everything here is plain data
+ * it starts fresh and is handed a note made from the thread. Everything here is plain data
  * in and plain data out, so any part of Duet can use it.
  */
 
@@ -20,6 +20,8 @@ export interface Said {
   undone?: boolean;
   /** The name of the history step this change led to. */
   step?: string;
+  /** On the last thing an AI said in a turn: which tool and model, how long, how many changes. */
+  took?: { tool: string; model?: string; ms: number; changes: number };
 }
 
 export interface Thread {
@@ -39,6 +41,7 @@ export interface Speaking {
   pictures?: number[];
   undone?: boolean;
   step?: string;
+  took?: { tool: string; model?: string; ms: number; changes: number };
 }
 
 /** How many things a project remembers. Older ones are let go, earlier conversations first. */
@@ -64,6 +67,10 @@ export function keepable(messages: Speaking[], now = Date.now()): Said[] {
     if (m.pictures?.length) said.pictures = m.pictures;
     if (m.undone) said.undone = true;
     if (typeof m.step === "string" && m.step) said.step = m.step;
+    const t = m.took;
+    if (t && typeof t.tool === "string" && Number.isFinite(t.ms) && Number.isFinite(t.changes)) {
+      said.took = { tool: t.tool, ms: t.ms, changes: t.changes, ...(typeof t.model === "string" && t.model ? { model: t.model } : {}) };
+    }
     out.push(said);
   }
   return out;
@@ -98,18 +105,24 @@ export function readThread(text: string | null | undefined): Thread {
 
 /** The note holds this many of the latest things said. */
 const BRIEF_ENTRIES = 12;
-/** Each is cut to this many letters, so the note stays the same small size however long the project runs. */
+/** Each is cut to this many letters, so the note stays a small size however long the project runs. */
 const BRIEF_TEXT = 320;
+/**
+ * What the designer said is kept whole and never let go, because that is where they teach the AI their
+ * rules. Only past this many letters, the oldest of it goes, so a very long project still has a ceiling.
+ */
+const BRIEF_DESIGNER = 40000;
 
 /**
- * The short note handed to an AI that starts fresh: the last few things said and done in this
- * conversation. Duet writes it itself, so it costs nothing to make. Empty when there is nothing to tell.
+ * The note handed to an AI that starts fresh: everything the designer said, word for word, and the
+ * last few things the AI said and did. Duet writes it itself, so it costs nothing to make. Empty when
+ * there is nothing to tell.
  */
 export function brief(now: Said[]): string {
-  const lines: string[] = [];
+  const lines: { text: string; designer: boolean }[] = [];
   let changes: string[] = [];
   const flush = () => {
-    if (changes.length) lines.push(`- You changed: ${changes.join("; ")}`);
+    if (changes.length) lines.push({ text: `- You changed: ${changes.join("; ")}`, designer: false });
     changes = [];
   };
   for (const m of now) {
@@ -120,22 +133,35 @@ export function brief(now: Said[]): string {
     flush();
     if (m.role === "you") {
       const pictures = m.pictures?.length ? ` (with picture ${m.pictures.map((n) => `number ${n}`).join(", ")}, which may no longer be kept)` : "";
-      lines.push(`- The designer said: ${cut(m.text.trim() || "(only pictures)", BRIEF_TEXT)}${pictures}`);
+      lines.push({ text: `- The designer said: ${m.text.trim() || "(only pictures)"}${pictures}`, designer: true });
     } else if (m.proposal) {
       const what = m.proposal.status === "applied" ? "the designer applied it" : m.proposal.status === "dismissed" ? "the designer dismissed it" : "not applied yet";
-      lines.push(`- You suggested: ${cut(m.proposal.summary, BRIEF_TEXT)} (${what})`);
+      lines.push({ text: `- You suggested: ${cut(m.proposal.summary, BRIEF_TEXT)} (${what})`, designer: false });
     } else if (m.approval) {
-      lines.push(`- You asked to: ${cut(m.approval.summary, BRIEF_TEXT)} (the designer ${m.approval.status === "allowed" ? "allowed it" : "said no"})`);
+      lines.push({ text: `- You asked to: ${cut(m.approval.summary, BRIEF_TEXT)} (the designer ${m.approval.status === "allowed" ? "allowed it" : "said no"})`, designer: false });
     } else if (m.role === "duet" && m.text.trim()) {
-      lines.push(`- You said: ${cut(m.text.trim(), BRIEF_TEXT)}`);
+      lines.push({ text: `- You said: ${cut(m.text.trim(), BRIEF_TEXT)}`, designer: false });
     }
   }
   flush();
   if (!lines.length) return "";
-  const kept = lines.slice(-BRIEF_ENTRIES);
-  const more = lines.length > kept.length ? "The latest part of it:" : "All of it:";
+  // the latest few stay whatever they are; before them, only what the designer said, newest first, up to the ceiling
+  const latest = lines.length - BRIEF_ENTRIES;
+  const keep = new Set<number>();
+  let room = BRIEF_DESIGNER;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const { text, designer } = lines[i];
+    if (designer) {
+      if (text.length > room && i < latest) continue;
+      room -= text.length;
+      keep.add(i);
+    } else if (i >= latest) keep.add(i);
+  }
+  const kept = lines.filter((_, i) => keep.has(i)).map((l) => l.text);
+  const more = kept.length < lines.length ? "What the designer said, and the latest part of the rest:" : "All of it:";
   return [
     "Duet's note on this conversation so far. You are starting fresh and do not remember it yourself.",
+    "What the designer said is word for word. Rules they gave earlier still hold unless they changed them.",
     more,
     ...kept,
     "The design may have changed since. Read it again before you act.",

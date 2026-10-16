@@ -16,6 +16,23 @@ export interface Approval {
   status: "waiting" | "allowed" | "declined";
 }
 
+/** How one turn of an AI went: which tool and model, how long it took, and how many changes it made. */
+export interface Took {
+  tool: string;
+  /** The model the designer chose, when they chose one. */
+  model?: string;
+  ms: number;
+  changes: number;
+}
+
+/** How a turn went, in words: "Antigravity, Gemini 3 Pro, took 3 min, made 12 changes". */
+export function tookLine(t: Took): string {
+  const s = Math.round(t.ms / 1000);
+  const time = s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+  const changes = t.changes === 0 ? "no changes" : t.changes === 1 ? "1 change" : `${t.changes} changes`;
+  return `${t.tool}${t.model ? `, ${t.model}` : ""}, took ${time}, made ${changes}`;
+}
+
 export interface Msg {
   id: number;
   role: "you" | "duet" | "note" | "error" | "working" | "break";
@@ -33,6 +50,8 @@ export interface Msg {
   step?: string;
   /** For what an AI said: the name of the agent that said it, so a chat with several agents shows who spoke. */
   by?: string;
+  /** On the last thing an AI said in a turn: how that turn went. */
+  took?: Took;
 }
 
 /**

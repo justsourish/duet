@@ -1561,6 +1561,17 @@ describe("what the AI can ask for", () => {
     expect(res.text).toContain("Its box sits at 100,170");
   });
 
+  it("gives a filled shape no line around it unless the AI asks for one", async () => {
+    await callTool("create_element", { type: "path", x: 0, y: 0, d: "M 0 0 L 10 0 L 10 10 Z", props: { fill: "#2f7d4f" } });
+    await callTool("create_element", { type: "path", x: 0, y: 0, d: "M 0 0 L 10 0 L 10 10 Z", props: { stroke: "#112211" } });
+    await callTool("create_element", { type: "path", x: 0, y: 0, d: "M 0 0 C 5 -5 10 5 20 0" });
+    const [flat, lined, open] = Object.values(currentDoc().elements);
+    expect(flat.stroke).toBeNull();
+    expect(lined.stroke).toBe("#112211");
+    // an open line is only its line, so it keeps one
+    expect(open.stroke).toBeTruthy();
+  });
+
   it("redraws a path, and explains an outline it cannot use", async () => {
     await callTool("create_element", { type: "path", x: 0, y: 0, d: "M 0 0 L 10 0 L 10 10 Z" });
     const id = Object.keys(currentDoc().elements)[0];
@@ -1851,7 +1862,7 @@ describe("a single thing as a component", () => {
   });
 });
 
-import { addMsg, askDesigner, moveConversationTo, setSessionId, showConversationFor } from "../ai/chat";
+import { addMsg, askDesigner, moveConversationTo, setSessionId, showConversationFor, tookLine } from "../ai/chat";
 
 describe("a conversation for each project", () => {
   const picture = { name: "ref.png", data: "", mime: "image/png", width: 10, height: 10, thumb: "" };
@@ -1989,19 +2000,39 @@ describe("the note for an AI that starts fresh", () => {
       ]),
     );
     const lines = note.split("\n");
-    expect(lines[2]).toBe("- The designer said: make the header blue (with picture number 3, which may no longer be kept)");
-    expect(lines[3]).toBe("- You changed: Changed the fill of Header; Rounded the corners of Header (the designer took this back)");
-    expect(lines[4]).toBe("- You said: Done. The header is blue now.");
-    expect(lines[5]).toBe("- You asked to: Delete the footer (the designer said no)");
-    expect(lines[6]).toBe("- You suggested: Make the title bigger (the designer dismissed it)");
+    expect(lines[3]).toBe("- The designer said: make the header blue (with picture number 3, which may no longer be kept)");
+    expect(lines[4]).toBe("- You changed: Changed the fill of Header; Rounded the corners of Header (the designer took this back)");
+    expect(lines[5]).toBe("- You said: Done. The header is blue now.");
+    expect(lines[6]).toBe("- You asked to: Delete the footer (the designer said no)");
+    expect(lines[7]).toBe("- You suggested: Make the title bigger (the designer dismissed it)");
   });
 
-  it("stays the same small size however long the conversation is", () => {
+  it("keeps the latest few of what the AI said and did, and has a ceiling however long the conversation is", () => {
     const long = keepable(Array.from({ length: 300 }, (_, i) => ({ role: i % 2 ? "duet" : "you", text: `${"word ".repeat(200)}${i}` })));
     const note = brief(long);
-    expect(note.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(12);
-    expect(note.length).toBeLessThan(5000);
-    expect(note).toContain("The latest part of it:");
+    expect(note.split("\n").filter((l) => l.startsWith("- You said:"))).toHaveLength(6);
+    expect(note.length).toBeLessThan(50000);
+    expect(note).toContain("the latest part of the rest:");
+  });
+
+  it("keeps what the designer said word for word, from the start, so their rules are not lost", () => {
+    const rule = `Never use outlines. ${"Far trees are smaller and darker. ".repeat(40)}Hide every tree bottom.`;
+    const said = keepable([
+      { role: "you", text: rule },
+      ...Array.from({ length: 30 }, (_, i) => ({ role: i % 2 ? "duet" : "note", text: `step ${i}` })),
+      { role: "you", text: "ok" },
+    ]);
+    const note = brief(said);
+    expect(note).toContain(`- The designer said: ${rule}`);
+    expect(note).toContain("- The designer said: ok");
+    expect(note).not.toContain("You said: step 1\n");
+  });
+
+  it("keeps how each AI turn went, and says it in plain words", () => {
+    const [kept] = keepable([{ role: "duet", text: "Done", took: { tool: "Antigravity", model: "Gemini 3 Pro (High)", ms: 191000, changes: 12 } }]);
+    expect(readThread(packThread({ now: [kept], earlier: [] })).now[0].took).toEqual({ tool: "Antigravity", model: "Gemini 3 Pro (High)", ms: 191000, changes: 12 });
+    expect(tookLine(kept.took!)).toBe("Antigravity, Gemini 3 Pro (High), took 3 min, made 12 changes");
+    expect(tookLine({ tool: "Claude Code", ms: 9000, changes: 1 })).toBe("Claude Code, took 9 s, made 1 change");
   });
 
   it("carries the AI tool's own session on only for a short, recent back and forth", () => {

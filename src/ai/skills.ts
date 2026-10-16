@@ -179,6 +179,27 @@ export async function createSkill(name: string, rules: string): Promise<string |
   return null;
 }
 
+/**
+ * Save the rules a designer taught the AI as a skill of their own, or bring one up to date.
+ * Returns what happened, or a message if it could not be saved.
+ */
+export async function keepTaughtSkill(name: string, summary: string, rules: string): Promise<{ updated: boolean } | { error: string }> {
+  const id = slug(name);
+  if (!id) return { error: "Give the skill a name." };
+  if (!rules.trim()) return { error: "Write at least one rule." };
+  if (skills.some((s) => s.source === "shipped" && slug(s.name) === id)) return { error: `Duet already has a skill called "${name.trim()}". Choose another name.` };
+  const updated = skills.some((s) => s.id === `mine-${id}`);
+  const first = summary.trim().split("\n")[0];
+  const body = `# ${name.trim()}\n${first ? `${first}\n\n` : ""}${rules.trim()}\n`;
+  try {
+    await invoke("write_user_skill", { id, body });
+  } catch (e) {
+    return { error: String(e) };
+  }
+  await loadSkills();
+  return { updated };
+}
+
 /** Save a skill that was written elsewhere. Returns a message if it could not be saved. */
 export async function importSkillText(text: string, fallbackName: string): Promise<string | null> {
   const { name, body } = toDuetSkill(text, fallbackName);

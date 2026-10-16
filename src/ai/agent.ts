@@ -46,9 +46,12 @@ const WORKING: Record<string, string> = {
   reparent_elements: "Moving things between frames",
   delete_elements: "Clearing something away",
   duplicate_elements: "Making a copy",
+  save_skill: "Saving your rules as a skill",
 };
 
 let sawText = false;
+/** When this turn began, and the last message before it, to tell afterwards how the turn went. */
+let turn: { at: number; after: number; tool: string; model?: string } | null = null;
 let stderrLines: string[] = [];
 let workingId: number | null = null;
 /** False once the designer has left the project the AI was working on. What it says after that is not shown. */
@@ -208,6 +211,17 @@ function onAgyLine(line: string) {
   }
 }
 
+/** The turn is over: put on the AI's last reply how long it took and how many changes it made. */
+function noteTook() {
+  const t = turn;
+  turn = null;
+  if (!t) return;
+  const since = getChat().messages.filter((m) => m.id > t.after);
+  const changes = since.filter((m) => m.role === "note" && !!m.step).length;
+  const reply = [...since].reverse().find((m) => m.role === "duet");
+  if (reply) updateMsg(reply.id, { took: { tool: t.tool, ...(t.model ? { model: t.model } : {}), ms: Date.now() - t.at, changes } });
+}
+
 function onLine(line: string) {
   if (!live) return;
   if (getChat().agent === "agy") onAgyLine(line);
@@ -251,6 +265,7 @@ export async function startAgentListeners(): Promise<() => void> {
     declineAllWaiting();
     setRunning(false);
     sessionUsed();
+    noteTook();
     if (!sawText) {
       const detail = stderrLines.filter((l) => !/job control|no tty/i.test(l)).join(" ");
       addMsg({ role: "error", text: friendly(detail) });
@@ -291,6 +306,7 @@ export async function sendToAgent(text: string) {
   const prompt = `${said || "Look at what I attached."}${attached}`;
   sessionUsed(true);
   setRunning(true);
+  turn = { at: Date.now(), after: getChat().messages.reduce((n, m) => Math.max(n, m.id), 0), tool: speaker() ?? agent, model: getChat().models[agent] ?? undefined };
   // the designer sees the AI at work on the canvas straight away, not after its first change
   aiStarted(speaker());
   live = true;

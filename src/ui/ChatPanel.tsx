@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, Fragment } from "react";
 import { detectAgent, sendToAgent, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
-import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, tookLine, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
 import { attachFiles } from "../ai/pictures";
 import type { ModelChoice, Mode, Msg } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
@@ -1021,7 +1021,9 @@ export default function ChatPanel() {
                     <span className="m-badge" style={{ backgroundColor: agentColour(authorName) }}>
                       {authorName.charAt(0)}
                     </span>
-                    <span className="m-author-name">{authorName}</span>
+                    <span className="m-author-name" title={m.took ? tookLine(m.took) : undefined}>
+                      {authorName}
+                    </span>
                   </div>
                   <div className="m-body">
                     <Rich text={m.text} />
