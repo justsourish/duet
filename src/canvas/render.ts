@@ -456,8 +456,10 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   }
   // where an AI is working right now: a faint rectangle in its colour, so the designer can work elsewhere
   const working = s.aiWork?.ids.filter((id) => doc.elements[id]) ?? [];
-  if (working.length) {
+  const claimed = s.aiWork?.area;
+  if (working.length || claimed) {
     const boxes = working.map((id) => screenRect(s, worldBounds(doc, id)));
+    if (claimed) boxes.push(screenRect(s, claimed));
     // roomy and tinted, so it reads as "the AI is busy here" and people leave it be; nothing is locked
     const pad = 48;
     const x = Math.min(...boxes.map((r) => r.x)) - pad;
@@ -504,7 +506,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     }
     ctx.fillStyle = colour;
     // the label sits on the top edge, in the AI's colour
-    const label = `${by ? plainName(by) : "Duet"} is working here`;
+    const label = `${by ? plainName(by) : "Duet"} ${working.length ? "is working here" : "is getting ready"}`;
     ctx.globalAlpha = 1;
     ctx.font = `600 12px ${FONT_STACK}`;
     const lw = ctx.measureText(label).width + 16;

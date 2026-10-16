@@ -7,7 +7,7 @@ import { commandLabel, newId, runCommand } from "../commands";
 import type { CommandName } from "../commands";
 import { measureText } from "../canvas/text";
 import { extractPayload } from "../document/clipboard";
-import { canMask, canTurn } from "../document/geometry";
+import { canMask, canTurn, worldBounds } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
 import { outlineFromData } from "../document/path";
 import { ENTRANCES, sceneOf } from "../document/time";
@@ -19,7 +19,7 @@ import { renderPng } from "../project/exporter";
 import { fileLength } from "../video/clips";
 import { saveNow } from "../project/project";
 import { tracePicture } from "../project/trace";
-import { currentDoc, dispatch, getState, goTo, noteAiWork, select } from "../state/store";
+import { currentDoc, dispatch, getState, goTo, keepAiWorkWhile, noteAiArea, noteAiWork, select, touchAiWork } from "../state/store";
 import { addMsg, askDesigner, getChat, setMinimized, updateMsg } from "./chat";
 import { outsideRules, skillsText } from "./rules";
 import { getSkills } from "./skills";
@@ -103,6 +103,12 @@ export const TOOLS: ToolDef[] = [
       properties: { componentId: str, x: num, y: num, parentId: { type: "string", description: "A frame to put it in. Leave out for the page." } },
       required: ["componentId", "x", "y"],
     },
+  },
+  {
+    name: "mark_working_area",
+    description:
+      "Before you make something new, claim the space it will take on the page, so the designer sees where you are working while you think and build. x, y, width and height are page pixels. Pick free space (get_outline shows what is where). Call it again if your plan moves.",
+    inputSchema: { type: "object", properties: { x: num, y: num, width: num, height: num }, required: ["x", "y", "width", "height"] },
   },
   {
     name: "select_elements",
@@ -959,6 +965,35 @@ function context(): string {
   );
 }
 
+// the working area stays up for as long as the chat's own AI is busy, however long it thinks
+keepAiWorkWhile(() => getChat().running);
+
+/** Where to show an AI's working area before it has said or changed anything: on what the designer
+ * pointed at or selected, or else in the middle of what is on screen. */
+function startingArea() {
+  const s = getState();
+  const doc = currentDoc();
+  const ids = (s.focus.length ? s.focus : s.selection).filter((id) => doc.elements[id]);
+  if (ids.length) {
+    const b = ids.map((id) => worldBounds(doc, id));
+    const x = Math.min(...b.map((r) => r.x));
+    const y = Math.min(...b.map((r) => r.y));
+    return { x, y, width: Math.max(...b.map((r) => r.x + r.width)) - x, height: Math.max(...b.map((r) => r.y + r.height)) - y };
+  }
+  const canvas = typeof document === "undefined" ? null : document.querySelector("canvas");
+  const { x: vx, y: vy, zoom } = s.viewport;
+  const cx = ((canvas?.clientWidth ?? 1000) / 2 - vx) / zoom;
+  const cy = ((canvas?.clientHeight ?? 700) / 2 - vy) / zoom;
+  const width = 420 / zoom;
+  const height = 280 / zoom;
+  return { x: cx - width / 2, y: cy - height / 2, width, height };
+}
+
+/** An AI has started, or is still going: make sure the designer sees it at work, never a blank canvas. */
+export function aiStarted(by?: string) {
+  if (!touchAiWork(by)) noteAiArea(startingArea(), by);
+}
+
 /** Ids whose element was added, changed or removed between two versions of the design. */
 function changedIds(a: Doc, b: Doc): string[] {
   const out: string[] = [];
@@ -972,6 +1007,14 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
   const a = (raw && typeof raw === "object" ? raw : {}) as Args;
   const mode = getChat().mode;
 
+  aiStarted(by);
+  if (name === "mark_working_area") {
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
+    const area = { x: n(a.x), y: n(a.y), width: n(a.width), height: n(a.height) };
+    if (Object.values(area).some(Number.isNaN) || area.width <= 0 || area.height <= 0) return fail("x, y, width and height must be numbers, with width and height above 0.");
+    noteAiArea(area, by);
+    return { text: "The designer now sees where you are working. Build there." };
+  }
   if (name === "get_context") return { text: context() };
   if (name === "get_working_rules") return { text: `${outsideRules()}\n\n${skillsText()}` };
   if (name === "get_outline") return { text: outline(currentDoc(), Array.isArray(a.ids) ? (a.ids as unknown[]).map(String) : undefined) };

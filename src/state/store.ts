@@ -66,6 +66,8 @@ export interface Clock {
 
 export interface AiWork {
   ids: string[];
+  /** A space on the page the AI has claimed before it changed anything, in page pixels. */
+  area?: { x: number; y: number; width: number; height: number };
   /** The AI tool, as in history entries. */
   by?: string;
   /** When it last changed something. */
@@ -313,6 +315,23 @@ export const setFocus = (ids: string[]) => set({ focus: ids });
 /** How long the AI's working area stays on the canvas after its last change. */
 export const AI_WORK_SHOWN_MS = 12000;
 let aiWorkTimer: ReturnType<typeof setTimeout> | undefined;
+/** Whether an AI is still busy, so its working area stays up through long quiet stretches. Set by the chat. */
+let stillBusy: () => boolean = () => false;
+export const keepAiWorkWhile = (busy: () => boolean) => {
+  stillBusy = busy;
+};
+
+function armAiWork() {
+  clearTimeout(aiWorkTimer);
+  const check = () => {
+    const w = state.aiWork;
+    if (!w) return;
+    if (stillBusy() || Date.now() - w.at < AI_WORK_SHOWN_MS) aiWorkTimer = setTimeout(check, 2000);
+    else set({ aiWork: null });
+  };
+  aiWorkTimer = setTimeout(check, 2000);
+}
+
 /** An AI just changed these. Changes close together in time make one working area. */
 export function noteAiWork(ids: string[], by?: string) {
   if (!ids.length) return;
@@ -320,9 +339,24 @@ export function noteAiWork(ids: string[], by?: string) {
   const last = state.aiWork;
   const same = last && last.by === by && now - last.at < AI_WORK_SHOWN_MS;
   const all = same ? [...new Set([...last.ids, ...ids])] : ids;
-  set({ aiWork: { ids: all.slice(-200), by, at: now } });
-  clearTimeout(aiWorkTimer);
-  aiWorkTimer = setTimeout(() => set({ aiWork: null }), AI_WORK_SHOWN_MS);
+  // once real work is on the page the area follows it; a claimed space still counts until then
+  set({ aiWork: { ids: all.slice(-200), by, at: now, area: same && !last.ids.length ? last.area : undefined } });
+  armAiWork();
+}
+
+/** An AI has claimed a space, or has just started: show its working area there before anything changes. */
+export function noteAiArea(area: { x: number; y: number; width: number; height: number }, by?: string) {
+  set({ aiWork: { ids: [], area, by, at: Date.now() } });
+  armAiWork();
+}
+
+/** The AI is still at it (it asked or looked at something): keep its working area up. */
+export function touchAiWork(by?: string) {
+  const w = state.aiWork;
+  if (!w || w.by !== by) return false;
+  set({ aiWork: { ...w, at: Date.now() } });
+  armAiWork();
+  return true;
 }
 export const setTool = (tool: Tool) => set({ tool });
 export const setViewport = (viewport: Viewport) => set({ viewport });

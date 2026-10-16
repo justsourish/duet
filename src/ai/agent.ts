@@ -21,6 +21,7 @@ import type { AgentId } from "./chat";
 import { mentioned, setAgent } from "./chat";
 import { FROM_CHAT } from "./who";
 import { chatRules } from "./rules";
+import { aiStarted } from "./tools";
 
 /** Runs the AI tool the designer already has, and shows what it says as chat. */
 
@@ -290,6 +291,8 @@ export async function sendToAgent(text: string) {
   const prompt = `${said || "Look at what I attached."}${attached}`;
   sessionUsed(true);
   setRunning(true);
+  // the designer sees the AI at work on the canvas straight away, not after its first change
+  aiStarted(speaker());
   live = true;
   sawText = false;
   streamId = null;
