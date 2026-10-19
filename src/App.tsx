@@ -188,7 +188,7 @@ export default function App() {
     <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""}`} style={appStyle}>
       {/* open projects, in their own row like a browser; on a Mac it shares the row with the window buttons */}
       <div className="tabbar" data-tauri-drag-region>
-        <Tabs home={home} setHome={setHome} />
+        {!chatting && <Tabs home={home} setHome={setHome} />}
       </div>
       <header className="top">
         <div className="top-side">

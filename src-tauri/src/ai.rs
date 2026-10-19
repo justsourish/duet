@@ -363,8 +363,9 @@ fn find_in_folders(program: &str) -> bool {
     dirs.iter().any(|d| names.iter().any(|n| d.join(n).is_file()))
 }
 
-/// The models a tool offers, as (id, name) pairs. Only Antigravity can list them.
-#[tauri::command]
+/// The models a tool offers, as (id, name) pairs. Only Antigravity can list them. Starting the tool
+/// takes seconds, so this runs off the main thread: a window that waits on it freezes.
+#[tauri::command(async)]
 pub fn agent_models(program: String) -> Vec<Value> {
     if program != "agy" {
         return Vec::new();

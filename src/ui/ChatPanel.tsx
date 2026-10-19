@@ -99,6 +99,18 @@ const HANDLES: { pos: ResizeHandle; cls: string }[] = [
   { pos: "l", cls: "edge l" },
 ];
 
+/** Antigravity's models, asked for once: starting the tool takes seconds, and the chat is built again each time you switch to it. */
+let agyModelsAsked: Promise<ModelChoice[]> | null = null;
+function agyModelList(): Promise<ModelChoice[]> {
+  agyModelsAsked ??= invoke<ModelChoice[]>("agent_models", { program: "agy" })
+    .then((list) => [{ id: "", name: "Default" }, ...list])
+    .catch(() => {
+      agyModelsAsked = null; // try again next time
+      return [{ id: "", name: "Default" }];
+    });
+  return agyModelsAsked;
+}
+
 /** `docked` fills the space it is given, as the middle of Chat; otherwise it floats on the canvas. */
 export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const messages = useChat((s) => s.messages);
@@ -200,9 +212,11 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   useEffect(() => {
     const needAgy = agent === "agy" || (cardAgent?.type === "member" && cardAgent.agent.id === "agy");
     if (!needAgy || agyModels.length || !inTauri()) return;
-    invoke<ModelChoice[]>("agent_models", { program: "agy" })
-      .then((list) => setAgyModels([{ id: "", name: "Default" }, ...list]))
-      .catch(() => setAgyModels([{ id: "", name: "Default" }]));
+    let alive = true;
+    agyModelList().then((list) => alive && setAgyModels(list));
+    return () => {
+      alive = false;
+    };
   }, [agent, cardAgent, agyModels.length]);
 
   // the list of installed AI tools is looked for again if it is ever empty, so nobody is left with no one to ask

@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CanvasView from "../canvas/CanvasView";
 import { getRecents, inTauri, newProject, openProjectAt } from "../project/project";
-import { useStore } from "../state/store";
+import { getState, setViewport, useStore } from "../state/store";
 import ChatPanel from "./ChatPanel";
 
 /** Projects that match what was typed, newest first as they are kept. */
@@ -19,6 +19,15 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   // read again whenever the open project changes, since opening one moves it to the top of the list
   const recents = useMemo(() => getRecents(), [current.file, current.name]);
   const [typed, setTyped] = useState("");
+  // the canvas shows the whole design here, and the view goes back to where it was when you return to Edit
+  useEffect(() => {
+    const before = getState().viewport;
+    const fit = setTimeout(() => window.dispatchEvent(new Event("duet:fit")), 120);
+    return () => {
+      clearTimeout(fit);
+      setViewport(before);
+    };
+  }, [current.file]);
   const shown = matchProjects(recents, typed);
 
   return (
