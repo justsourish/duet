@@ -11,6 +11,32 @@
   --duet: #ff8a5c;
   --duet-soft: rgba(255, 138, 92, 0.16);
   --canvas: #141315;
+
+  /* Timeline layers */
+  --time-frame: #4e8ce9;
+  --time-frame-soft: rgba(78, 140, 233, 0.16);
+  --time-shape: #7c5cff;
+  --time-shape-soft: rgba(124, 92, 255, 0.16);
+  --time-rect: var(--time-shape);
+  --time-rect-soft: var(--time-shape-soft);
+  --time-ellipse: var(--time-shape);
+  --time-ellipse-soft: var(--time-shape-soft);
+  --time-path: var(--time-shape);
+  --time-path-soft: var(--time-shape-soft);
+  --time-line: var(--time-shape);
+  --time-line-soft: var(--time-shape-soft);
+  --time-group: var(--time-shape);
+  --time-group-soft: var(--time-shape-soft);
+  --time-text: #3eb489;
+  --time-text-soft: rgba(62, 180, 137, 0.16);
+  --time-image: #db6194;
+  --time-image-soft: rgba(219, 97, 148, 0.16);
+  --time-video: var(--duet);
+  --time-video-soft: var(--duet-soft);
+  --time-sound: #e5a93c;
+  --time-sound-soft: rgba(229, 169, 60, 0.16);
+  --time-instance: #22b8cf;
+  --time-instance-soft: rgba(34, 184, 207, 0.16);
 }
 
 * {
@@ -2058,27 +2084,123 @@ button {
   top: 4px;
   height: 16px;
   border-radius: 4px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent);
+  background: var(--time-shape-soft);
+  border: 1px solid var(--time-shape);
   cursor: grab;
-}
-.time-span.video {
-  background: var(--duet-soft);
-  border-color: var(--duet);
 }
 .time-row.on .time-span,
 .time-span.on {
-  background: var(--accent);
+  background: var(--time-shape);
+}
+.time.cut .time-span:not(.on) {
+  background: var(--time-shape-soft);
+}
+
+/* Shapes: rect, ellipse, path, line, group */
+.time-span.rect,
+.time-span.ellipse,
+.time-span.path,
+.time-span.line,
+.time-span.group {
+  background: var(--time-shape-soft);
+  border-color: var(--time-shape);
+}
+.time-row.on .time-span.rect,
+.time-span.rect.on,
+.time-row.on .time-span.ellipse,
+.time-span.ellipse.on,
+.time-row.on .time-span.path,
+.time-span.path.on,
+.time-row.on .time-span.line,
+.time-span.line.on,
+.time-row.on .time-span.group,
+.time-span.group.on {
+  background: var(--time-shape);
+}
+.time.cut .time-span.rect:not(.on),
+.time.cut .time-span.ellipse:not(.on),
+.time.cut .time-span.path:not(.on),
+.time.cut .time-span.line:not(.on),
+.time.cut .time-span.group:not(.on) {
+  background: var(--time-shape-soft);
+}
+
+/* Frame */
+.time-span.frame {
+  background: var(--time-frame-soft);
+  border-color: var(--time-frame);
+}
+.time-row.on .time-span.frame,
+.time-span.frame.on {
+  background: var(--time-frame);
+}
+.time.cut .time-span.frame:not(.on) {
+  background: var(--time-frame-soft);
+}
+
+/* Text */
+.time-span.text {
+  background: var(--time-text-soft);
+  border-color: var(--time-text);
+}
+.time-row.on .time-span.text,
+.time-span.text.on {
+  background: var(--time-text);
+}
+.time.cut .time-span.text:not(.on) {
+  background: var(--time-text-soft);
+}
+
+/* Image */
+.time-span.image {
+  background: var(--time-image-soft);
+  border-color: var(--time-image);
+}
+.time-row.on .time-span.image,
+.time-span.image.on {
+  background: var(--time-image);
+}
+.time.cut .time-span.image:not(.on) {
+  background: var(--time-image-soft);
+}
+
+/* Video */
+.time-span.video {
+  background: var(--duet-soft);
+  border-color: var(--duet);
 }
 .time-row.on .time-span.video,
 .time-span.video.on {
   background: var(--duet);
 }
-.time.cut .time-span:not(.on) {
-  background: var(--accent-soft);
-}
 .time.cut .time-span.video:not(.on) {
   background: var(--duet-soft);
+}
+
+/* Sound */
+.time-span.sound {
+  background: var(--time-sound-soft);
+  border-color: var(--time-sound);
+}
+.time-row.on .time-span.sound,
+.time-span.sound.on {
+  background: var(--time-sound);
+}
+.time.cut .time-span.sound:not(.on) {
+  background: var(--time-sound-soft);
+}
+
+/* Instance */
+.time-span.instance {
+  background: var(--time-instance-soft);
+  border-color: var(--time-instance);
+}
+.time-row.on .time-span.instance,
+.time-span.instance.on {
+  background: var(--time-instance);
+}
+.time.cut .time-span.instance:not(.on) {
+  background: var(--time-instance-soft);
 }
 .time-span-name {
   position: absolute;
@@ -2310,13 +2432,6 @@ button {
 .motion-row .mini {
   padding: 2px 8px;
   font-size: 11px;
-}
-.time-span.sound {
-  background: var(--panel-2);
-  border-color: var(--muted);
-}
-.time-row.on .time-span.sound {
-  background: var(--muted);
 }
 
 .time-snap {
