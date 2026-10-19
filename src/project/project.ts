@@ -1,4 +1,5 @@
 import { flushPictures, picturesIn, preloadPictures } from "./assets";
+import { adoptFonts, fontFilesIn } from "./fonts";
 import { renderPng } from "./exporter";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
@@ -756,6 +757,7 @@ async function loadFrom(path: string, quiet: boolean, file: string): Promise<boo
       return false;
     }
     const doc = parseDoc(await invoke<string>("read_text_file", { path: design }));
+    await adoptFonts(path);
     const entries = await readHistory(path);
     stepsKept = new Set(entries.flatMap((e) => [e.step, ...(e.covers ?? [])].filter((n): n is string => !!n)));
     // the project being left waits in its tab; what was said in it goes into its file first
@@ -889,7 +891,7 @@ async function sendCopyDialog(choice: CopyChoice): Promise<{ saved: string } | {
         file: picked,
         design: serializeDoc(doc),
         previewBase64: await previewPng(doc).catch(() => null),
-        pictures: picturesIn(doc),
+        pictures: [...picturesIn(doc), ...fontFilesIn(doc)],
         history: choice.history,
         conversation: choice.conversation,
       });

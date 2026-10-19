@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Doc } from "../document/types";
 import { getState } from "../state/store";
+import { flushFonts } from "./fonts";
 
 /**
  * Pictures placed on the canvas. Each one is stored once, under a name made from its contents
@@ -140,4 +141,5 @@ async function writePicture(src: string, dir: string) {
 /** Put every picture the design uses into the project folder. Safe to call as often as you like. */
 export async function flushPictures(dir: string, doc: Doc) {
   for (const src of picturesIn(doc)) await writePicture(src, dir).catch((e) => console.warn("Could not save a picture:", e));
+  await flushFonts(dir, doc);
 }
