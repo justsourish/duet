@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import CanvasView from "../canvas/CanvasView";
 import type { Recent } from "../project/project";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask, message } from "@tauri-apps/plugin-dialog";
 import type { Trashed } from "../project/project";
 import { closeProject, closeTab, getRecents, getTabs, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
@@ -56,22 +56,29 @@ export function sortProjects<T extends { name: string; opened: number }>(all: T[
   return [...all].sort((a, b) => (by === "name" ? a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) : b.opened - a.opened));
 }
 
-const VIEW_KEY = "duet:projects-view";
-const readView = (): "list" | "grid" => {
+const SIZE_KEY = "duet:projects-size";
+const readSize = (): number => {
   try {
-    return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid";
+    const n = Number(localStorage.getItem(SIZE_KEY));
+    return n >= 120 && n <= 360 ? n : 190;
   } catch {
-    return "grid";
+    return 190;
   }
 };
 
-/** One project as a big picture card, or a small line, on the page of all projects. */
-function ProjectTile({ r, view, on, open, onOpen, onMenu }: { r: Recent; view: "list" | "grid"; on: boolean; open: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
+/** A dot for an open project: purple for the one on screen, white for one waiting in the background. */
+function OpenDot({ on, open }: { on: boolean; open: boolean }) {
+  if (!on && !open) return null;
+  return <span className={`chathome-dot ${on ? "now" : ""}`} title={on ? "Open now" : "Open"} />;
+}
+
+/** One project as a picture card on the page of all projects. */
+function ProjectTile({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; open: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
   const own = usePreview(r.thumb ? "" : r.path);
   const src = r.thumb ?? own;
   return (
     <div
-      className={`tile ${view} ${on ? "on" : ""}`}
+      className={`tile ${on ? "on" : ""} ${on || open ? "" : "shut"}`}
       onClick={onOpen}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -83,6 +90,7 @@ function ProjectTile({ r, view, on, open, onOpen, onMenu }: { r: Recent; view: "
       <div className="tile-text">
         <div className="chathome-name">{r.name}</div>
         <div className="chathome-when">{on ? "Open now" : open ? "Open" : ago(r.opened)}</div>
+        <OpenDot on={on} open={open} />
       </div>
     </div>
   );
@@ -94,7 +102,7 @@ function ProjectRow({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; o
   const src = r.thumb ?? own;
   return (
     <div
-      className={`chathome-row ${on ? "on" : ""}`}
+      className={`chathome-row ${on ? "on" : ""} ${on || open ? "" : "shut"}`}
       onClick={onOpen}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -107,7 +115,7 @@ function ProjectRow({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; o
         <div className="chathome-name">{r.name}</div>
         <div className="chathome-when">{on ? "Open now" : open ? "Open" : ago(r.opened)}</div>
       </div>
-      {open && !on && <span className="chathome-dot" title="Open" />}
+      <OpenDot on={on} open={open} />
     </div>
   );
 }
@@ -170,26 +178,30 @@ function TrashView({ onBack }: { onBack: () => void }) {
  */
 export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   const current = useStore((s) => s.project);
-  // read again whenever the open project changes, since opening one moves it to the top of the list
-  const recents = useMemo(() => getRecents(), [current.file, current.name]);
   const [typed, setTyped] = useState("");
+  // read again whenever the list or the open projects change: opening, closing, removing or trashing one
   const [, again] = useState(0);
   useEffect(() => {
     const redo = () => again((n) => n + 1);
     window.addEventListener("duet:tabs", redo);
-    return () => window.removeEventListener("duet:tabs", redo);
+    window.addEventListener("duet:recents", redo);
+    return () => {
+      window.removeEventListener("duet:tabs", redo);
+      window.removeEventListener("duet:recents", redo);
+    };
   }, []);
+  const recents = getRecents();
   const tabs = getTabs();
   const [skills, setSkills] = useState(false);
   const [trash, setTrash] = useState(false);
   const [searching, setSearching] = useState(false);
   const [all, setAll] = useState(false);
-  const [view, setViewState] = useState<"list" | "grid">(readView);
+  const [size, setSizeState] = useState(readSize);
   const [sort, setSort] = useState<ProjectSort>("recent");
-  const setView = (v: "list" | "grid") => {
-    setViewState(v);
+  const setSize = (n: number) => {
+    setSizeState(n);
     try {
-      localStorage.setItem(VIEW_KEY, v);
+      localStorage.setItem(SIZE_KEY, String(n));
     } catch {
       /* nothing to do */
     }
@@ -324,7 +336,7 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
               const r = menu.r;
               setMenu(null);
               if (tabs.includes(r.path) && !(await leave(r.path))) return;
-              await trashProject(r.path).catch(() => undefined);
+              await trashProject(r.path).catch((e) => message(`“${r.name}” could not be moved to the Trash. ${String(e)}`, { title: "Move to Trash", kind: "warning" }));
             }}
             title={`Kept ${TRASH_DAYS} days in the Trash, then cleared out.`}
           >
@@ -344,24 +356,16 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
               <option value="recent">Last opened</option>
               <option value="name">Name</option>
             </select>
-            <div className="all-switch">
-              <button className={view === "list" ? "on" : ""} title="List" onClick={() => setView("list")}>
-                <Icon name="list" size={16} />
-              </button>
-              <button className={view === "grid" ? "on" : ""} title="Big pictures" onClick={() => setView("grid")}>
-                <Icon name="grid" size={16} />
-              </button>
-            </div>
+            <input className="all-size" type="range" min={120} max={360} step={10} value={size} onChange={(e) => setSize(Number(e.target.value))} title="Picture size" />
             <button className="pill" onClick={() => setAll(false)}>
               Back to chat
             </button>
           </div>
-          <div className={`all-body ${view}`}>
+          <div className="all-body" style={{ ["--tile" as string]: `${size}px` }}>
             {sortProjects(shown, sort).map((r) => (
               <ProjectTile
                 key={r.path}
                 r={r}
-                view={view}
                 on={r.path === current.file}
                 open={tabs.includes(r.path)}
                 onOpen={() => {
