@@ -491,6 +491,10 @@ button {
   color: var(--text);
   cursor: pointer;
 }
+body.eyedropping,
+body.eyedropping * {
+  cursor: crosshair !important;
+}
 .cpick-label {
   font-size: 11px;
   color: var(--muted);

@@ -8,7 +8,7 @@ import { useDismiss } from "./useDismiss";
 const W = 232;
 const H = 330;
 
-/** The browser's own eyedropper, where the system has one. Not every system does, so it is only offered when it is there. */
+/** The system's own eyedropper, which picks from anywhere on screen. Not every system has one. */
 interface EyeDropperLike {
   open: () => Promise<{ sRGBHex: string }>;
 }
@@ -17,12 +17,47 @@ const eyeDropper = (): EyeDropperLike | null => {
   return E ? new E() : null;
 };
 
+/**
+ * Duet's own eyedropper, for systems without one: the next click on the canvas picks the colour under the
+ * pointer, as it is drawn. A click anywhere else, or Escape, stops without picking.
+ */
+function canvasDropper(): Promise<string | null> {
+  return new Promise((done) => {
+    document.body.classList.add("eyedropping");
+    const finish = (hex: string | null) => {
+      document.body.classList.remove("eyedropping");
+      window.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("keydown", key, true);
+      done(hex);
+    };
+    const down = (e: PointerEvent) => {
+      // first in line, so the canvas tools and closing the picker never see this click
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const c = e.target instanceof HTMLCanvasElement ? e.target : null;
+      const ctx = c?.getContext("2d");
+      if (!c || !ctx) return finish(null);
+      const box = c.getBoundingClientRect();
+      const x = Math.floor(((e.clientX - box.left) / box.width) * c.width);
+      const y = Math.floor(((e.clientY - box.top) / box.height) * c.height);
+      const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
+      finish(`#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      finish(null);
+    };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("keydown", key, true);
+  });
+}
+
 /** Follow the pointer across a strip or square from the press until it lets go, as fractions 0 to 1. */
 function dragger(onMove: (fx: number, fy: number) => void, onEnd: () => void) {
   return (e: React.PointerEvent<HTMLDivElement>) => {
     const box = e.currentTarget.getBoundingClientRect();
-    const at = (ev: { clientX: number; clientY: number }) =>
-      onMove(Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width)), Math.min(1, Math.max(0, (ev.clientY - box.top) / box.height)));
+    const at = (ev: { clientX: number; clientY: number }) => onMove(Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width)), Math.min(1, Math.max(0, (ev.clientY - box.top) / box.height)));
     e.currentTarget.setPointerCapture(e.pointerId);
     at(e);
     const el = e.currentTarget;
@@ -41,9 +76,23 @@ function dragger(onMove: (fx: number, fy: number) => void, onEnd: () => void) {
 
 /**
  * Duet's colour picker: a square for how strong and how bright, a strip for the hue, one for how see-through,
- * the hex, and the colours the design already uses. Dragging shows the change live; letting go keeps it.
+ * the hex, an eyedropper, and the colours the design already uses. Dragging shows the change live; letting go keeps it.
  */
-export function ColorPicker({ value, at, onPreview, onCommit, onClose, tag }: { value: string | null; at: DOMRect; onPreview?: (c: string) => void; onCommit: (c: string) => void; onClose: () => void; tag: string }) {
+export function ColorPicker({
+  value,
+  at,
+  onPreview,
+  onCommit,
+  onClose,
+  tag,
+}: {
+  value: string | null;
+  at: DOMRect;
+  onPreview?: (c: string) => void;
+  onCommit: (c: string) => void;
+  onClose: () => void;
+  tag: string;
+}) {
   const [hsva, setHsva] = useState<Hsva>(() => hexToHsva(value ?? "#000000"));
   const live = useRef(hsva);
   const [text, setText] = useState(colorHex(hsvaToHex(hsva)).toUpperCase());
@@ -85,38 +134,50 @@ export function ColorPicker({ value, at, onPreview, onCommit, onClose, tag }: { 
   const pure = colorHex(hsvaToHex({ h: hsva.h, s: 1, v: 1, a: 1 }));
   const left = Math.max(8, at.left - W - 10);
   const top = Math.min(window.innerHeight - H - 8, Math.max(8, at.top - 40));
-  const dropper = typeof window !== "undefined" && "EyeDropper" in window;
 
   return createPortal(
     <div className="cpick" data-cp={tag} style={{ left, top, width: W }} onKeyDown={(e) => e.stopPropagation()}>
       <div className="cpick-square" style={{ background: pure }} onPointerDown={square}>
-        <span className="cpick-knob" style={{ left: `${hsva.s * 100}%`, top: `${(1 - hsva.v) * 100}%`, background: solid }} />
+        <span
+          className="cpick-knob"
+          style={{
+            left: `${hsva.s * 100}%`,
+            top: `${(1 - hsva.v) * 100}%`,
+            background: solid,
+          }}
+        />
       </div>
       <div className="cpick-strip cpick-hue" onPointerDown={hue}>
         <span className="cpick-knob" style={{ left: `${(hsva.h / 360) * 100}%`, background: pure }} />
       </div>
       <div className="cpick-strip cpick-alpha" onPointerDown={alpha}>
-        <span className="cpick-fade" style={{ background: `linear-gradient(to right, transparent, ${solid})` }} />
+        <span
+          className="cpick-fade"
+          style={{
+            background: `linear-gradient(to right, transparent, ${solid})`,
+          }}
+        />
         <span className="cpick-knob" style={{ left: `${hsva.a * 100}%`, background: hsvaToHex(hsva) }} />
       </div>
       <div className="cpick-row">
-        {dropper && (
-          <button
-            type="button"
-            className="cpick-drop"
-            title="Pick a colour from the screen"
-            onClick={() =>
-              void eyeDropper()
-                ?.open()
+        <button
+          type="button"
+          className="cpick-drop"
+          title="Pick a colour from the canvas"
+          onClick={() => {
+            const system = eyeDropper();
+            if (system)
+              void system
+                .open()
                 .then((r) => pick(r.sRGBHex))
-                .catch(() => undefined)
-            }
-          >
-            <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M10.5 2.5a2 2 0 0 1 3 3L12 7l.8.8-1.2 1.2-.8-.8-5 5H3.5v-2.3l5-5-.8-.8L8.9 3.9l.8.8z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-            </svg>
-          </button>
-        )}
+                .catch(() => undefined);
+            else void canvasDropper().then((hex) => hex && pick(hex));
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M10.5 2.5a2 2 0 0 1 3 3L12 7l.8.8-1.2 1.2-.8-.8-5 5H3.5v-2.3l5-5-.8-.8L8.9 3.9l.8.8z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          </svg>
+        </button>
         <input
           className="cpick-hex"
           value={text}
@@ -137,7 +198,10 @@ export function ColorPicker({ value, at, onPreview, onCommit, onClose, tag }: { 
           onChange={(e) => {
             const n = Number(e.target.value);
             if (Number.isFinite(n)) {
-              const next = { ...live.current, a: Math.min(100, Math.max(0, n)) / 100 };
+              const next = {
+                ...live.current,
+                a: Math.min(100, Math.max(0, n)) / 100,
+              };
               live.current = next;
               setHsva(next);
             }
