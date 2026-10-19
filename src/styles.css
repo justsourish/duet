@@ -4473,6 +4473,10 @@ button.agent-perm {
 .chathome-search input::placeholder {
   color: var(--muted);
 }
+.chathome-foot {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
 .chathome-label {
   margin: 14px 10px 4px;
   font-size: 11px;

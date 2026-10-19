@@ -188,6 +188,15 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
             <Icon name="search" size={16} />
             <input placeholder="Search projects" value={typed} onChange={(e) => setTyped(e.target.value)} />
           </label>
+        </div>
+        <div className="chathome-label">Projects</div>
+        <div className="chathome-list">
+          {shown.map((r) => (
+            <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
+          ))}
+          {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
+        </div>
+        <div className="chathome-nav chathome-foot">
           <button className={`chathome-item ${skills ? "on" : ""}`} onClick={() => {
               setSkills(!skills);
               setTrash(false);
@@ -206,13 +215,6 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
           <button className="chathome-item" onClick={() => window.dispatchEvent(new Event("duet:settings"))}>
             <Icon name="settings" size={16} /> Settings
           </button>
-        </div>
-        <div className="chathome-label">Projects</div>
-        <div className="chathome-list">
-          {shown.map((r) => (
-            <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
-          ))}
-          {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
         </div>
       </aside>
       {menu && (
