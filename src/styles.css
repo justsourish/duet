@@ -749,17 +749,26 @@ button {
 /* floating chat */
 .csize {
   position: absolute;
-  width: 18px;
-  height: 18px;
   z-index: 2;
   touch-action: none;
 }
-.csize.l { left: 0; cursor: nwse-resize; }
-.csize.r { right: 0; cursor: nesw-resize; }
-.csize.t { top: 0; }
-.csize.b { bottom: 0; }
-.csize.l.t, .csize.r.b { cursor: nwse-resize; }
-.csize.r.t, .csize.l.b { cursor: nesw-resize; }
+.csize.corner {
+  width: 16px;
+  height: 16px;
+  z-index: 3;
+}
+.csize.corner.t { top: 0; }
+.csize.corner.b { bottom: 0; }
+.csize.corner.l { left: 0; }
+.csize.corner.r { right: 0; }
+.csize.corner.t.l, .csize.corner.b.r { cursor: nwse-resize; }
+.csize.corner.t.r, .csize.corner.b.l { cursor: nesw-resize; }
+
+.csize.edge.t { top: 0; left: 16px; right: 16px; height: 6px; cursor: ns-resize; }
+.csize.edge.b { bottom: 0; left: 16px; right: 16px; height: 6px; cursor: ns-resize; }
+.csize.edge.l { left: 0; top: 16px; bottom: 16px; width: 6px; cursor: ew-resize; }
+.csize.edge.r { right: 0; top: 16px; bottom: 16px; width: 6px; cursor: ew-resize; }
+
 .csize::after {
   content: "";
   position: absolute;
