@@ -307,7 +307,7 @@ export default function App() {
           <TimeStrip />
         </>
       )}
-      <HistoryStrip chat={chatting} />
+      <HistoryStrip />
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />
       {videoCut && <VideoCut onClose={() => setVideoCut(false)} />}

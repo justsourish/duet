@@ -4600,14 +4600,6 @@ button.agent-perm {
   background: var(--panel-2);
   color: var(--muted);
 }
-/* in Chat the bottom bar only holds the early access note and Feedback, at the right */
-.hist.in-chat-space .hist-gap {
-  flex: 1;
-}
-.hist.in-chat-space .hist-legend,
-.hist.in-chat-space .scroller {
-  display: none;
-}
 .chathome-label {
   margin: 14px 10px 4px;
   font-size: 11px;
