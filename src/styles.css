@@ -4779,9 +4779,15 @@ button.agent-perm {
 }
 
 /* the page of all projects covers the chat and the canvas; a grid of big pictures or a list of small ones */
+.chathome {
+  position: relative;
+}
 .chathome-all {
-  grid-column: 2 / -1;
-  grid-row: 1;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 276px;
+  right: 0;
   z-index: 5;
   display: flex;
   flex-direction: column;
