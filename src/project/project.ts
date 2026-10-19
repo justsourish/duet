@@ -6,11 +6,11 @@ import { emptyDoc } from "../document/types";
 import type { Doc } from "../document/types";
 import { DesignFileError, parseDoc, serializeDoc } from "../document/serialize";
 import { readyToLeave } from "../ai/agent";
-import { conversationProject, getChat, moveConversationTo, restoreConversation, showConversationFor, subscribeChat } from "../ai/chat";
+import { conversationProject, forgetSteps, getChat, moveConversationTo, restoreConversation, showConversationFor, subscribeChat } from "../ai/chat";
 import { loadThread, saveThread } from "../memory/files";
 import { stepsLine } from "../memory/steps";
 import { keepable, packThread, readThread } from "../memory/thread";
-import { getState, loadDoc, loadTimeline, setEntryVersion, setProject, subscribe } from "../state/store";
+import { dropParked, getState, isParked, loadDoc, loadTimeline, onParkedChange, parkLive, parkedState, setEntryVersion, setProject, subscribe, unpark } from "../state/store";
 import type { HistoryEntry } from "../state/store";
 
 const FILE = "design.json";
@@ -116,7 +116,7 @@ export async function learnCheckCopy(): Promise<boolean> {
   return checkCopy;
 }
 
-// ---- open projects, shown as tabs. Only one is loaded at a time; the others are one click away and keep their history ----
+// ---- open projects, shown as tabs. One is on screen; the others wait in memory with their history, and an AI can keep working in them ----
 const TABS_KEY = "duet:tabs";
 let tabs: string[] | null = null;
 
@@ -150,6 +150,7 @@ export function addTab(path: string) {
 
 /** Take a project off the open ones. Returns the one to show next, if there is one. */
 export function closeTab(path: string): string | null {
+  if (isParked(path)) void forgetParked(path);
   const list = getTabs();
   const at = list.indexOf(path);
   const rest = list.filter((p) => p !== path);
@@ -291,6 +292,91 @@ async function writeDesign(path: string, doc: Doc) {
   previewLater(path, doc);
 }
 
+// ---- projects waiting in a tab are saved too: an AI may still be working in one ----
+
+interface Kept {
+  lastSaved: Doc | null;
+  stepsKept: Set<string>;
+  timer?: ReturnType<typeof setTimeout>;
+}
+/** What has been saved of each project waiting in a tab. */
+const parkedSaves = new Map<string, Kept>();
+
+/** Save a waiting project's newest change, with a step in its history, and pack its file. */
+function saveParked(file: string): Promise<void> {
+  return enqueue(async () => {
+    const s = parkedState(file);
+    const kept = parkedSaves.get(file);
+    const path = s?.project.path;
+    if (!s || !kept || !path) return;
+    clearTimeout(kept.timer);
+    kept.timer = undefined;
+    const doc = s.timeline[s.cursor].doc;
+    if (doc === kept.lastSaved) return;
+    const previous = kept.lastSaved;
+    kept.lastSaved = doc;
+    try {
+      await flushPictures(path, doc);
+      await invoke("write_text_file", { path: join(path, FILE), contents: serializeDoc(doc) });
+      const names = stepsToKeep(s.timeline, s.cursor, kept.stepsKept);
+      if (await recordStep(path, stepMessage(s.timeline[s.cursor], s.cursor < s.timeline.length - 1, names))) for (const n of names) kept.stepsKept.add(n);
+      await invoke("pack_project", { dir: path, file });
+    } catch (e) {
+      kept.lastSaved = previous;
+      console.warn("A project waiting in its tab could not be saved:", e);
+    }
+  });
+}
+
+let watchingParked = false;
+function watchParked() {
+  if (watchingParked) return;
+  watchingParked = true;
+  onParkedChange((file) => {
+    const kept = parkedSaves.get(file);
+    if (!kept) return;
+    clearTimeout(kept.timer);
+    kept.timer = setTimeout(() => void saveParked(file), 700);
+  });
+}
+
+/** Put the project on screen away in its tab, saved, so another can come on screen. Says whether it could wait. */
+async function parkCurrent(): Promise<boolean> {
+  const { file, path } = getState().project;
+  if (!file || !path || !getTabs().includes(file)) return false;
+  clearTimeout(timer);
+  if (committed() !== lastSaved) await saveNow();
+  await flushPack();
+  if (!parkLive()) return false;
+  watchParked();
+  parkedSaves.set(file, { lastSaved, stepsKept });
+  return true;
+}
+
+/** Bring a waiting project back on screen as it was: its history, its selection and its conversation. */
+async function bringBack(file: string): Promise<boolean> {
+  const kept = parkedSaves.get(file);
+  if (kept?.timer) await saveParked(file);
+  if (!(await parkCurrent())) await flushPack();
+  showConversationFor(file);
+  if (!unpark(file)) return false;
+  parkedSaves.delete(file);
+  lastSaved = kept?.lastSaved ?? committed();
+  stepsKept = kept?.stepsKept ?? new Set();
+  remember(file);
+  return true;
+}
+
+/** A tab was closed: save what is waiting in it, then let it go. */
+async function forgetParked(file: string) {
+  await saveParked(file);
+  const kept = parkedSaves.get(file);
+  clearTimeout(kept?.timer);
+  parkedSaves.delete(file);
+  dropParked(file);
+  forgetSteps(file);
+}
+
 /** The text stored with each saved step. The first line is what the history strip shows. */
 export function stepMessage(entry: Pick<HistoryEntry, "label" | "actor" | "by">, wentBack: boolean, names: string[] = []) {
   const label = wentBack ? `Went back to: ${entry.label}` : entry.label;
@@ -429,10 +515,11 @@ async function newProjectDialog() {
   }
   const picked = await chooseFile("Name your new project");
   if (!picked) return;
-  if (!(await readyToLeave())) return;
+  if (!getState().project.file && !(await readyToLeave())) return;
   try {
     const doc = emptyDoc();
-    await flushPack(); // what was said in the project being left goes into its file first
+    // the project being left waits in its tab; what was said in it goes into its file first
+    if (!(await parkCurrent())) await flushPack();
     const work = await createProject(picked, doc, "New file");
     showConversationFor(picked, true);
     loadDoc(doc, "New file");
@@ -467,7 +554,7 @@ export async function startTestDesign(doc: Doc = emptyDoc()): Promise<string | n
   if (!inTest) {
     if (!s.project.path && s.timeline.length > 1) return "There is work here that has not been saved. Save it first.";
     // no question on the screen here: whoever asked for a test design cannot answer one
-    if (getChat().running) return "The AI in the chat is still working. Wait for it or stop it first.";
+    if (getChat().busy !== null) return "The AI in the chat is still working. Wait for it or stop it first.";
     clearTimeout(timer);
     // a change still waiting to be saved belongs to the project being put away
     if (s.project.path && committed() !== lastSaved) await saveNow();
@@ -509,7 +596,8 @@ export async function keepTestDesign(file: string): Promise<string | null> {
 
 /** Close the project on screen and leave an empty, unsaved one behind it. Used when the last tab is closed. */
 export async function closeProject() {
-  await flushPack(); // what was said in the project being left goes into its file first
+  // a project still in a tab waits there; what was said in the one being left goes into its file first
+  if (!(await parkCurrent())) await flushPack();
   showConversationFor("", true);
   setProject({ path: null, file: null, name: "Untitled", status: "unsaved", error: null });
   loadDoc(emptyDoc(), "New file");
@@ -584,7 +672,8 @@ async function loadFrom(path: string, quiet: boolean, file: string): Promise<boo
     const doc = parseDoc(await invoke<string>("read_text_file", { path: design }));
     const entries = await readHistory(path);
     stepsKept = new Set(entries.flatMap((e) => [e.step, ...(e.covers ?? [])].filter((n): n is string => !!n)));
-    await flushPack(); // what was said in the project being left goes into its file first
+    // the project being left waits in its tab; what was said in it goes into its file first
+    if (getState().project.file !== file && !(await parkCurrent())) await flushPack();
     showConversationFor(file);
     await bringBackThread(path);
     if (entries.length === 0) {
@@ -625,7 +714,8 @@ export async function openProjectAt(path: string, closing = false): Promise<bool
     });
     if (!go) return false;
   }
-  if (!(await readyToLeave(closing))) return false;
+  // an AI keeps working in its own project while another is on screen; unsaved work has no tab to wait in
+  if (!getState().project.file && !(await readyToLeave(closing))) return false;
   return openAny(path);
 }
 
@@ -637,6 +727,7 @@ function openAny(path: string, quiet = false): Promise<boolean> {
 }
 
 async function openFile(path: string, quiet: boolean): Promise<boolean> {
+  if (isParked(path)) return bringBack(path);
   try {
     if ((await invoke<boolean>("is_directory", { path })) === true) {
       if (!quiet) await oops("Duet projects are single .duet files now. Choose a file that ends in .duet.");
@@ -662,7 +753,7 @@ export async function openProject() {
 async function openProjectDialog() {
   if (!inTauri()) return;
   const picked = await open({ directory: false, multiple: false, title: "Open a Duet project", filters: [{ name: "Duet project", extensions: ["duet"] }] });
-  if (typeof picked === "string" && (await readyToLeave())) await openAny(picked);
+  if (typeof picked === "string" && (getState().project.file || (await readyToLeave()))) await openAny(picked);
 }
 
 /** Save the design as plain data (a .json file), for people and programs that want it. */

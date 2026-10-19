@@ -3,16 +3,26 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { addTab, closeProject, closeTab, getTabs, inTauri, openProjectAt, tabName } from "../project/project";
 import { currentDoc, useStore } from "../state/store";
 import { readyToLeave } from "../ai/agent";
+import { useChat } from "../ai/chat";
+import { outsideHomes } from "../ai/tools";
 
 /**
- * The projects you have open, like tabs in a browser. One is live at a time; the others keep their
- * history and are one click away. The home button shows all your projects; + starts a new design.
+ * The projects you have open, like tabs in a browser. One is on screen; the others wait with their
+ * history, and an AI can keep working in one. A small dot shows where an AI is at work.
+ * The home button shows all your projects; + starts a new design.
  */
 export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: boolean) => void }) {
   const project = useStore((s) => s.project);
   const empty = useStore((s) => currentDoc(s).rootIds.length === 0);
   const file = project.file;
   const [, again] = useState(0);
+  const chatBusy = useChat((s) => s.busy);
+  // an AI from outside says nothing when it stops, so look again now and then
+  useEffect(() => {
+    const t = setInterval(() => again((n) => n + 1), 3000);
+    return () => clearInterval(t);
+  }, []);
+  const working = new Set([...outsideHomes(), ...(chatBusy ? [chatBusy] : [])]);
   useEffect(() => {
     const redo = () => again((n) => n + 1);
     window.addEventListener("duet:tabs", redo);
@@ -47,7 +57,9 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
     setHome(true);
   };
 
-  const closeSaved = (path: string) => {
+  const closeSaved = async (path: string) => {
+    // the chat's AI may be at work in this project, even when it is not on screen
+    if (!(await readyToLeave(true, path))) return;
     const rest = list.filter((p) => p !== path);
     closeTab(path);
     if (path === file) void afterClosing(rest);
@@ -82,9 +94,10 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
         return (
           <div key={path} role="tab" aria-selected={on} className={`project-tab ${on ? "active" : ""}`} title={path}>
             <button className="tab-name" onClick={() => void show(path)}>
+              {working.has(path) && <i className="tab-busy" title="An AI is at work here" />}
               {tabName(path)}
             </button>
-            <button className="tab-x" aria-label={`Close ${tabName(path)}`} onClick={() => closeSaved(path)}>
+            <button className="tab-x" aria-label={`Close ${tabName(path)}`} onClick={() => void closeSaved(path)}>
               ×
             </button>
           </div>

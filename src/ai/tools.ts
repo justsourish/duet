@@ -17,11 +17,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { addPicture, mimeFor, preloadPictures } from "../project/assets";
 import { renderPng } from "../project/exporter";
 import { fileLength } from "../video/clips";
-import { saveNow } from "../project/project";
+import { saveNow, tabName } from "../project/project";
 import { tracePicture } from "../project/trace";
-import { currentDoc, dispatch, getState, goTo, keepAiWorkWhile, noteAiArea, noteAiWork, select, touchAiWork } from "../state/store";
+import { getState, goTo, keepAiWorkWhile, liveRoom, roomFor } from "../state/store";
+import type { Room } from "../state/store";
 import { addMsg, askDesigner, getChat, setMinimized, updateMsg } from "./chat";
 import { outsideRules, skillsText } from "./rules";
+import { isOutside } from "./who";
 import { getSkills, keepTaughtSkill } from "./skills";
 
 /**
@@ -330,12 +332,12 @@ type Args = Record<string, unknown>;
 const fail = (text: string): ToolResult => ({ text, isError: true });
 
 function missing(list: unknown): string[] {
-  const doc = currentDoc();
+  const doc = R.currentDoc();
   return Array.isArray(list) ? list.filter((i) => typeof i !== "string" || !doc.elements[i]).map(String) : ["(not a list)"];
 }
 
 function nameOf(id: unknown): string {
-  return typeof id === "string" ? (currentDoc().elements[id]?.name ?? String(id)) : String(id);
+  return typeof id === "string" ? (R.currentDoc().elements[id]?.name ?? String(id)) : String(id);
 }
 
 function namesOf(list: unknown): string {
@@ -455,7 +457,7 @@ export function fixLayouts(v: unknown): unknown {
   return out;
 }
 
-function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | { error: string } {
+function prepare(tool: string, raw: Args, doc = R.currentDoc()): { args: Args } | { error: string } {
   const a = fixLayouts(raw) as Args;
   switch (tool) {
     case "create_element": {
@@ -724,9 +726,56 @@ function prepare(tool: string, raw: Args, doc = currentDoc()): { args: Args } | 
   }
 }
 
+// ---- each AI works in its own project, whichever one is on screen ----
+
+/** The project each AI works in, by the name it goes by, and when it last did something there. */
+const homes = new Map<string, { file: string | null; at: number }>();
+/** An AI quiet for this long is taken to have finished. When it comes back it works on the project on screen. */
+const HOME_KEPT_MS = 10 * 60 * 1000;
+
+/** The project an AI works in from now on. Duet's chat sets it when it starts its AI. */
+export function bindAi(by: string, file: string | null) {
+  homes.set(by, { file, at: Date.now() });
+}
+
+/** The projects an AI from outside is at work in right now, for the sign on their tabs. */
+export function outsideHomes(): string[] {
+  const now = Date.now();
+  return [...homes.entries()].filter(([by, h]) => isOutside(by) && h.file && now - h.at < 60_000).map(([, h]) => h.file as string);
+}
+
+/** The project this AI works in. Null when it was closed while the AI was at work. */
+function roomOf(by?: string): Room | null {
+  const busy = getChat().busy;
+  // Duet's own chat: the AI works in the project of the conversation it was started from
+  if (by && !isOutside(by) && busy !== null) return roomFor(busy || null);
+  if (!by) return liveRoom;
+  const now = Date.now();
+  const home = homes.get(by);
+  if (!home || now - home.at > HOME_KEPT_MS) {
+    homes.set(by, { file: liveRoom.file, at: now });
+    return liveRoom;
+  }
+  home.at = now;
+  return roomFor(home.file);
+}
+
+/** The project the call being answered works in. Calls are answered one at a time, so this is never mixed up. */
+let R: Room = liveRoom;
+let calls: Promise<unknown> = Promise.resolve();
+function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
+  const next = calls.then(job, job);
+  calls = next.catch(() => undefined);
+  return next;
+}
+/** The conversation that hears about this call: the one of its project. */
+const said = () => (R.live ? undefined : R.file);
+
 /** The step before the AI acts is already saved, so any AI change can be undone and the earlier state is safe. */
 async function ensureSaved() {
-  const p = getState().project;
+  // a project waiting in its tab saves each change by itself
+  if (!R.live) return;
+  const p = R.getState().project;
   if (p.path && p.status !== "saved") await saveNow();
 }
 
@@ -735,7 +784,7 @@ async function ensureSaved() {
  * unsaved: an AI's change must never put a Save window in front of the designer.
  */
 function saveIfHome() {
-  if (getState().project.path) void saveNow();
+  if (R.live && R.getState().project.path) void saveNow();
 }
 
 /** Longest side of a picture the AI brings in, unless it asks for a size. Same as a picture the designer drops in. */
@@ -773,9 +822,9 @@ async function placeImage(args: Args, by?: string): Promise<ToolResult> {
   height = Math.max(8, Math.round(height));
   const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : file.replace(/\.[^.]+$/, "") || "Image";
   await ensureSaved();
-  dispatch("create_element", { type: "image", id: String(args.id), parentId: args.parentId as string | null, x: Number(args.x), y: Number(args.y), width, height, props: { src: pic.src, name } }, "ai", by);
-  if (!currentDoc().elements[String(args.id)]) return fail("The picture could not be placed there.");
-  addMsg({ role: "note", text: `Brought in the picture ${file}`, ...stepNow() });
+  R.dispatch("create_element", { type: "image", id: String(args.id), parentId: args.parentId as string | null, x: Number(args.x), y: Number(args.y), width, height, props: { src: pic.src, name } }, "ai", by);
+  if (!R.currentDoc().elements[String(args.id)]) return fail("The picture could not be placed there.");
+  addMsg({ role: "note", text: `Brought in the picture ${file}`, ...stepNow() }, said());
   saveIfHome();
   return { text: `Placed the picture as ${String(args.id)} named "${name}", ${width} by ${height} (the file is ${pic.width} by ${pic.height}). Call look_at_image to see it.` };
 }
@@ -792,7 +841,7 @@ async function placeVideo(args: Args, by?: string): Promise<ToolResult> {
     return fail(`The clip at ${String(args.path)} could not be read. ${String(e)}`);
   }
   const sceneId = String(args.parentId);
-  const scene = currentDoc().elements[sceneId];
+  const scene = R.currentDoc().elements[sceneId];
   const start = Math.max(0, Number(args.start) || 0);
   const end = Math.round((start + info.duration) * 1000) / 1000;
   const k = Math.min(scene.width / info.width, scene.height / info.height);
@@ -806,12 +855,12 @@ async function placeVideo(args: Args, by?: string): Promise<ToolResult> {
   const file = path.split(/[\\/]/).pop() ?? "Clip";
   const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : file;
   await ensureSaved();
-  if (end > scene.duration) dispatch("set_duration", { id: sceneId, seconds: end }, "ai", by);
-  dispatch("create_element", { type: "video", id: String(args.id), parentId: sceneId, x, y, width, height, props: { src: path, name, start, end } }, "ai", by);
-  if (!currentDoc().elements[String(args.id)]) return fail("The clip could not be placed there.");
-  addMsg({ role: "note", text: `Brought in the clip ${file}`, ...stepNow() });
+  if (end > scene.duration) R.dispatch("set_duration", { id: sceneId, seconds: end }, "ai", by);
+  R.dispatch("create_element", { type: "video", id: String(args.id), parentId: sceneId, x, y, width, height, props: { src: path, name, start, end } }, "ai", by);
+  if (!R.currentDoc().elements[String(args.id)]) return fail("The clip could not be placed there.");
+  addMsg({ role: "note", text: `Brought in the clip ${file}`, ...stepNow() }, said());
   saveIfHome();
-  return { text: `Placed the clip as ${String(args.id)} named "${name}", ${width} by ${height}, showing from ${start}s to ${end}s (the file is ${info.duration}s long, ${info.width} by ${info.height}, ${info.sound ? "with" : "without"} sound). The frame now plays for ${currentDoc().elements[sceneId].duration}s.` };
+  return { text: `Placed the clip as ${String(args.id)} named "${name}", ${width} by ${height}, showing from ${start}s to ${end}s (the file is ${info.duration}s long, ${info.width} by ${info.height}, ${info.sound ? "with" : "without"} sound). The frame now plays for ${R.currentDoc().elements[sceneId].duration}s.` };
 }
 
 /** Save a frame as a PNG file. A file that is already there is never replaced, and the design is not changed. */
@@ -819,7 +868,7 @@ async function exportFrame(args: Args): Promise<ToolResult> {
   let path = String(args.path);
   if (path.startsWith("~")) path = (await invoke<string>("duet_home")).replace(/[\\/]\.duet[^\\/]*[\\/]?$/, "") + path.slice(1);
   if ((await invoke<boolean>("path_exists", { path })) === true) return fail(`${String(args.path)} already exists. Choose a new file name; nothing was saved.`);
-  const doc = currentDoc();
+  const doc = R.currentDoc();
   const el = doc.elements[String(args.id)];
   await preloadPictures(doc);
   const scale = Number(args.scale) || 1;
@@ -845,22 +894,22 @@ async function placeSound(args: Args, by?: string): Promise<ToolResult> {
     return fail(`The sound at ${String(args.path)} could not be played. Check the path, and that it is a sound file in a folder Duet can reach (not a hidden folder).`);
   }
   const sceneId = String(args.parentId);
-  const scene = currentDoc().elements[sceneId];
+  const scene = R.currentDoc().elements[sceneId];
   const start = Math.max(0, Math.min(scene.duration - 0.1, Number(args.start) || 0));
   const end = Math.min(scene.duration, Math.round((start + length) * 1000) / 1000);
   const file = path.split(/[\\/]/).pop() ?? "Sound";
   const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : file;
   await ensureSaved();
-  dispatch("create_element", { type: "sound", id: String(args.id), parentId: sceneId, x: 0, y: 0, width: 1, height: 1, props: { src: path, name, start, end, volume: typeof args.volume === "number" ? args.volume : 1 } }, "ai", by);
-  if (!currentDoc().elements[String(args.id)]) return fail("The sound could not be placed there.");
-  addMsg({ role: "note", text: `Brought in the sound ${file}`, ...stepNow() });
+  R.dispatch("create_element", { type: "sound", id: String(args.id), parentId: sceneId, x: 0, y: 0, width: 1, height: 1, props: { src: path, name, start, end, volume: typeof args.volume === "number" ? args.volume : 1 } }, "ai", by);
+  if (!R.currentDoc().elements[String(args.id)]) return fail("The sound could not be placed there.");
+  addMsg({ role: "note", text: `Brought in the sound ${file}`, ...stepNow() }, said());
   saveIfHome();
   return { text: `Placed the sound as ${String(args.id)} named "${name}", heard from ${start}s to ${end}s (the file is ${Math.round(length * 10) / 10}s long, the frame plays for ${scene.duration}s).` };
 }
 
 /** The step a change has just made: where it is for Undo, and its name so the words stay tied to it. */
 function stepNow() {
-  const s = getState();
+  const s = R.getState();
   return { undoStep: s.cursor, step: s.timeline[s.cursor].step };
 }
 
@@ -868,9 +917,9 @@ function stepNow() {
 async function traceImage(args: Args, by?: string): Promise<ToolResult> {
   await ensureSaved();
   const name = nameOf(args.id);
-  const result = await tracePicture(String(args.id), "ai", by);
+  const result = await tracePicture(String(args.id), "ai", by, R);
   if ("why" in result) return fail(result.why);
-  addMsg({ role: "note", text: `Traced ${name} into shapes`, ...stepNow() });
+  addMsg({ role: "note", text: `Traced ${name} into shapes`, ...stepNow() }, said());
   saveIfHome();
   const where = result.groupId ? `, together in the group ${result.groupId}` : "";
   return { text: `Made ${result.ids.length} ${result.ids.length === 1 ? "path" : "paths"}: ${result.ids.join(", ")}${where}. They sit exactly over the picture, which is still there. Change their fill with set_props.` };
@@ -878,7 +927,7 @@ async function traceImage(args: Args, by?: string): Promise<ToolResult> {
 
 async function duplicateElements(args: Args, by?: string): Promise<ToolResult> {
   await ensureSaved();
-  const doc = currentDoc();
+  const doc = R.currentDoc();
   const payload = extractPayload(doc, args.ids as string[]);
   if (!payload) return fail("Nothing to copy.");
   const first = doc.elements[payload.rootIds[0]];
@@ -890,8 +939,8 @@ async function duplicateElements(args: Args, by?: string): Promise<ToolResult> {
   const beside = !first.parentId && first.type === "frame" && sameParent;
   const dx = typeof args.dx === "number" ? args.dx : beside ? first.width + 40 : sameParent ? 16 : 0;
   const dy = typeof args.dy === "number" ? args.dy : beside ? 0 : sameParent ? 16 : 0;
-  dispatch("paste_elements", { payload, parentId, dx, dy, idMap, label: "Duplicate" }, "ai", by);
-  addMsg({ role: "note", text: summarise("duplicate_elements", args), ...stepNow() });
+  R.dispatch("paste_elements", { payload, parentId, dx, dy, idMap, label: "Duplicate" }, "ai", by);
+  addMsg({ role: "note", text: summarise("duplicate_elements", args), ...stepNow() }, said());
   saveIfHome();
   const made = payload.rootIds.map((id) => `${id} -> ${idMap[id]}`).join(", ");
   return { text: `Copied ${payload.rootIds.length === 1 ? "it" : `${payload.rootIds.length} things`} with everything inside. New ids: ${made}. The copy is a separate design now: change it with set_props and the original stays as it was.` };
@@ -908,21 +957,21 @@ async function apply(tool: string, args: Args, by?: string): Promise<ToolResult>
   // changing a value over time is one tool for the AI and the set_keys command underneath
   const command = (tool === "animate" ? "set_keys" : tool) as CommandName;
   const label = commandLabel(command, args as never);
-  dispatch(command, args as never, "ai", by);
-  addMsg({ role: "note", text: summarise(tool, args), ...stepNow() });
+  R.dispatch(command, args as never, "ai", by);
+  addMsg({ role: "note", text: summarise(tool, args), ...stepNow() }, said());
   saveIfHome();
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
   if (tool === "make_mask") {
-    if (!currentDoc().elements[String(args.groupId)]) return fail("That mask could not be made.");
+    if (!R.currentDoc().elements[String(args.groupId)]) return fail("That mask could not be made.");
     return { text: `Made the mask group ${String(args.groupId)}. It is as big as the shape. Its things kept their ids.` };
   }
   if (tool === "create_elements") {
     const items = (args.items as { id: string; type: string }[]) ?? [];
-    const doc = currentDoc();
+    const doc = R.currentDoc();
     return { text: `Created ${items.length} elements: ${items.map((i) => `${i.id} "${doc.elements[i.id]?.name}"`).join(", ")}. Look at the design to check it.` };
   }
   if (tool === "create_element") {
-    const el = currentDoc().elements[String(args.id)];
+    const el = R.currentDoc().elements[String(args.id)];
     const box = el?.type === "path" ? ` Its box sits at ${Math.round(el.x)},${Math.round(el.y)} and is ${Math.round(el.width)} by ${Math.round(el.height)}.` : "";
     return { text: `Created ${String(args.id)} named "${el?.name}" (${label}).${box}` };
   }
@@ -940,7 +989,11 @@ export async function applyProposal(msgId: number) {
     return;
   }
   updateMsg(msgId, { proposal: { ...msg.proposal, status: "applied" } });
-  await apply(msg.proposal.tool, check.args, msg.proposal.by);
+  const proposal = msg.proposal;
+  await oneAtATime(() => {
+    R = liveRoom;
+    return apply(proposal.tool, check.args, proposal.by);
+  });
 }
 
 /** Take back an AI change, if nothing happened after it. */
@@ -954,8 +1007,8 @@ export function undoAiStep(msgId: number) {
 }
 
 function context(): string {
-  const s = getState();
-  const doc = currentDoc();
+  const s = R.getState();
+  const doc = R.currentDoc();
   const frames = doc.rootIds
     .map((id) => doc.elements[id])
     .filter((e) => e && e.type === "frame")
@@ -987,8 +1040,8 @@ keepAiWorkWhile(() => getChat().running);
 /** Where to show an AI's working area before it has said or changed anything: on what the designer
  * pointed at or selected, or else in the middle of what is on screen. */
 function startingArea() {
-  const s = getState();
-  const doc = currentDoc();
+  const s = R.getState();
+  const doc = R.currentDoc();
   const ids = (s.focus.length ? s.focus : s.selection).filter((id) => doc.elements[id]);
   if (ids.length) {
     const b = ids.map((id) => worldBounds(doc, id));
@@ -1007,7 +1060,14 @@ function startingArea() {
 
 /** An AI has started, or is still going: make sure the designer sees it at work, never a blank canvas. */
 export function aiStarted(by?: string) {
-  if (!touchAiWork(by)) noteAiArea(startingArea(), by);
+  startedIn(liveRoom, by);
+}
+function startedIn(room: Room, by?: string) {
+  if (!room.live) return;
+  const was = R;
+  R = room;
+  if (!R.touchAiWork(by)) R.noteAiArea(startingArea(), by);
+  R = was;
 }
 
 /** Ids whose element was added, changed or removed between two versions of the design. */
@@ -1019,32 +1079,41 @@ function changedIds(a: Doc, b: Doc): string[] {
 }
 
 /** Run one tool call from an agent. `by` is the name of the AI tool that asked, when it said who it is. */
-export async function callTool(name: string, raw: unknown, by?: string): Promise<ToolResult> {
+export function callTool(name: string, raw: unknown, by?: string): Promise<ToolResult> {
+  return oneAtATime(async () => {
+    const room = roomOf(by);
+    if (!room) return fail("The project you were working in has been closed, so nothing was changed. Stop, and tell the designer what you were doing.");
+    R = room;
+    return answerTool(name, raw, by);
+  });
+}
+
+async function answerTool(name: string, raw: unknown, by?: string): Promise<ToolResult> {
   const a = (raw && typeof raw === "object" ? raw : {}) as Args;
   const mode = getChat().mode;
 
-  aiStarted(by);
+  startedIn(R, by);
   if (name === "mark_working_area") {
     const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
     const area = { x: n(a.x), y: n(a.y), width: n(a.width), height: n(a.height) };
     if (Object.values(area).some(Number.isNaN) || area.width <= 0 || area.height <= 0) return fail("x, y, width and height must be numbers, with width and height above 0.");
-    noteAiArea(area, by);
+    R.noteAiArea(area, by);
     return { text: "The designer now sees where you are working. Build there." };
   }
   if (name === "get_context") return { text: context() };
   if (name === "get_working_rules") return { text: `${outsideRules()}\n\n${skillsText()}` };
-  if (name === "get_outline") return { text: outline(currentDoc(), Array.isArray(a.ids) ? (a.ids as unknown[]).map(String) : undefined) };
+  if (name === "get_outline") return { text: outline(R.currentDoc(), Array.isArray(a.ids) ? (a.ids as unknown[]).map(String) : undefined) };
   if (name === "get_document") {
-    const d = currentDoc();
+    const d = R.currentDoc();
     return { text: JSON.stringify({ rootIds: d.rootIds, elements: d.elements }) };
   }
-  if (name === "look_at_image") return lookAtImage(a.id, a.maxSize);
-  if (name === "look_at_design") return lookAtDesign(a.ids, a.maxSize);
+  if (name === "look_at_image") return lookAtImage(a.id, a.maxSize, R);
+  if (name === "look_at_design") return lookAtDesign(a.ids, a.maxSize, R);
   if (name === "look_at_attachment") return lookAtAttachment(a.number);
   if (name === "select_elements") {
     const bad = missing(a.ids);
     if (bad.length) return fail(`No element with id: ${bad.join(", ")}.`);
-    select(a.ids as string[]);
+    R.select(a.ids as string[]);
     return { text: "Selected." };
   }
 
@@ -1066,23 +1135,23 @@ export async function callTool(name: string, raw: unknown, by?: string): Promise
   const summary = summarise(name, check.args);
   // Duet may be running with no window for an outside AI: anything the designer must answer,
   // or a change to work that is saved nowhere, brings the window back so nothing is missed or lost
-  if (mode === "suggest" || (RISKY.has(name) && mode === "ask") || !getState().project.path) {
+  if (mode === "suggest" || (RISKY.has(name) && mode === "ask") || !R.getState().project.path) {
     void invoke("bring_back").catch(() => undefined);
   }
 
   if (mode === "suggest") {
-    addMsg({ role: "note", text: "", proposal: { tool: name, args: check.args, summary, status: "open", by } });
+    addMsg({ role: "note", text: "", proposal: { tool: name, args: check.args, summary, status: "open", by } }, said());
     setMinimized(false);
     return { text: "Suggestion shown to the designer. Nothing has been changed yet. Do not repeat it. Tell the designer in plain words what you suggested." };
   }
   if (RISKY.has(name) && mode === "ask") {
-    const ok = await askDesigner(summary);
+    const ok = await askDesigner(R.live || !R.file ? summary : `In "${tabName(R.file)}": ${summary}`);
     if (!ok) return fail(name === "export_frame" ? "The designer said not now. Do not save this file." : name === "place_image" || name === "place_video" || name === "place_sound" ? "The designer said not now. Do not bring this file in." : "The designer said not now. Do not delete this.");
   }
   // where the AI changed things shows on the canvas for a moment, in its colour
-  const before = currentDoc();
+  const before = R.currentDoc();
   const result = await apply(name, check.args, by);
-  const after = currentDoc();
-  noteAiWork(changedIds(before, after).filter((id) => after.elements[id]), by);
+  const after = R.currentDoc();
+  R.noteAiWork(changedIds(before, after).filter((id) => after.elements[id]), by);
   return result;
 }

@@ -3896,3 +3896,25 @@ button.agent-perm {
   background: var(--line);
   color: var(--text);
 }
+
+/* a tab whose project an AI is at work in, on screen or not */
+.tab-busy {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+  animation: tab-busy 1.6s ease-in-out infinite;
+}
+@keyframes tab-busy {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-busy {
+    animation: none;
+  }
+}

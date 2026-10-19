@@ -1,13 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { saveNow } from "../project/project";
+import { saveNow, tabName } from "../project/project";
 import {
   AGENTS,
   addMsg,
   declineAllWaiting,
   dropSession,
+  conversationProject,
   getChat,
+  messagesOf,
   removeWorking,
   sendPictures,
   sessionUsed,
@@ -19,9 +21,9 @@ import {
 import { brief, carryOn, keepable } from "../memory/thread";
 import type { AgentId } from "./chat";
 import { mentioned, setAgent } from "./chat";
-import { FROM_CHAT } from "./who";
+import { FROM_CHAT, OUTSIDE } from "./who";
 import { chatRules } from "./rules";
-import { aiStarted } from "./tools";
+import { aiStarted, bindAi } from "./tools";
 
 /** Runs the AI tool the designer already has, and shows what it says as chat. */
 
@@ -54,8 +56,10 @@ let sawText = false;
 let turn: { at: number; after: number; tool: string; model?: string } | null = null;
 let stderrLines: string[] = [];
 let workingId: number | null = null;
-/** False once the designer has left the project the AI was working on. What it says after that is not shown. */
+/** False once the designer has stopped the AI. What it says after that is not shown. */
 let live = false;
+/** The project whose conversation this turn belongs to. It keeps working there while another project is on screen. */
+let runFor = "";
 
 /** The name of the agent that is answering in the chat right now. */
 const speaker = () => AGENTS.find((a) => a.id === getChat().agent)?.name;
@@ -84,12 +88,12 @@ function onClaudeLine(line: string) {
   }
 
   if (ev.type === "system" && ev.subtype === "init") {
-    if (typeof ev.session_id === "string") setSessionId(ev.session_id);
+    if (typeof ev.session_id === "string") setSessionId(ev.session_id, runFor);
     const servers = (ev.mcp_servers as { name: string; status: string }[] | undefined) ?? [];
     const duet = servers.find((s) => s.name === "duet");
     if (duet && duet.status !== "connected") {
-      removeWorking();
-      addMsg({ role: "error", text: "The AI could not connect to your canvas. Try again in a moment." });
+      removeWorking(runFor);
+      addMsg({ role: "error", text: "The AI could not connect to your canvas. Try again in a moment." }, runFor);
     }
     return;
   }
@@ -98,15 +102,15 @@ function onClaudeLine(line: string) {
     const content = ((ev.message as { content?: unknown[] } | undefined)?.content ?? []) as Record<string, unknown>[];
     for (const block of content) {
       if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-        removeWorking();
+        removeWorking(runFor);
         workingId = null;
         sawText = true;
-        addMsg({ role: "duet", text: block.text.trim(), by: speaker() });
+        addMsg({ role: "duet", text: block.text.trim(), by: speaker() }, runFor);
       } else if (block.type === "tool_use") {
         const tool = String(block.name ?? "").replace(/^mcp__duet__/, "");
         const text = `${WORKING[tool] ?? "Working"}...`;
-        if (workingId !== null && getChat().messages.some((m) => m.id === workingId)) updateMsg(workingId, { text });
-        else workingId = addMsg({ role: "working", text });
+        if (workingId !== null && messagesOf(runFor).some((m) => m.id === workingId)) updateMsg(workingId, { text }, runFor);
+        else workingId = addMsg({ role: "working", text }, runFor);
       }
     }
     return;
@@ -119,15 +123,15 @@ function onClaudeLine(line: string) {
   }
 
   if (ev.type === "result") {
-    if (typeof ev.session_id === "string") setSessionId(ev.session_id);
+    if (typeof ev.session_id === "string") setSessionId(ev.session_id, runFor);
     const text = typeof ev.result === "string" ? ev.result.trim() : "";
     if (ev.is_error) {
-      removeWorking();
-      addMsg({ role: "error", text: friendly(text || stderrLines.join(" ")) });
+      removeWorking(runFor);
+      addMsg({ role: "error", text: friendly(text || stderrLines.join(" ")) }, runFor);
       sawText = true;
     } else if (!sawText && text) {
-      removeWorking();
-      addMsg({ role: "duet", text, by: speaker() });
+      removeWorking(runFor);
+      addMsg({ role: "duet", text, by: speaker() }, runFor);
       sawText = true;
     }
   }
@@ -140,21 +144,21 @@ let streamId: number | null = null;
 let lastStreamId: number | null = null;
 
 function streamText(piece: string) {
-  removeWorking();
+  removeWorking(runFor);
   workingId = null;
   sawText = true;
-  if (streamId !== null && getChat().messages.some((m) => m.id === streamId)) {
-    const cur = getChat().messages.find((m) => m.id === streamId);
-    updateMsg(streamId, { text: (cur?.text ?? "") + piece });
+  if (streamId !== null && messagesOf(runFor).some((m) => m.id === streamId)) {
+    const cur = messagesOf(runFor).find((m) => m.id === streamId);
+    updateMsg(streamId, { text: (cur?.text ?? "") + piece }, runFor);
   } else {
-    streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, ""), by: speaker() });
+    streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, ""), by: speaker() }, runFor);
   }
   lastStreamId = streamId;
 }
 
 function showWorking(text: string) {
-  if (workingId !== null && getChat().messages.some((m) => m.id === workingId)) updateMsg(workingId, { text });
-  else workingId = addMsg({ role: "working", text });
+  if (workingId !== null && messagesOf(runFor).some((m) => m.id === workingId)) updateMsg(workingId, { text }, runFor);
+  else workingId = addMsg({ role: "working", text }, runFor);
 }
 
 function onAgyLine(line: string) {
@@ -165,7 +169,7 @@ function onAgyLine(line: string) {
     return;
   }
   if (ev.event === "init" && typeof ev.conversation_id === "string") {
-    setSessionId(ev.conversation_id);
+    setSessionId(ev.conversation_id, runFor);
   } else if (ev.event === "step_update") {
     const step = ev.step_update as Record<string, unknown> | undefined;
     if (!step) return;
@@ -188,24 +192,24 @@ function onAgyLine(line: string) {
   } else if (ev.event === "result") {
     streamId = null;
     const r = (ev.result ?? {}) as Record<string, unknown>;
-    if (typeof r.conversation_id === "string") setSessionId(r.conversation_id);
+    if (typeof r.conversation_id === "string") setSessionId(r.conversation_id, runFor);
     if (r.status !== "SUCCESS") {
-      removeWorking();
+      removeWorking(runFor);
       const err = typeof r.error === "string" ? r.error : typeof r.response === "string" ? r.response : "";
-      addMsg({ role: "error", text: friendly(err || stderrLines.join(" ")) });
+      addMsg({ role: "error", text: friendly(err || stderrLines.join(" ")) }, runFor);
       sawText = true;
     } else if (!sawText && typeof r.response === "string" && r.response.trim()) {
-      removeWorking();
-      addMsg({ role: "duet", text: r.response.trim(), by: speaker() });
+      removeWorking(runFor);
+      addMsg({ role: "duet", text: r.response.trim(), by: speaker() }, runFor);
       sawText = true;
     } else if (typeof r.response === "string" && r.response.trim() && lastStreamId !== null) {
       // Streamed pieces can get lost on the way in. The final result holds the whole reply, so
       // if the last message on screen is a shorter start of it, show the full text instead.
       const full = r.response.trim();
-      const cur = getChat().messages.find((m) => m.id === lastStreamId);
+      const cur = messagesOf(runFor).find((m) => m.id === lastStreamId);
       const shown = (cur?.text ?? "").trim();
       if (cur && shown.length < full.length && full.startsWith(shown.slice(0, Math.min(20, shown.length)))) {
-        updateMsg(lastStreamId, { text: full });
+        updateMsg(lastStreamId, { text: full }, runFor);
       }
     }
   }
@@ -216,10 +220,10 @@ function noteTook() {
   const t = turn;
   turn = null;
   if (!t) return;
-  const since = getChat().messages.filter((m) => m.id > t.after);
+  const since = messagesOf(runFor).filter((m) => m.id > t.after);
   const changes = since.filter((m) => m.role === "note" && !!m.step).length;
   const reply = [...since].reverse().find((m) => m.role === "duet");
-  if (reply) updateMsg(reply.id, { took: { tool: t.tool, ...(t.model ? { model: t.model } : {}), ms: Date.now() - t.at, changes } });
+  if (reply) updateMsg(reply.id, { took: { tool: t.tool, ...(t.model ? { model: t.model } : {}), ms: Date.now() - t.at, changes } }, runFor);
 }
 
 function onLine(line: string) {
@@ -261,14 +265,14 @@ export async function startAgentListeners(): Promise<() => void> {
     // the designer has moved to another project, and that chat was already tidied
     if (!live) return;
     live = false;
-    removeWorking();
+    removeWorking(runFor);
     declineAllWaiting();
     setRunning(false);
-    sessionUsed();
+    sessionUsed(false, runFor);
     noteTook();
     if (!sawText) {
       const detail = stderrLines.filter((l) => !/job control|no tty/i.test(l)).join(" ");
-      addMsg({ role: "error", text: friendly(detail) });
+      addMsg({ role: "error", text: friendly(detail) }, runFor);
     }
     void saveNow();
     void e;
@@ -283,6 +287,11 @@ export async function startAgentListeners(): Promise<() => void> {
 export async function sendToAgent(text: string) {
   const said = text.trim();
   if (getChat().running) return;
+  const away = getChat().busy;
+  if (away !== null) {
+    addMsg({ role: "note", text: `The AI is still at work in ${away ? `"${tabName(away)}"` : "another design"}. It can start here once it is done there.` });
+    return;
+  }
   if (!said && !getChat().pictures.some((p) => !p.sent)) return;
   // naming an agent with @ hands the message to that one, and it answers from then on
   const asked = mentioned(said, getChat().installed);
@@ -305,7 +314,12 @@ export async function sendToAgent(text: string) {
     : "";
   const prompt = `${said || "Look at what I attached."}${attached}`;
   sessionUsed(true);
+  runFor = conversationProject();
   setRunning(true);
+  // some tools reach Duet through its bridge and look like they work from outside: tie both to this project
+  const name = speaker() ?? agent;
+  bindAi(name, runFor || null);
+  bindAi(name + OUTSIDE, runFor || null);
   turn = { at: Date.now(), after: getChat().messages.reduce((n, m) => Math.max(n, m.id), 0), tool: speaker() ?? agent, model: getChat().models[agent] ?? undefined };
   // the designer sees the AI at work on the canvas straight away, not after its first change
   aiStarted(speaker());
@@ -366,9 +380,9 @@ export async function sendToAgent(text: string) {
     await invoke("agent_run", { program: agent, args, input: agent === "agy" ? prompt : `${past}${prompt}`, cwd: `${home}/agent-workspace` });
   } catch (e) {
     live = false;
-    removeWorking();
+    removeWorking(runFor);
     setRunning(false);
-    addMsg({ role: "error", text: friendly(String(e)) });
+    addMsg({ role: "error", text: friendly(String(e)) }, runFor);
   }
 }
 
@@ -385,8 +399,8 @@ export async function stopAgent() {
  * into the next one. If it is in the middle of something the designer decides: let it finish here,
  * or stop it. Returns false to stay.
  */
-export async function readyToLeave(closing = false): Promise<boolean> {
-  if (!getChat().running) return true;
+export async function readyToLeave(closing = false, project = conversationProject()): Promise<boolean> {
+  if (getChat().busy !== project) return true;
   const go = await ask(closing ? "Duet is still working on this design. Stop it and close the project?" : "Duet is still working on this design. Stop it and open the other project?", {
     title: "Duet",
     kind: "warning",
@@ -395,13 +409,13 @@ export async function readyToLeave(closing = false): Promise<boolean> {
   });
   if (!go) return false;
   // it may have finished while the question was up
-  if (!getChat().running) return true;
+  if (getChat().busy !== project) return true;
   live = false;
   await stopAgent();
-  removeWorking();
+  removeWorking(runFor);
   workingId = null;
   declineAllWaiting();
   setRunning(false);
-  addMsg({ role: "note", text: closing ? "Stopped, because you closed the project." : "Stopped, because you opened another project." });
+  addMsg({ role: "note", text: closing ? "Stopped, because you closed the project." : "Stopped, because you opened another project." }, runFor);
   return true;
 }

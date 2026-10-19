@@ -1,5 +1,6 @@
 import { turnOf, turnedBox } from "../document/geometry";
-import { currentDoc, getState } from "../state/store";
+import { liveRoom } from "../state/store";
+import type { Room } from "../state/store";
 import { getPicture, preloadPictures } from "../project/assets";
 import { renderPng } from "../project/exporter";
 import type { ToolResult } from "./tools";
@@ -13,8 +14,8 @@ const DEFAULT_SIDE = 768;
 const side = (v: unknown) => Math.max(128, Math.min(1536, typeof v === "number" && Number.isFinite(v) ? Math.round(v) : DEFAULT_SIDE));
 
 /** One picture on the canvas, as the designer placed it. */
-export async function lookAtImage(id: unknown, max: unknown): Promise<ToolResult> {
-  const doc = currentDoc();
+export async function lookAtImage(id: unknown, max: unknown, room: Room = liveRoom): Promise<ToolResult> {
+  const doc = room.currentDoc();
   const el = typeof id === "string" ? doc.elements[id] : undefined;
   if (!el) return { text: `No element with id: ${String(id)}.`, isError: true };
   if (el.type !== "image" || !el.src) return { text: `${el.name} is not a picture. Use look_at_design to see a frame or shape.`, isError: true };
@@ -39,9 +40,10 @@ export async function lookAtImage(id: unknown, max: unknown): Promise<ToolResult
 }
 
 /** What the design looks like right now: one frame or shape, drawn as the designer sees it. */
-export async function lookAtDesign(ids: unknown, max: unknown): Promise<ToolResult> {
-  const doc = currentDoc();
-  const list = Array.isArray(ids) && ids.length ? ids.map(String) : getState().selection.length ? getState().selection : doc.rootIds.filter((i) => doc.elements[i]?.type === "frame").slice(0, 1);
+export async function lookAtDesign(ids: unknown, max: unknown, room: Room = liveRoom): Promise<ToolResult> {
+  const doc = room.currentDoc();
+  const sel = room.getState().selection;
+  const list = Array.isArray(ids) && ids.length ? ids.map(String) : sel.length ? sel : doc.rootIds.filter((i) => doc.elements[i]?.type === "frame").slice(0, 1);
   const id = list.find((i) => doc.elements[i]);
   if (!id) return { text: "There is nothing to look at yet. Draw or ask for a frame first.", isError: true };
   const el = doc.elements[id];
