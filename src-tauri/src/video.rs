@@ -609,6 +609,39 @@ mod tests {
         lay_over(&mut under, &[255, 0, 0, 255, 0, 0, 0, 0]);
         assert_eq!(under, vec![65535, 0, 0, 65535, 65535, 65535]);
     }
+
+    #[test]
+    fn light_copies_not_played_for_two_weeks_are_thrown_away() {
+        let dir = std::env::temp_dir().join(format!("duet-previews-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["old.mp4", "new.mp4", "half.part.mp4"] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        let day = std::time::Duration::from_secs(24 * 60 * 60);
+        let now = std::time::SystemTime::now() + day * 15;
+        std::fs::File::options().append(true).open(dir.join("new.mp4")).unwrap().set_modified(now - day).unwrap();
+        forget_old_previews(&dir, now);
+        assert!(!dir.join("old.mp4").exists());
+        assert!(dir.join("new.mp4").exists());
+        assert!(!dir.join("half.part.mp4").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+/// Light copies not played for this long are thrown away. A clip played again later gets a new one.
+const PREVIEW_KEPT: std::time::Duration = std::time::Duration::from_secs(14 * 24 * 60 * 60);
+
+/// Throw away light copies nobody has played for a while, and copies left half made.
+fn forget_old_previews(dir: &std::path::Path, now: std::time::SystemTime) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let Ok(used) = entry.metadata().and_then(|m| m.modified()) else { continue };
+        let half_made = entry.file_name().to_string_lossy().ends_with(".part.mp4");
+        let kept = if half_made { std::time::Duration::from_secs(24 * 60 * 60) } else { PREVIEW_KEPT };
+        if now.duration_since(used).map_or(false, |age| age > kept) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 /// A light copy of a clip for playing and scrubbing on the canvas: smaller, with a picture to land on
@@ -627,7 +660,12 @@ pub fn clip_preview(path: String) -> Result<String, String> {
     let dir = PathBuf::from(home).join(crate::duet_dir_name()).join("previews");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let out = dir.join(format!("{name}.mp4"));
+    forget_old_previews(&dir, std::time::SystemTime::now());
     if out.is_file() {
+        // marked as used, so it is kept while the clip is still played
+        if let Ok(f) = std::fs::File::options().append(true).open(&out) {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
         return Ok(out.to_string_lossy().to_string());
     }
     let ffmpeg = find("ffmpeg").ok_or(MISSING)?;

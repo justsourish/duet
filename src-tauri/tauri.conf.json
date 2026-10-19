@@ -27,6 +27,8 @@
         "enable": true,
         "scope": [
           "$HOME/**",
+          "$HOME/.duet/previews/**",
+          "$HOME/.duet-dev/previews/**",
           "/Volumes/**"
         ]
       }

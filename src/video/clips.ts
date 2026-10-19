@@ -42,7 +42,8 @@ function makePlayer(src: string, into: Map<string, HTMLMediaElement>): HTMLMedia
   v.src = convertFileSrc(src);
   for (const ev of ["loadeddata", "seeked"]) v.addEventListener(ev, () => changed());
   v.addEventListener("seeked", () => seekedNext(v));
-  v.addEventListener("error", () => logError("clip", new Error(`This clip could not be played (${v.error?.code ?? "?"} ${v.error?.message ?? ""}): ${src}`)));
+  // the light copy may be what failed, so the address it was really playing is named
+  v.addEventListener("error", () => logError("clip", new Error(`This clip could not be played (${v.error?.code ?? "?"} ${v.error?.message ?? ""}): ${v.currentSrc || src}`)));
   into.set(src, v);
   return v;
 }
