@@ -451,7 +451,8 @@ export default function TimeStrip() {
   };
 
   const moves = (el: El) => MOVING.some((p) => (el.keys[p]?.length ?? 0) > 0);
-  const opened = (el: El) => folds[el.id] ?? keysOpen;
+  // Option U opens everything that moves; the arrow opens any layer, moving or not
+  const opened = (el: El) => folds[el.id] ?? (keysOpen && moves(el));
   const isPicked = (el: El, t: number, props?: Moving[]) => picked?.id === el.id && picked.t === t && picked.props === props;
   const markMenu = (e: React.MouseEvent, el: El, t: number, props?: Moving[]) => {
     e.preventDefault();
@@ -532,12 +533,27 @@ export default function TimeStrip() {
   const renderKindRows = (el: El) =>
     KEY_GROUPS.map((g) => {
       const times = [...new Set(g.props.flatMap((p) => (el.keys[p] ?? []).map((k) => k.t)))].sort((a, b) => a - b);
-      if (!times.length) return null;
-      const first = times[0];
-      const last = times[times.length - 1];
+      const first = times[0] ?? 0;
+      const last = times[times.length - 1] ?? 0;
+      const now = Math.round(clock.t * 1000) / 1000;
+      const here = times.some((k) => Math.abs(k - now) < 0.004);
       return (
         <div key={`${el.id}-${g.name}`} className={`time-row kind ${selection.includes(el.id) ? "on" : ""}`} data-name={`kind-${g.name}`}>
           <span className="time-name" onClick={() => select([el.id])} title={`${el.name}, ${g.name}`}>
+            <button
+              className={`time-key ${here ? "on" : ""}`}
+              data-name={`key-${g.name}`}
+              title={here ? `Take away the ${g.name.toLowerCase()} keyframe at the playhead` : `Add ${/^[aeiou]/i.test(g.name) ? "an" : "a"} ${g.name.toLowerCase()} keyframe at the playhead`}
+              onClick={(e) => {
+                e.stopPropagation();
+                select([el.id]);
+                dispatch(here ? "remove_key" : "key_now", { ids: [el.id], props: g.props, t: now });
+              }}
+            >
+              <svg width="9" height="9" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M6 1 11 6 6 11 1 6Z" fill={here ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+              </svg>
+            </button>
             {g.name}
           </span>
           <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
@@ -729,7 +745,7 @@ export default function TimeStrip() {
               <span className="time-name" onClick={row.onClick} title={row.name}>
                 {look === "layers" && (
                   <span className="time-fold-room">
-                    {row.items.some(moves) && (
+                    {row.items.length === 1 && (
                       <button
                         className={`time-fold ${opened(row.items[0]) ? "open" : ""}`}
                         data-name={`keys-${row.name}`}

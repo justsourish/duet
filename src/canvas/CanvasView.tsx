@@ -548,11 +548,18 @@ export default function CanvasView() {
       return;
     }
 
-    // Cmd or Ctrl click digs into groups
-    const hit = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y, new Set(), e.metaKey || e.ctrlKey);
+    // Cmd or Ctrl click digs into groups and frames, and adds to what is picked, so several things inside one can be picked
+    const deep = e.metaKey || e.ctrlKey;
+    const hit = labelAt(p.sx, p.sy) ?? hitTest(doc, p.x, p.y, new Set(), deep);
     if (hit) {
       if (!isMovable(doc, hit)) return;
-      if (e.shiftKey) {
+      const within = (inner: string, outer: string) => {
+        for (let at = doc.elements[inner]?.parentId; at; at = doc.elements[at]?.parentId) if (at === outer) return true;
+        return false;
+      };
+      // a thing and what holds it are never picked together: digging in from the frame picks just the thing
+      const adds = deep && s.selection.length > 0 && !s.selection.some((id) => within(hit, id) || within(id, hit));
+      if (e.shiftKey || adds) {
         const has = s.selection.includes(hit);
         select(has ? s.selection.filter((i) => i !== hit) : [...s.selection, hit]);
         if (has) return;

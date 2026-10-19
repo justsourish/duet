@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { addTab, closeProject, closeTab, getTabs, inTauri, openProjectAt, tabName } from "../project/project";
+import { addTab, closeProject, closeTab, closeUntitled, getTabs, getUntitled, inTauri, isUntitled, liveKey, newDesignTab, openProjectAt, tabTitle } from "../project/project";
 import { currentDoc, useStore } from "../state/store";
 import { readyToLeave } from "../ai/agent";
 import { useChat } from "../ai/chat";
@@ -36,13 +36,15 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
   useEffect(() => {
     if (file) addTab(file);
   }, [file]);
-  // whatever project is open always has its tab
-  const list = file && !getTabs().includes(file) ? [...getTabs(), file] : getTabs();
-  // an empty new project is not worth a tab while all your projects are showing
-  const unsaved = !file && !(home && empty);
+  // whatever project is open always has its tab, and so does each new design with no file yet
+  const saved = file && !getTabs().includes(file) ? [...getTabs(), file] : getTabs();
+  const list = [...saved, ...getUntitled()];
+  const live = liveKey();
+  // the plain empty start has no tab of its own until something is made in it
+  const unsaved = !live && !(home && empty);
 
   const show = async (path: string) => {
-    if (path === file || (await openProjectAt(path))) setHome(false);
+    if (path === live || (await openProjectAt(path))) setHome(false);
   };
 
   /** What is left after the project on screen is closed: the next tab, or all your projects. */
@@ -61,8 +63,13 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
     // the chat's AI may be at work in this project, even when it is not on screen
     if (!(await readyToLeave(true, path))) return;
     const rest = list.filter((p) => p !== path);
-    closeTab(path);
-    if (path === file) void afterClosing(rest);
+    if (isUntitled(path)) {
+      // work with no file is lost when its tab closes, so ask first if there is any
+      const work = path === live ? !empty : true;
+      if (work && inTauri() && !(await ask("This design has not been saved. Close it anyway?", { title: "Duet", kind: "warning", okLabel: "Close", cancelLabel: "Keep working" }))) return;
+      closeUntitled(path);
+    } else closeTab(path);
+    if (path === live) void afterClosing(rest);
   };
 
   /** Unsaved work is lost when it is left, so ask first. */
@@ -75,10 +82,9 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
     await afterClosing(list);
   };
 
-  /** + starts a new, empty design in its own tab, like a new tab in a browser. Saved projects stay in their tabs. */
+  /** + starts a new, empty design in its own tab, like a new tab in a browser. Every other tab keeps its work. */
   const startNew = async () => {
-    if (!(await okToLeaveUnsaved("Your current work has not been saved. Start a new design anyway?", "Start new"))) return;
-    if (file || !empty) await closeProject();
+    await newDesignTab();
     setHome(false);
   };
 
@@ -90,14 +96,14 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
         </svg>
       </button>
       {list.map((path) => {
-        const on = !home && path === file;
+        const on = !home && path === live;
         return (
-          <div key={path} role="tab" aria-selected={on} className={`project-tab ${on ? "active" : ""}`} title={path}>
+          <div key={path} role="tab" aria-selected={on} className={`project-tab ${on ? "active" : ""}`} title={isUntitled(path) ? tabTitle(path) : path}>
             <button className="tab-name" onClick={() => void show(path)}>
               {working.has(path) && <i className="tab-busy" title="An AI is at work here" />}
-              {tabName(path)}
+              {tabTitle(path)}
             </button>
-            <button className="tab-x" aria-label={`Close ${tabName(path)}`} onClick={() => void closeSaved(path)}>
+            <button className="tab-x" aria-label={`Close ${tabTitle(path)}`} onClick={() => void closeSaved(path)}>
               ×
             </button>
           </div>

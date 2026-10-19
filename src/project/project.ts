@@ -158,6 +158,60 @@ export function closeTab(path: string): string | null {
   return rest[Math.min(at, rest.length - 1)] ?? null;
 }
 
+// ---- new designs with no file yet: each has its own tab too, kept while Duet is open ----
+
+/** Tabs of work that has no file yet, in the order they were made. */
+let untitled: string[] = [];
+/** The tab of the work on screen when it has no file. Null for the plain empty start, which has no tab of its own. */
+let untitledKey: string | null = null;
+let untitledMade = 0;
+/** Set when the tab on screen was closed: its work is let go, not put away, when the next one opens. */
+let letGoLive = false;
+export const getUntitled = () => untitled;
+export const isUntitled = (key: string) => key.startsWith("untitled:");
+/** The tab of the project on screen, or null for the plain empty start. */
+export const liveKey = () => getState().project.file ?? untitledKey;
+
+/** Give the work on screen a tab of its own. Its conversation goes with it. */
+function giveUntitledTab(): string {
+  untitledMade += 1;
+  const key = `untitled:${untitledMade}`;
+  untitled = [...untitled, key];
+  untitledKey = key;
+  moveConversationTo(key);
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("duet:tabs"));
+  return key;
+}
+
+/** Take a tab of unsaved work away: closed, or given a file. */
+function dropUntitled(key: string) {
+  untitled = untitled.filter((k) => k !== key);
+  if (untitledKey === key) untitledKey = null;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("duet:tabs"));
+}
+
+const blank = () => {
+  const s = getState();
+  return s.timeline.length === 1 && committed().rootIds.length === 0;
+};
+
+/** What a tab shows as its name. */
+export function tabTitle(key: string): string {
+  if (!isUntitled(key)) return tabName(key);
+  if (key === untitledKey) return getState().project.name;
+  return parkedState(key)?.project.name ?? "Untitled";
+}
+
+/** A tab of unsaved work was closed. Its work is let go. */
+export function closeUntitled(key: string) {
+  if (key === untitledKey) letGoLive = true;
+  if (isParked(key)) {
+    dropParked(key);
+    forgetSteps(key);
+  }
+  dropUntitled(key);
+}
+
 export const tabName = (path: string) => getRecents().find((r) => r.path === path)?.name ?? baseName(path);
 
 function remember(path: string | null) {
@@ -343,7 +397,20 @@ function watchParked() {
 /** Put the project on screen away in its tab, saved, so another can come on screen. Says whether it could wait. */
 async function parkCurrent(): Promise<boolean> {
   const { file, path } = getState().project;
-  if (!file || !path || !getTabs().includes(file)) return false;
+  if (!file) {
+    // work with no file waits in its own tab, even an empty one made with +; the plain empty start, or a closed tab, is let go
+    if (letGoLive) {
+      letGoLive = false;
+      return false;
+    }
+    if (inTest || (!untitledKey && blank())) return false;
+    const key = untitledKey ?? giveUntitledTab();
+    await flushPack();
+    parkLive(key);
+    untitledKey = null;
+    return true;
+  }
+  if (!path || !getTabs().includes(file)) return false;
   clearTimeout(timer);
   if (committed() !== lastSaved) await saveNow();
   await flushPack();
@@ -363,8 +430,26 @@ async function bringBack(file: string): Promise<boolean> {
   parkedSaves.delete(file);
   lastSaved = kept?.lastSaved ?? committed();
   stepsKept = kept?.stepsKept ?? new Set();
-  remember(file);
+  untitledKey = isUntitled(file) ? file : null;
+  if (!untitledKey) remember(file);
   return true;
+}
+
+/** + in the tab row: the project on screen waits in its tab, and a new empty design opens in a tab of its own. */
+export async function newDesignTab() {
+  if (!getState().project.file && blank() && !inTest) {
+    // already an empty design: it simply gets its tab
+    if (!untitledKey) giveUntitledTab();
+    return;
+  }
+  if (!(await parkCurrent())) await flushPack();
+  const n = untitled.length + 1;
+  showConversationFor("", true);
+  setProject({ path: null, file: null, name: n > 1 ? `Untitled ${n}` : "Untitled", status: "unsaved", error: null });
+  loadDoc(emptyDoc(), "New file");
+  lastSaved = committed();
+  clearTimeout(timer);
+  giveUntitledTab();
 }
 
 /** A tab was closed: save what is waiting in it, then let it go. */
@@ -486,6 +571,7 @@ async function saveAsDialog() {
     lastSaved = doc;
     setProject({ path: work, file: picked, name: baseName(picked), status: "saved", error: null });
     moveConversationTo(picked);
+    if (untitledKey) dropUntitled(untitledKey);
     threadChanged();
     await flushThread();
     await packNow();
@@ -703,19 +789,9 @@ async function loadFrom(path: string, quiet: boolean, file: string): Promise<boo
  * when it opens because the tab before it was closed, so the questions speak of closing.
  */
 export async function openProjectAt(path: string, closing = false): Promise<boolean> {
-  if (!inTauri()) return false;
-  const s = getState();
-  if (!s.project.path && s.timeline.length > 1) {
-    const go = await ask(closing ? "Your current work has not been saved. Close it anyway?" : "Your current work has not been saved. Open another project anyway?", {
-      title: "Duet",
-      kind: "warning",
-      okLabel: closing ? "Close" : "Open",
-      cancelLabel: closing ? "Keep working" : "Cancel",
-    });
-    if (!go) return false;
-  }
-  // an AI keeps working in its own project while another is on screen; unsaved work has no tab to wait in
-  if (!getState().project.file && !(await readyToLeave(closing))) return false;
+  if (!inTauri() && !isParked(path)) return false;
+  // unsaved work waits in its own tab, and an AI keeps working in its own project; only the plain start has nowhere to wait
+  if (!liveKey() && !(await readyToLeave(closing))) return false;
   return openAny(path);
 }
 

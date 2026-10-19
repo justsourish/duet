@@ -2723,36 +2723,6 @@ button {
 }
 
 /* Calm chat (Issue 55) */
-.chat.big {
-  width: 520px;
-  height: calc(100% - 32px);
-}
-.chat.big.min {
-  height: auto;
-}
-.chat.big .csize {
-  display: none;
-}
-.chat.big .cbody {
-  flex: 1 1 0;
-  max-height: none;
-}
-.chat-expand-btn {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  border-radius: 4px;
-  line-height: 1;
-}
-.chat-expand-btn:hover {
-  color: var(--text);
-  background: var(--panel-2);
-}
 .agent-anchor {
   position: relative;
   display: flex;
@@ -3917,4 +3887,54 @@ button.agent-perm {
   .tab-busy {
     animation: none;
   }
+}
+
+/* one property that can change over time: stopwatch, name, and the keyframe at the playhead */
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+}
+.key-row .key-name {
+  flex: 1;
+  color: var(--text);
+}
+.stopwatch,
+.key-step,
+.key-here,
+.time-key {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.stopwatch:hover,
+.key-step:hover:not(:disabled),
+.key-here:hover,
+.time-key:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.stopwatch.on,
+.key-here.on,
+.time-key.on {
+  color: var(--accent);
+}
+.key-step:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.time-key {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  vertical-align: middle;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { workDoc, dispatch, select, useStore } from "../state/store";
+import { getState, workDoc, dispatch, select, useStore } from "../state/store";
 import type { El, Layout, Moving } from "../document/types";
 import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
@@ -326,7 +326,59 @@ function momentsCount(el: El, props: Moving[]): number {
   return times.size;
 }
 
+/** A keyframe sits at this moment, within a few thousandths of a second. */
+const keyAt = (el: El, props: Moving[], t: number) => props.some((p) => el.keys[p]?.some((k) => Math.abs(k.t - t) < 0.004));
+
+/**
+ * One property that can change over time, worked with the mouse alone. The stopwatch starts it moving,
+ * with a keyframe at the playhead, or stops it and takes its keyframes away. The diamond adds or takes
+ * away the keyframe at the playhead; the arrows on each side go to the keyframe before or after.
+ */
+function KeyRow({ el, name, props, t }: { el: El; name: string; props: Moving[]; t: number }) {
+  const times = momentTimes(el, props);
+  const moving = times.length > 0;
+  const here = keyAt(el, props, t);
+  const before = [...times].reverse().find((k) => k < t - 0.004);
+  const after = times.find((k) => k > t + 0.004);
+  const go = (k: number | undefined) => {
+    if (k === undefined) return;
+    setKeyFocus({ id: el.id, t: k });
+    seek(k);
+  };
+  return (
+    <div className="key-row" data-name={`keys-${name}`}>
+      <button
+        type="button"
+        className={`stopwatch ${moving ? "on" : ""}`}
+        title={moving ? `Stop ${name.toLowerCase()} changing: takes away its ${times.length} keyframe${times.length === 1 ? "" : "s"}` : `Make ${name.toLowerCase()} change over time, starting here`}
+        onClick={() => (moving ? dispatch("remove_key", { ids: [el.id], props }) : dispatch("key_now", { ids: [el.id], props, t }))}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+          <circle cx="8" cy="9" r="5.5" />
+          <path d="M8 9V6M6.5 1.5h3M12 4l1-1" />
+        </svg>
+      </button>
+      <span className="key-name">{name}</span>
+      <button type="button" className="key-step" disabled={before === undefined} title="Go to the keyframe before" onClick={() => go(before)}>
+        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M5.5 1.5 2.5 4l3 2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      <button
+        type="button"
+        className={`key-here ${here ? "on" : ""}`}
+        title={here ? "Take away the keyframe here" : "Add a keyframe here"}
+        onClick={() => (here ? dispatch("remove_key", { ids: [el.id], props, t }) : dispatch("key_now", { ids: [el.id], props, t }))}
+      >
+        <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1 11 6 6 11 1 6Z" fill={here ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
+      </button>
+      <button type="button" className="key-step" disabled={after === undefined} title="Go to the keyframe after" onClick={() => go(after)}>
+        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1.5 5.5 4l-3 2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+    </div>
+  );
+}
+
 function MotionSection({ el, scene }: { el: El; scene: El }) {
+  const t = Math.round(getState().clock.t * 1000) / 1000;
   if (el.id === scene.id) {
     return (
       <div className="sec">
@@ -388,21 +440,16 @@ function MotionSection({ el, scene }: { el: El; scene: El }) {
         </select>
       </label>
       <div className="gap" />
-      <div className="hint2">Moves over time</div>
-      {groupsWithKeys.length > 0 ? (
-        groupsWithKeys.map((g) => (
+      <div className="hint2">Changes over time, at the playhead</div>
+      {KEY_GROUPS.map((g) => (
+        <KeyRow key={g.name} el={el} name={g.name} props={g.props} t={t} />
+      ))}
+      {groupsWithKeys.map((g) => (
           <div key={g.name}>
             <div className="motion-row">
               <span>
-                {g.name}, {g.count} {g.count === 1 ? "moment" : "moments"}
+                {g.name}, {g.count} {g.count === 1 ? "keyframe" : "keyframes"}
               </span>
-              <button
-                type="button"
-                className="mini"
-                onClick={() => dispatch("remove_key", { ids: [el.id], props: g.props })}
-              >
-                Clear
-              </button>
             </div>
             <div className="key-chips">
               {momentTimes(el, g.props).map((t) => (
@@ -422,10 +469,7 @@ function MotionSection({ el, scene }: { el: El; scene: El }) {
             </div>
             {g.count > 1 && <SpeedGraph key={g.name + el.id} el={el} props={g.props} times={momentTimes(el, g.props)} />}
           </div>
-        ))
-      ) : (
-        <div className="hint2">Hold Option and press P, S, T or R to mark a moment.</div>
-      )}
+      ))}
     </div>
   );
 }

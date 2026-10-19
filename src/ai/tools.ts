@@ -17,6 +17,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { addPicture, mimeFor, preloadPictures } from "../project/assets";
 import { renderPng } from "../project/exporter";
 import { fileLength } from "../video/clips";
+import { QUALITIES, defaultChoice, exportScene } from "../video/scene";
 import { saveNow, tabName } from "../project/project";
 import { tracePicture } from "../project/trace";
 import { getState, goTo, keepAiWorkWhile, liveRoom, roomFor } from "../state/store";
@@ -303,6 +304,22 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "export_video",
+    description:
+      "Make an MP4 video of a frame that plays (one with a length), with its clips and sound, exactly as the designer's Export video does. path is the full path of the new file and must end in .mp4 (~ for the home folder works); leave it out to save in Documents, Duet, Exports. It never replaces a file that already exists. fps is 24, 25, 30 (the default) or 60. size is the longer side in pixels (for example 1080 or 3840); leave it out to keep the frame's own size. quality is best, good (the default) or small. The project must be the one on screen. It can take a while for a long video. The designer may be asked to allow it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { ...str, description: "A frame that plays, from get_document." },
+        path: str,
+        fps: num,
+        size: { ...num, description: "The longer side in pixels. Leave out for the frame's own size." },
+        quality: { type: "string", enum: ["best", "good", "small"] },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "save_skill",
     description:
       "Save rules the designer taught you as one of their own skills, so every later conversation follows them. Use it when the designer asks you to keep, learn, remember or install their rules as a skill. Write the rules in the designer's own words, one per line starting with \"- \", and keep every rule they gave, not only the latest. Saving under a name they already have brings that skill up to date, so include the old rules that still hold. The designer is always asked first.",
@@ -325,7 +342,7 @@ export const TOOLS: ToolDef[] = [
 
 const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "duplicate_elements", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate", "set_curve"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading or writing a file on the computer. */
-const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound", "export_frame"]);
+const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound", "export_frame", "export_video"]);
 
 type Args = Record<string, unknown>;
 
@@ -392,6 +409,8 @@ export function summarise(tool: string, a: Args): string {
       return `Bring in the picture at ${String(a.path)}`;
     case "export_frame":
       return `Save ${nameOf(a.id)} as a picture at ${String(a.path)}`;
+    case "export_video":
+      return `Make a video of ${nameOf(a.id)}${a.path ? ` at ${String(a.path)}` : ", in Documents, Duet, Exports"}`;
     case "place_video":
       return `Bring in the clip at ${String(a.path)}`;
     case "place_sound":
@@ -545,6 +564,16 @@ function prepare(tool: string, raw: Args, doc = R.currentDoc()): { args: Args } 
       a.path = path;
       a.parentId = a.parentId ?? null;
       a.id = newId("image");
+      return { args: a };
+    }
+    case "export_video": {
+      const el = typeof a.id === "string" ? doc.elements[a.id] : undefined;
+      if (!el) return { error: `No element with id: ${String(a.id)}. Use get_document to see the ids.` };
+      if (!el.duration) return { error: `${el.name} has no length, so there is no video to make. Give it one with set_duration first.` };
+      if (a.path !== undefined && (typeof a.path !== "string" || !/\.mp4$/i.test(a.path.trim()))) return { error: "path must be a full file path that ends in .mp4." };
+      if (a.fps !== undefined && ![24, 25, 30, 60].includes(Number(a.fps))) return { error: "fps must be 24, 25, 30 or 60." };
+      if (a.size !== undefined && !(Number(a.size) >= 16 && Number(a.size) <= 8192)) return { error: "size must be a number of pixels between 16 and 8192." };
+      if (a.quality !== undefined && !["best", "good", "small"].includes(String(a.quality))) return { error: "quality must be best, good or small." };
       return { args: a };
     }
     case "export_frame": {
@@ -882,6 +911,29 @@ async function exportFrame(args: Args): Promise<ToolResult> {
   return { text: `Saved "${el.name}" as ${path}, ${w} by ${h} pixels (before any turn). The design was not changed.` };
 }
 
+/** Make a video of a frame that plays, the same way the designer's Export video does. */
+async function exportVideo(args: Args): Promise<ToolResult> {
+  // a video is drawn picture by picture on the canvas, so only the project on screen can be made into one
+  if (!R.live) return fail(`The project${R.file ? ` "${tabName(R.file)}"` : ""} is not on screen, and a video is drawn on the canvas. Ask the designer to bring its tab up, then try again. Nothing was saved.`);
+  let to: string | undefined;
+  if (typeof args.path === "string") {
+    to = args.path.trim();
+    if (to.startsWith("~")) to = (await invoke<string>("duet_home")).replace(/[\\/]\.duet[^\\/]*[\\/]?$/, "") + to.slice(1);
+    if ((await invoke<boolean>("path_exists", { path: to })) === true) return fail(`${String(args.path)} already exists. Choose a new file name; nothing was saved.`);
+    const dir = to.replace(/[\\/][^\\/]*$/, "");
+    if (dir) await invoke("make_dir", { path: dir }).catch(() => undefined);
+  }
+  const quality = QUALITIES[{ best: 0, good: 1, small: 2 }[String(args.quality ?? "good") as "best" | "good" | "small"]].quality;
+  const began = Date.now();
+  try {
+    const file = await exportScene(String(args.id), () => {}, { ...defaultChoice(), fps: Number(args.fps) || 30, longSide: Number(args.size) || 0, quality, ...(to ? { to } : {}) });
+    if (!file) return fail("The video was not made.");
+    return { text: `Made the video ${file} in ${Math.round((Date.now() - began) / 1000)} seconds. The design was not changed.` };
+  } catch (e) {
+    return fail(`The video could not be made. ${String(e instanceof Error ? e.message : e)}`);
+  }
+}
+
 /** Put a sound file from the computer into a frame that plays. The file stays where it is. */
 async function placeSound(args: Args, by?: string): Promise<ToolResult> {
   let path = String(args.path);
@@ -948,6 +1000,7 @@ async function duplicateElements(args: Args, by?: string): Promise<ToolResult> {
 
 async function apply(tool: string, args: Args, by?: string): Promise<ToolResult> {
   if (tool === "export_frame") return exportFrame(args);
+  if (tool === "export_video") return exportVideo(args);
   if (tool === "place_image") return placeImage(args, by);
   if (tool === "place_video") return placeVideo(args, by);
   if (tool === "place_sound") return placeSound(args, by);

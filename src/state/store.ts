@@ -142,9 +142,9 @@ function parkedBox(file: string): Box {
   };
 }
 
-/** Put the project on screen away, whole, so it can come back as it was. Only a project with a file can wait. */
-export function parkLive(): boolean {
-  const file = state.project.file;
+/** Put the project on screen away, whole, so it can come back as it was. It waits under its file, or the name of its tab when it has no file yet. */
+export function parkLive(key: string | null = state.project.file): boolean {
+  const file = key;
   if (!file) return false;
   parked.set(file, { ...state, transientDoc: null, aiWork: null, overlay: noOverlay(), editingId: null, clock: { ...state.clock, playing: false } });
   return true;

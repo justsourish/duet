@@ -12,7 +12,7 @@ import { goTo, setFocus, useStore } from "../state/store";
 import ConnectAi from "./ConnectAi";
 import Rich from "./rich";
 import Icon from "./Icons";
-import { CHAT_MAX, CHAT_MIN, setLayout, useLayout } from "./layout";
+import { CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
 import { agentColour } from "../ai/colours";
 import { busyOutside } from "../ai/outside";
@@ -131,7 +131,6 @@ export default function ChatPanel() {
   const [room, setRoom] = useState<number | null>(null);
   const [busyName, setBusyName] = useState<string | null>(() => busyOutside());
   const [litStep, setLitStep] = useState<string | null>(null);
-  const [big, setBig] = useState(false);
   const [popOpen, setPopOpen] = useState(false);
   const [permOpen, setPermOpen] = useState(false);
   const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
@@ -231,11 +230,11 @@ export default function ChatPanel() {
     watch.observe(parent);
     watch.observe(el);
     return () => watch.disconnect();
-  }, [minimized, place, dragging, big]);
+  }, [minimized, place, dragging]);
 
   useEffect(() => {
     if (list.current) list.current.scrollTop = connecting ? 0 : list.current.scrollHeight;
-  }, [messages, minimized, room, sizing, chatH, connecting, big, isWorking]);
+  }, [messages, minimized, room, sizing, chatH, connecting, isWorking]);
 
   useEffect(() => setConnecting(false), [messages.length]);
 
@@ -293,73 +292,48 @@ export default function ChatPanel() {
   const waiting = pictures.filter((p) => !p.sent);
   const attach = (files: File[]) => void attachFiles(files).then(setPictureNote);
 
+  /**
+   * Pull any edge or corner: that side follows the hand, the opposite side stays still, and the chat
+   * stops only at the edges of the canvas. A side that pulls away from the corner the chat sits in
+   * lets go of the corner, so the far side stays where it was.
+   */
   const resize = (e: React.PointerEvent, handle: ResizeHandle) => {
     if (minimized || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const el = box.current;
     const parent = el?.parentElement;
-    if (!el || !parent) return;
-
+    const body = list.current;
+    if (!el || !parent || !body) return;
     const b = el.getBoundingClientRect();
     const p = parent.getBoundingClientRect();
-    const ox = b.left - p.left;
-    const oy = b.top - p.top;
-
-    let isFree = "x" in place;
-    if ("corner" in place) {
-      const c = place.corner;
-      const touchesCorner = handle.includes(c[0]) || handle.includes(c[1]);
-      if (touchesCorner) {
-        isFree = true;
-        setLayout({ chat: { x: ox, y: oy } });
-      }
-    }
-
-    const start = {
-      x: e.clientX,
-      y: e.clientY,
-      w: chatW,
-      h: chatH,
-      ox,
-      oy,
-    };
-
-    const hasL = handle.includes("l");
-    const hasR = handle.includes("r");
-    const hasT = handle.includes("t");
-    const hasB = handle.includes("b");
-
-    const growX = hasR ? 1 : hasL ? -1 : 0;
-    const growY = hasB ? 1 : hasT ? -1 : 0;
-
+    // everything around the message area keeps its height while the chat is pulled
+    const around = b.height - body.offsetHeight;
+    const from = { x: e.clientX, y: e.clientY, l: b.left - p.left, t: b.top - p.top, r: b.right - p.left, b: b.bottom - p.top };
+    const corner = "corner" in place ? place.corner : null;
+    const free = !corner || handle.includes(corner[0]) || handle.includes(corner[1]);
+    const EDGE = 16;
     const at = (m: PointerEvent) => {
-      const deltaX = m.clientX - start.x;
-      const deltaY = m.clientY - start.y;
-      const newW = growX !== 0 ? Math.max(CHAT_MIN.w, Math.min(CHAT_MAX.w, start.w + deltaX * growX)) : start.w;
-      const newH = growY !== 0 ? Math.max(CHAT_MIN.h, Math.min(CHAT_MAX.h, start.h + deltaY * growY)) : start.h;
-      const newX = hasL ? start.ox + (start.w - newW) : start.ox;
-      const newY = hasT ? start.oy - (newH - start.h) : start.oy;
-      return { w: newW, h: newH, x: newX, y: newY };
+      const dx = m.clientX - from.x;
+      const dy = m.clientY - from.y;
+      let { l, t, r, b: btm } = from;
+      if (handle.includes("l")) l = Math.max(EDGE, Math.min(r - CHAT_MIN.w, l + dx));
+      if (handle.includes("r")) r = Math.min(p.width - EDGE, Math.max(l + CHAT_MIN.w, r + dx));
+      if (handle.includes("t")) t = Math.max(EDGE, Math.min(btm - CHAT_MIN.h - around, t + dy));
+      if (handle.includes("b")) btm = Math.min(p.height - EDGE, Math.max(t + CHAT_MIN.h + around, btm + dy));
+      return { w: Math.round(r - l), h: Math.round(btm - t - around), x: Math.round(l), y: Math.round(t) };
     };
-
     const move = (m: PointerEvent) => {
       const next = at(m);
-      setSizing(isFree ? next : { w: next.w, h: next.h });
+      setSizing(free ? next : { w: next.w, h: next.h });
     };
-
     const up = (m: PointerEvent) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       const next = at(m);
       setSizing(null);
-      if (isFree) {
-        setLayout({ chat: { x: next.x, y: next.y }, chatW: next.w, chatH: next.h });
-      } else {
-        setLayout({ chatW: next.w, chatH: next.h });
-      }
+      setLayout(free ? { chat: { x: next.x, y: next.y }, chatW: next.w, chatH: next.h } : { chatW: next.w, chatH: next.h });
     };
-
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
@@ -367,7 +341,7 @@ export default function ChatPanel() {
   const h = sizing?.h ?? chatH;
 
   const grab = (e: React.PointerEvent) => {
-    if ((e.target as Element).closest(".mode") || (e.target as Element).closest(".chat-expand-btn") || e.button !== 0) return;
+    if ((e.target as Element).closest(".mode") || e.button !== 0) return;
     const el = box.current;
     const parent = el?.parentElement;
     if (!el || !parent) return;
@@ -548,16 +522,16 @@ export default function ChatPanel() {
   return (
     <div
       ref={box}
-      className={`chat ${big ? "big" : ""} ${minimized ? "min" : ""} ${moving ? "moving free" : sizing?.x !== undefined ? "free" : "corner" in place ? `c-${place.corner}` : "free"}`}
+      className={`chat ${minimized ? "min" : ""} ${moving ? "moving free" : sizing?.x !== undefined ? "free" : "corner" in place ? `c-${place.corner}` : "free"}`}
       style={{
         ...(moving
           ? { left: moving.x, top: moving.y }
           : sizing?.x !== undefined && sizing?.y !== undefined
-          ? { left: sizing.x, top: big ? Math.min(sizing.y, 16) : sizing.y }
+          ? { left: sizing.x, top: sizing.y }
           : "x" in place
-          ? { left: place.x, top: big ? Math.min(place.y, 16) : place.y }
+          ? { left: place.x, top: place.y }
           : {}),
-        width: big ? 520 : w,
+        width: w,
       }}
       onDragOver={(e) => {
         if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
@@ -702,32 +676,6 @@ export default function ChatPanel() {
           </svg>
         </button>
 
-        <button
-          type="button"
-          className="chat-expand-btn"
-          data-name="chat-expand"
-          title={big ? "Make the chat smaller" : "Make the chat bigger"}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (minimized) setMinimized(false);
-            setBig((v) => !v);
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            {big ? (
-              <>
-                <path d="M4 9h3v3M12 7H9V4" />
-                <path d="M7 9L2.5 13.5M9 7l4.5-4.5" />
-              </>
-            ) : (
-              <>
-                <path d="M10 2.5h3.5V6M6 13.5H2.5V10" />
-                <path d="M13.5 2.5l-5 5M2.5 13.5l5-5" />
-              </>
-            )}
-          </svg>
-        </button>
 
         {cardAgent && (
           <div
@@ -943,7 +891,7 @@ export default function ChatPanel() {
               title="Pull to make the chat bigger or smaller"
             />
           ))}
-          <div className="cbody" ref={list} style={{ height: big ? undefined : (room === null ? h : Math.min(h, room)) }}>
+          <div className="cbody" ref={list} style={{ height: sizing ? h : room === null ? h : Math.min(h, room) }}>
             {connecting && <ConnectAi />}
             {found === false && (
               <div className="m">
