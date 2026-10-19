@@ -4538,6 +4538,10 @@ button.agent-perm {
 .hist.chat .hist-gap {
   flex: 1;
 }
+.hist.chat .hist-legend,
+.hist.chat .scroller {
+  display: none;
+}
 .chathome-label {
   margin: 14px 10px 4px;
   font-size: 11px;
