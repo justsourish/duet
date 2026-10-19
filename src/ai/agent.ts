@@ -337,6 +337,7 @@ export async function sendToAgent(text: string) {
     const headers = { Authorization: `Bearer ${info.token}`, "X-Duet-Client": `${FROM_CHAT}${AGENTS.find((x) => x.id === agent)?.name ?? agent}` };
     const session = getChat().sessionId;
     let args: string[];
+    let agyInput = "";
 
     if (agent === "agy") {
       // Antigravity has no flag for instructions or per-run connections. Duet joins its list once
@@ -349,7 +350,10 @@ export async function sendToAgent(text: string) {
         throw new Error(connectHelp(String(e), app));
       }
       const whole = `${chatRules()}\n\nFor this job use only the "duet" tools. Do not run commands, browse, or read or write files.\n\n${past || "The designer says:\n"}${prompt}`;
-      args = ["--print", whole, "--output-format", "stream-json"];
+      // The instructions and the message go in through the input, not the command line: on Windows a
+      // command line stops at about 8,000 letters, and the instructions with skills are twice that.
+      agyInput = JSON.stringify({ event: "user", message: { role: "user", content: whole } }) + "\n";
+      args = ["--print=", "--input-format", "stream-json", "--output-format", "stream-json"];
       if (getChat().models.agy) args.push("--model", getChat().models.agy as string);
       // The Antigravity model names already carry their level, e.g. "(High)", so no --effort here.
       if (session) args.push("--conversation", session);
@@ -377,7 +381,7 @@ export async function sendToAgent(text: string) {
       if (getChat().effort) args.push("--effort", getChat().effort);
       if (session) args.push("--resume", session);
     }
-    await invoke("agent_run", { program: agent, args, input: agent === "agy" ? prompt : `${past}${prompt}`, cwd: `${home}/agent-workspace` });
+    await invoke("agent_run", { program: agent, args, input: agent === "agy" ? agyInput : `${past}${prompt}`, cwd: `${home}/agent-workspace` });
   } catch (e) {
     live = false;
     removeWorking(runFor);
