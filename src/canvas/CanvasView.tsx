@@ -80,7 +80,7 @@ type Drag =
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number; duplicate?: boolean }
   | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number } }
-  | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean }
+  | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean; spun: number; free: boolean }
   | { kind: "zoom"; sx: number; sy: number; startZoom: number; vx: number; vy: number; moved: boolean; priorGlide: { zoom: number; zoomIn?: boolean } | null }
   | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
 
@@ -544,7 +544,9 @@ export default function CanvasView() {
     if (turning) {
       const centre = turnCentre(doc, turning);
       const from = (Math.atan2(p.y - centre.y, p.x - centre.x) * 180) / Math.PI;
-      dragRef.current = { kind: "turn", id: turning, centre, from, base: doc.elements[turning].rotation || 0, sx: p.sx, sy: p.sy, moved: false };
+      // a thing whose rotation changes over time keeps whole turns, so it can spin past 180 and around more than once
+      const free = !!doc.elements[turning].keys.rotation?.length;
+      dragRef.current = { kind: "turn", id: turning, centre, from, base: doc.elements[turning].rotation || 0, sx: p.sx, sy: p.sy, moved: false, spun: 0, free };
       return;
     }
 
@@ -716,9 +718,13 @@ export default function CanvasView() {
       if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
       d.moved = true;
       const now = (Math.atan2(p.y - d.centre.y, p.x - d.centre.x) * 180) / Math.PI;
+      // add up the small steps the pointer makes, so going past half a turn does not jump back
+      d.spun += tidyAngle(now - d.from);
+      d.from = now;
       // whole degrees, or steps of 15 with Shift
       const step = e.shiftKey ? 15 : 1;
-      const rotation = tidyAngle(Math.round((d.base + now - d.from) / step) * step);
+      const turned = Math.round((d.base + d.spun) / step) * step;
+      const rotation = d.free ? turned : tidyAngle(turned);
       dragPreview("set_props", { ids: [d.id], props: { rotation } });
       setOverlay({ turning: rotation });
       return;

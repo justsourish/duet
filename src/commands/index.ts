@@ -270,7 +270,9 @@ const setProps: CommandDef<SetPropsArgs> = {
       const was = el.rotation || 0;
       Object.assign(el, a.props);
       if ("rotation" in a.props) {
-        el.rotation = canTurn(next, id) ? tidyAngle(Number(a.props.rotation) || 0) : was;
+        // a rotation that changes over time keeps whole turns: 360 is one full spin, and minus turns the other way
+        const turn = Number(a.props.rotation) || 0;
+        el.rotation = canTurn(next, id) ? (el.keys.rotation?.length ? Math.round(turn * 100) / 100 : tidyAngle(turn)) : was;
         if (el.type === "group" && el.rotation !== was) turnGroup(next, id, el.rotation - was);
       }
       // text that changes how it looks or what it says gets the size it needs, unless the size was given

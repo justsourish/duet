@@ -3988,3 +3988,17 @@ button.agent-perm {
 .sec-fold.open {
   margin-bottom: 8px;
 }
+/* position and size in Motion: one diamond at the end of each pair */
+.field.paired {
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+}
+.field.paired > .key-here {
+  margin-left: -2px;
+}
+.key-here.moves-animated {
+  color: var(--accent);
+}
+.key-here.moves-here {
+  color: var(--key);
+}

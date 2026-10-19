@@ -1251,6 +1251,14 @@ describe("rotation", () => {
     expect(canTurn(d, "f")).toBe(false);
   });
 
+  it("keeps whole turns once the rotation changes over time", () => {
+    let d = runCommand(bar(), "set_props", { ids: ["r"], props: { rotation: 720 } });
+    expect(d.elements.r.rotation).toBe(0);
+    d = { ...d, elements: { ...d.elements, r: { ...d.elements.r, keys: { rotation: [{ t: 0, v: 0, ease: "in-out" }] } } } };
+    expect(runCommand(d, "set_props", { ids: ["r"], props: { rotation: 720 } }).elements.r.rotation).toBe(720);
+    expect(runCommand(d, "set_props", { ids: ["r"], props: { rotation: -400 } }).elements.r.rotation).toBe(-400);
+  });
+
   it("picks a turned thing where it is drawn, not where its box was", () => {
     const d = bar(90); // now a tall bar around x 190 to 210, y 10 to 210
     expect(hitTest(d, 200, 20)).toBe("r");

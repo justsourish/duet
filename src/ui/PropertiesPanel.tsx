@@ -20,6 +20,7 @@ function NumField({
   onDrag,
   min,
   mark,
+  diamond = true,
 }: {
   label: string;
   value: number | "";
@@ -28,6 +29,8 @@ function NumField({
   min?: number;
   /** In Motion, a property that can change over time shows its keyframe diamond and its colour. */
   mark?: KeyMark;
+  /** False when the diamond sits on the row instead, shared with the field beside it. Option click on the label still keys this one alone. */
+  diamond?: boolean;
 }) {
   const [text, setText] = useState(String(value));
   const [dragging, setDragging] = useState<"x" | "y" | null>(null);
@@ -55,6 +58,11 @@ function NumField({
 
   const startDrag = (e: React.PointerEvent<HTMLElement>, axis: "x" | "y") => {
     if (e.button !== 0) return;
+    if (axis === "x" && e.altKey && mark && !diamond) {
+      e.preventDefault();
+      mark.toggle();
+      return;
+    }
     if (axis === "x") {
       e.preventDefault();
     }
@@ -157,6 +165,7 @@ function NumField({
     <label className={`f${mark ? ` moves-${mark.state}` : ""}`}>
       <span
         className="num-label"
+        title={mark && !diamond ? `Option click to key ${label} on its own` : undefined}
         onPointerDown={(e) => startDrag(e, "x")}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -182,23 +191,28 @@ function NumField({
           }
         }}
       />
-      {mark && (
-        <button
-          type="button"
-          className="key-here"
-          data-name={`key-${mark.name}`}
-          title={mark.state === "here" ? `Take away the ${mark.name} keyframe here` : `Add ${/^[aeiou]/i.test(mark.name) ? "an" : "a"} ${mark.name} keyframe here`}
-          onClick={(e) => {
-            e.preventDefault();
-            mark.toggle();
-          }}
-        >
-          <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
-            <path d="M6 1 11 6 6 11 1 6Z" fill={mark.state === "here" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
+      {mark && diamond && <KeyDiamond mark={mark} />}
     </label>
+  );
+}
+
+/** The keyframe at the playhead: empty when there is none, filled when there is one. A click adds or takes it away. */
+function KeyDiamond({ mark }: { mark: KeyMark }) {
+  return (
+    <button
+      type="button"
+      className={`key-here moves-${mark.state}`}
+      data-name={`key-${mark.name}`}
+      title={mark.state === "here" ? `Take away the ${mark.name} keyframe here` : `Add ${/^[aeiou]/i.test(mark.name) ? "an" : "a"} ${mark.name} keyframe here`}
+      onClick={(e) => {
+        e.preventDefault();
+        mark.toggle();
+      }}
+    >
+      <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M6 1 11 6 6 11 1 6Z" fill={mark.state === "here" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      </svg>
+    </button>
   );
 }
 
@@ -211,14 +225,17 @@ interface KeyMark {
 
 const KEY_NAMES: Record<Moving, string> = { x: "X", y: "Y", width: "width", height: "height", rotation: "rotation", opacity: "opacity" };
 
-/** The keyframe mark for one property of one thing at the playhead. The diamond adds or takes away that keyframe. */
-function keyMark(el: El, prop: Moving, t: number): KeyMark {
-  const keys = el.keys[prop] ?? [];
-  const here = keys.some((k) => Math.abs(k.t - t) < 0.004);
+/**
+ * The keyframe mark for some properties of one thing at the playhead. Position and size key both of their
+ * numbers together, as people nearly always want. The diamond adds or takes away the keyframe.
+ */
+function keyMark(el: El, props: Moving[], t: number, name = KEY_NAMES[props[0]]): KeyMark {
+  const here = props.some((p) => el.keys[p]?.some((k) => Math.abs(k.t - t) < 0.004));
+  const moving = props.some((p) => el.keys[p]?.length);
   return {
-    name: KEY_NAMES[prop],
-    state: here ? "here" : keys.length ? "animated" : "none",
-    toggle: () => dispatch(here ? "remove_key" : "key_now", { ids: [el.id], props: [prop], t }),
+    name,
+    state: here ? "here" : moving ? "animated" : "none",
+    toggle: () => dispatch(here ? "remove_key" : "key_now", { ids: [el.id], props, t }),
   };
 }
 
@@ -618,7 +635,7 @@ export default function PropertiesPanel() {
   // in Motion, one thing inside a frame that plays shows a keyframe diamond beside each property that can change over time
   const keyed = mode === "motion" && one && scene && one.id !== scene.id ? one : null;
   const now = Math.round(getState().clock.t * 1000) / 1000;
-  const mark = (prop: Moving) => (keyed ? keyMark(keyed, prop, now) : undefined);
+  const mark = (prop: Moving) => (keyed ? keyMark(keyed, [prop], now) : undefined);
 
   return (
     <aside className="right">
@@ -630,12 +647,14 @@ export default function PropertiesPanel() {
       {one && (
         <div className="sec">
           <h4>Position and size</h4>
-          <div className="field">
-            <NumField label="X" mark={mark("x")} value={Math.round(one.x * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: n - one.x, dy: 0 })} />
-            <NumField label="Y" mark={mark("y")} value={Math.round(one.y * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: 0, dy: n - one.y })} />
+          <div className={`field${keyed ? " paired" : ""}`}>
+            <NumField label="X" mark={mark("x")} diamond={false} value={Math.round(one.x * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: n - one.x, dy: 0 })} />
+            <NumField label="Y" mark={mark("y")} diamond={false} value={Math.round(one.y * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: 0, dy: n - one.y })} />
+            {keyed && <KeyDiamond mark={keyMark(keyed, ["x", "y"], now, "position")} />}
             <NumField
               label="W"
               mark={mark("width")}
+              diamond={false}
               value={Math.round(one.width * 100) / 100}
               min={1}
               onCommit={(n) => dispatch("resize_element", { id: one.id, x: one.x, y: one.y, width: n, height: one.height })}
@@ -643,10 +662,12 @@ export default function PropertiesPanel() {
             <NumField
               label="H"
               mark={mark("height")}
+              diamond={false}
               value={Math.round(one.height * 100) / 100}
               min={1}
               onCommit={(n) => dispatch("resize_element", { id: one.id, x: one.x, y: one.y, width: one.width, height: n })}
             />
+            {keyed && <KeyDiamond mark={keyMark(keyed, ["width", "height"], now, "size")} />}
           </div>
           {canTurn(doc, one.id) && (
             <>
