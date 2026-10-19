@@ -17,7 +17,6 @@ import type { Corner } from "./layout";
 import { agentColour } from "../ai/colours";
 import { busyOutside } from "../ai/outside";
 import { useDismiss } from "./useDismiss";
-import { toggleSkill, useSkills } from "../ai/skills";
 import { pickWaitingLine } from "../ai/waitingLines";
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
@@ -140,7 +139,6 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const place = useLayout((d) => d.chat);
   const chatW = useLayout((d) => d.chatW);
   const chatH = useLayout((d) => d.chatH);
-  const skills = useSkills();
 
   const [connecting, setConnecting] = useState(false);
   const [pictureNote, setPictureNote] = useState<string | null>(null);
@@ -577,6 +575,21 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
         <div className="ctitle">
           <b>Chat</b>
         </div>
+        <button
+          type="button"
+          className="chat-new-btn"
+          disabled={messages.length === 0 || running}
+          title="New chat"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (messages.length === 0 || running) return;
+            newConversation();
+          }}
+        >
+          <Icon name="new-chat" size={13} />
+          <span>New chat</span>
+        </button>
         <div
           className="members-cluster"
           data-name="members"
@@ -674,7 +687,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
           type="button"
           className="chat-settings-btn"
           data-name="chat-settings"
-          title="Chat settings"
+          title="More"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
@@ -683,20 +696,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
             setCardAgent(null);
           }}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
+          <Icon name="dots" size={14} />
         </button>
 
 
@@ -866,38 +866,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                   setSettingsOpen(false);
                 }}
               >
-                Connect your own AI
-              </div>
-            </div>
-
-            <div className="chat-settings-section">
-              <div className="agent-pop-label">Skills</div>
-              <div className="chat-settings-skills">
-                {skills.map((s) => (
-                  <div className="skill" key={s.id}>
-                    <div className="n">
-                      {s.name}
-                      <small>{s.summary}</small>
-                    </div>
-                    <div
-                      className={`sw ${s.enabled ? "on" : ""}`}
-                      onClick={() => toggleSkill(s.id)}
-                      role="switch"
-                      aria-checked={s.enabled}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div
-                className={`agent-pop-link newchat ${messages.length === 0 || running ? "disabled" : ""}`}
-                style={{ marginTop: 6 }}
-                onClick={() => {
-                  if (messages.length === 0 || running) return;
-                  newConversation();
-                  setSettingsOpen(false);
-                }}
-              >
-                Start a fresh conversation
+                Add another AI tool
               </div>
             </div>
           </div>
@@ -1123,12 +1092,12 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 e.target.value = "";
               }}
             />
-            <div className="agent-anchor">
+            <div className="agent-anchor" data-name="model-row">
               <button
                 type="button"
                 className="agent-btn"
                 data-name="agent-button"
-                title="Who answers, and how"
+                title="Who answers"
                 onClick={() => {
                   setPopOpen((o) => !o);
                   setPermOpen(false);
@@ -1142,6 +1111,19 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                   </svg>
                 </span>
               </button>
+              <select
+                className="agent-model"
+                title="Model"
+                value={models[agent] ?? ""}
+                disabled={running}
+                onChange={(e) => setModel(agent, e.target.value)}
+              >
+                {(agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 data-name="perm-button"
@@ -1209,33 +1191,16 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                       )}
                     </div>
                   </div>
-                  {members.some((m) => m.id === agent) && (
+                  {members.some((m) => m.id === agent) && agent === "claude" && (
                     <div>
-                      <div className="agent-pop-label">{toolName} settings</div>
-                      <div className="agent-pop-row">
-                        <div>
-                          <div className="agent-pop-label">Model</div>
-                          <select value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
-                            {(agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS).map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        {agent === "claude" && (
-                          <div>
-                            <div className="agent-pop-label">Effort</div>
-                            <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
-                              {EFFORTS.map((x) => (
-                                <option key={x} value={x}>
-                                  {x === "" ? "Default" : x}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
+                      <div className="agent-pop-label">Effort</div>
+                      <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
+                        {EFFORTS.map((x) => (
+                          <option key={x} value={x}>
+                            {x === "" ? "Default" : x}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>
