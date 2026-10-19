@@ -4,6 +4,7 @@ import { AGENTS, useChat } from "../ai/chat";
 import { busyOutside } from "../ai/outside";
 import { toolName } from "../ai/who";
 import { useStore } from "../state/store";
+import { getVersion } from "@tauri-apps/api/app";
 
 interface SettingsProps {
   check?: boolean;
@@ -12,6 +13,8 @@ interface SettingsProps {
 
 export default function Settings({ check = false, onClose }: SettingsProps) {
   const [section, setSection] = useState<"General" | "Developer">("General");
+  const [version, setVersion] = useState("");
+  useEffect(() => void getVersion().then(setVersion).catch(() => undefined), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -67,6 +70,19 @@ export default function Settings({ check = false, onClose }: SettingsProps) {
               <div className="settings-section-title">General</div>
               <div className="settings-row">
                 <span>AI tool:</span> <b>{agentName}</b>
+              </div>
+              <div className="settings-row">
+                <span>Duet version:</span> <b>{version || "?"}</b>
+                <button
+                  className="mini"
+                  data-name="check-update"
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new Event("duet:check-update"));
+                  }}
+                >
+                  Check for updates
+                </button>
               </div>
             </div>
           )}
