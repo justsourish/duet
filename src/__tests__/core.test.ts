@@ -1862,7 +1862,7 @@ describe("a single thing as a component", () => {
   });
 });
 
-import { addMsg, askDesigner, moveConversationTo, setSessionId, showConversationFor, tookLine } from "../ai/chat";
+import { addMsg, askDesigner, forgetSteps, messagesOf, moveConversationTo, setRunning, setSessionId, showConversationFor, tookLine, updateMsg } from "../ai/chat";
 
 describe("a conversation for each project", () => {
   const picture = { name: "ref.png", data: "", mime: "image/png", width: 10, height: 10, thumb: "" };
@@ -1914,7 +1914,7 @@ describe("a conversation for each project", () => {
     expect(getChat().pictures.map((p) => p.sent)).toEqual([true]);
   });
 
-  it("declines a waiting question, and drops the working line and Undo", async () => {
+  it("declines a waiting question and drops the working line, and keeps Undo until the project is closed", async () => {
     showConversationFor("/a.duet", true);
     const answer = askDesigner("Delete the header?");
     addMsg({ role: "note", text: "Moved the logo", undoStep: 4 });
@@ -1923,8 +1923,31 @@ describe("a conversation for each project", () => {
     expect(await answer).toBe(false);
     showConversationFor("/a.duet");
     expect(getChat().messages.some((m) => m.role === "working")).toBe(false);
-    expect(getChat().messages.every((m) => m.undoStep === undefined)).toBe(true);
+    // the project waited in its tab with its history, so Undo still points at the right step
+    expect(getChat().messages.find((m) => m.text === "Moved the logo")?.undoStep).toBe(4);
     expect(getChat().running).toBe(false);
+    showConversationFor("/b.duet");
+    forgetSteps("/a.duet");
+    showConversationFor("/a.duet");
+    expect(getChat().messages.every((m) => m.undoStep === undefined)).toBe(true);
+  });
+
+  it("an AI at work in a project off screen writes to that project's conversation", () => {
+    showConversationFor("/a.duet", true);
+    setRunning(true);
+    const working = addMsg({ role: "working", text: "Thinking..." }, "/a.duet");
+    showConversationFor("/b.duet", true);
+    expect(getChat().running).toBe(false);
+    expect(getChat().busy).toBe("/a.duet");
+    addMsg({ role: "duet", text: "Done in a" }, "/a.duet");
+    updateMsg(working, { text: "Still thinking" }, "/a.duet");
+    expect(texts()).toEqual([]);
+    expect(messagesOf("/a.duet").map((m) => m.text)).toEqual(["Still thinking", "Done in a"]);
+    showConversationFor("/a.duet");
+    expect(getChat().running).toBe(true);
+    expect(texts()).toEqual(["Still thinking", "Done in a"]);
+    setRunning(false);
+    expect(getChat().busy).toBe(null);
   });
 
   it("Save As takes the conversation to the new file", () => {
@@ -2171,7 +2194,7 @@ describe("words tied to steps", () => {
     showConversationFor("/other.duet");
     showConversationFor("/steps.duet");
     const back = getChat().messages[0];
-    expect(back.undoStep).toBeUndefined();
+    expect(back.undoStep).toBe(getState().cursor);
     expect(back.step).toBe(step);
     expect(findStep(getState().timeline, back.step)).toBe(1);
   });
@@ -2288,5 +2311,56 @@ describe("create_elements", () => {
     let doc = runCommand(emptyDoc(), "create_element", { id: "parent", type: "frame", x: 0, y: 0, width: 400, height: 400, props: { layout: defaultLayout() } });
     doc = runCommand(doc, "create_element", { id: "child", type: "frame", x: 0, y: 0, width: 100, height: 100, parentId: "parent" });
     expect(doc.elements.child.fill).toBe("#ffffff00");
+  });
+});
+
+import { isParked, liveRoom, onParkedChange, parkLive, resetStoreKeepingParked, roomFor, select as selectIds, setProject, unpark } from "../state/store";
+
+describe("projects open in tabs", () => {
+  const box = (id: string) => ({ id, type: "rect" as const, x: 0, y: 0, width: 10, height: 10 });
+
+  it("a project put away in its tab comes back with its history, selection and place", () => {
+    resetStore();
+    setProject({ path: "/w/a", file: "/a.duet", name: "a" });
+    dispatch("create_element", box("a1"));
+    selectIds(["a1"]);
+    expect(parkLive()).toBe(true);
+    resetStoreKeepingParked();
+    setProject({ path: "/w/b", file: "/b.duet", name: "b" });
+    dispatch("create_element", box("b1"));
+    expect(unpark("/a.duet")).toBe(true);
+    expect(isParked("/a.duet")).toBe(false);
+    expect(getState().project.file).toBe("/a.duet");
+    expect(currentDoc().elements.a1).toBeTruthy();
+    expect(currentDoc().elements.b1).toBeUndefined();
+    expect(getState().selection).toEqual(["a1"]);
+    undo();
+    expect(currentDoc().elements.a1).toBeUndefined();
+  });
+
+  it("an AI changes its own project while another is on screen, and only that one", () => {
+    resetStore();
+    setProject({ path: "/w/a", file: "/a.duet", name: "a" });
+    parkLive();
+    resetStoreKeepingParked();
+    setProject({ path: "/w/b", file: "/b.duet", name: "b" });
+    const changed: string[] = [];
+    const stop = onParkedChange((f) => changed.push(f));
+    const a = roomFor("/a.duet");
+    expect(a?.live).toBe(false);
+    a?.dispatch("create_element", box("from-ai"), "ai", "Antigravity (outside)");
+    stop();
+    expect(a?.currentDoc().elements["from-ai"]).toBeTruthy();
+    expect(currentDoc().elements["from-ai"]).toBeUndefined();
+    expect(getState().timeline).toHaveLength(1);
+    expect(changed).toEqual(["/a.duet"]);
+    expect(a?.getState().timeline.slice(-1)[0]?.by).toBe("Antigravity (outside)");
+    expect(roomFor("/b.duet")).toBe(liveRoom);
+    expect(roomFor("/gone.duet")).toBeNull();
+  });
+
+  it("unsaved work has no tab to wait in", () => {
+    resetStore();
+    expect(parkLive()).toBe(false);
   });
 });

@@ -117,6 +117,60 @@ function set(patch: Partial<State>) {
   listeners.forEach((l) => l());
 }
 
+// ---- rooms: every open project keeps its design and history here, on screen or not ----
+
+/** Projects open in a tab that is not on screen, by their file. An AI can keep working in one. */
+const parked = new Map<string, State>();
+/** Told the file of a project off screen whenever it changes, so it can be saved. */
+const parkedListeners = new Set<(file: string) => void>();
+
+/** One project's state, and how to change it. The project on screen is one; each project off screen is another. */
+interface Box {
+  get: () => State;
+  set: (patch: Partial<State>) => void;
+  live: boolean;
+}
+const liveBox: Box = { get: () => state, set, live: true };
+function parkedBox(file: string): Box {
+  return {
+    get: () => parked.get(file) as State,
+    set: (patch) => {
+      parked.set(file, { ...(parked.get(file) as State), ...patch });
+      parkedListeners.forEach((l) => l(file));
+    },
+    live: false,
+  };
+}
+
+/** Put the project on screen away, whole, so it can come back as it was. Only a project with a file can wait. */
+export function parkLive(): boolean {
+  const file = state.project.file;
+  if (!file) return false;
+  parked.set(file, { ...state, transientDoc: null, aiWork: null, overlay: noOverlay(), editingId: null, clock: { ...state.clock, playing: false } });
+  return true;
+}
+
+/** Bring a waiting project back on screen. Says whether it was waiting. */
+export function unpark(file: string): boolean {
+  const back = parked.get(file);
+  if (!back) return false;
+  parked.delete(file);
+  state = { ...back, tool: state.tool };
+  listeners.forEach((l) => l());
+  return true;
+}
+
+export const isParked = (file: string) => parked.has(file);
+export const parkedState = (file: string): State | undefined => parked.get(file);
+/** A tab was closed: forget its project. */
+export const dropParked = (file: string) => parked.delete(file);
+export function onParkedChange(l: (file: string) => void) {
+  parkedListeners.add(l);
+  return () => {
+    parkedListeners.delete(l);
+  };
+}
+
 export const getState = (): State => state;
 
 export const subscribe = (l: () => void) => {
@@ -147,8 +201,8 @@ export function seenDoc(s: State = state): Doc {
 const ABOUT_TIME = new Set<CommandName>(["set_duration", "set_timing", "set_key", "set_keys", "key_now", "set_curve", "remove_key", "set_entrance", "split_at", "ripple_delete"]);
 
 let posedCache: { doc: Doc; scene: string; t: number; out: Doc } | null = null;
-function pose(doc: Doc): Doc {
-  const { scene, t } = state.clock;
+function pose(doc: Doc, box: Box = liveBox): Doc {
+  const { scene, t } = box.get().clock;
   if (!scene || !doc.elements[scene]?.duration) return doc;
   if (!posedCache || posedCache.doc !== doc || posedCache.scene !== scene || posedCache.t !== t) posedCache = { doc, scene, t, out: poseAt(doc, scene, t) };
   return posedCache.out;
@@ -161,14 +215,21 @@ function pose(doc: Doc): Doc {
 export const workDoc = (s: State = state): Doc => pose(currentDoc(s));
 
 /** Run a change on what is seen at this moment, and put the result where it belongs in time. */
-function runAtNow<N extends CommandName>(real: Doc, name: N, args: Parameters<typeof runCommand<N>>[2]): Doc {
+function runAtNow<N extends CommandName>(real: Doc, name: N, args: Parameters<typeof runCommand<N>>[2], box: Box = liveBox): Doc {
   if (ABOUT_TIME.has(name)) return runCommand(real, name, args);
-  const posed = pose(real);
-  return posed === real ? runCommand(real, name, args) : settle(real, posed, runCommand(posed, name, args), state.clock.scene as string, state.clock.t);
+  const posed = pose(real, box);
+  const { clock } = box.get();
+  return posed === real ? runCommand(real, name, args) : settle(real, posed, runCommand(posed, name, args), clock.scene as string, clock.t);
 }
 
 /** Test helper: reset everything. */
 export function resetStore() {
+  parked.clear();
+  resetStoreKeepingParked();
+}
+
+/** Test helper: start a fresh project on screen, leaving the ones waiting in tabs alone. */
+export function resetStoreKeepingParked() {
   state = initial();
   lastNudge = null;
   listeners.forEach((l) => l());
@@ -178,19 +239,20 @@ function cleanSelection(sel: string[], doc: Doc): string[] {
   return sel.filter((id) => doc.elements[id]);
 }
 
-function commit(doc: Doc, label: string, actor: Actor, by?: string) {
-  const base = state.timeline[state.cursor].doc;
+function commit(doc: Doc, label: string, actor: Actor, by?: string, box: Box = liveBox) {
+  const s = box.get();
+  const base = s.timeline[s.cursor].doc;
   if (doc === base) {
-    set({ transientDoc: null });
+    box.set({ transientDoc: null });
     return;
   }
-  const timeline = state.timeline.slice(0, state.cursor + 1).concat({ doc, label, actor, ...(by ? { by } : {}), time: Date.now(), step: newStepId() });
-  set({
+  const timeline = s.timeline.slice(0, s.cursor + 1).concat({ doc, label, actor, ...(by ? { by } : {}), time: Date.now(), step: newStepId() });
+  box.set({
     timeline,
     cursor: timeline.length - 1,
     transientDoc: null,
-    selection: cleanSelection(state.selection, doc),
-    focus: cleanSelection(state.focus, doc),
+    selection: cleanSelection(s.selection, doc),
+    focus: cleanSelection(s.focus, doc),
   });
 }
 
@@ -297,10 +359,11 @@ export function restoreDoc(doc: Doc, label: string, actor: Actor = "you", by?: s
 
 // ---- history ----
 
-export function goTo(index: number) {
-  const i = Math.max(0, Math.min(state.timeline.length - 1, index));
-  const doc = state.timeline[i].doc;
-  set({ cursor: i, transientDoc: null, selection: cleanSelection(state.selection, doc), focus: cleanSelection(state.focus, doc), editingId: null });
+export function goTo(index: number, box: Box = liveBox) {
+  const s = box.get();
+  const i = Math.max(0, Math.min(s.timeline.length - 1, index));
+  const doc = s.timeline[i].doc;
+  box.set({ cursor: i, transientDoc: null, selection: cleanSelection(s.selection, doc), focus: cleanSelection(s.focus, doc), editingId: null });
 }
 
 export const undo = () => goTo(state.cursor - 1);
@@ -364,3 +427,60 @@ export const setOverlay = (patch: Partial<Overlay>) => set({ overlay: { ...state
 export const clearOverlay = () => set({ overlay: noOverlay() });
 export const setEditing = (id: string | null) => set({ editingId: id });
 export const setClock = (patch: Partial<Clock>) => set({ clock: { ...state.clock, ...patch } });
+
+// ---- what an AI works on: its own project, on screen or not ----
+
+/** The same changes as above, made to one project whether or not it is on screen. */
+export interface Room {
+  /** The project's file, or null for work that is not saved anywhere. */
+  file: string | null;
+  /** Whether it is the project on screen. */
+  live: boolean;
+  getState: () => State;
+  currentDoc: () => Doc;
+  dispatch: <N extends CommandName>(name: N, args: ArgsOf<N>, actor?: Actor, by?: string) => void;
+  restoreDoc: (doc: Doc, label: string, actor?: Actor, by?: string) => void;
+  goTo: (index: number) => void;
+  select: (ids: string[]) => void;
+  noteAiWork: (ids: string[], by?: string) => void;
+  noteAiArea: (area: { x: number; y: number; width: number; height: number }, by?: string) => void;
+  touchAiWork: (by?: string) => boolean;
+}
+
+/** The project on screen. */
+export const liveRoom: Room = {
+  get file() {
+    return state.project.file;
+  },
+  live: true,
+  getState,
+  currentDoc: () => currentDoc(),
+  dispatch,
+  restoreDoc,
+  goTo: (i) => goTo(i),
+  select,
+  noteAiWork,
+  noteAiArea,
+  touchAiWork,
+};
+
+/** The project with this file, wherever it is. Null when it is neither on screen nor waiting in a tab. */
+export function roomFor(file: string | null): Room | null {
+  if (file === state.project.file) return liveRoom;
+  if (!file || !parked.has(file)) return null;
+  const box = parkedBox(file);
+  return {
+    file,
+    live: false,
+    getState: box.get,
+    currentDoc: () => currentDoc(box.get()),
+    dispatch: (name, args, actor = "you", by) => commit(runAtNow(currentDoc(box.get()), name, args, box), commandLabel(name, args), actor, by, box),
+    restoreDoc: (doc, label, actor = "you", by) => commit(doc, label, actor, by, box),
+    goTo: (i) => goTo(i, box),
+    select: (ids) => box.set({ selection: ids }),
+    // where an AI works is shown on the canvas, and this project is not on it
+    noteAiWork: () => undefined,
+    noteAiArea: () => undefined,
+    touchAiWork: () => true,
+  };
+}

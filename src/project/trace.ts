@@ -5,7 +5,8 @@ import { drawnBox } from "../document/path";
 import type { AbsNode } from "../document/path";
 import { TraceError, traceShapes } from "../document/trace";
 import type { Doc, PathNode } from "../document/types";
-import { currentDoc, restoreDoc, select } from "../state/store";
+import { liveRoom } from "../state/store";
+import type { Room } from "../state/store";
 import { getPicture, preloadPictures } from "./assets";
 
 /** The longest side, in pixels, a picture is looked at when it is traced. Enough for a clean outline, and quick. */
@@ -17,8 +18,8 @@ const r4 = (n: number) => Math.round(n * 10000) / 10000;
  * Trace a picture on the canvas into flat drawn shapes, laid exactly over it. The picture stays.
  * One step in the history. Returns the ids of what was made, or a sentence saying why it could not be done.
  */
-export async function tracePicture(id: string, actor: Actor = "you", by?: string): Promise<{ ids: string[]; groupId: string | null } | { why: string }> {
-  const before = currentDoc();
+export async function tracePicture(id: string, actor: Actor = "you", by?: string, room: Room = liveRoom): Promise<{ ids: string[]; groupId: string | null } | { why: string }> {
+  const before = room.currentDoc();
   const el = before.elements[id];
   if (!el || el.type !== "image" || !el.src) return { why: "Choose one picture to trace." };
   if (id.includes("::")) return { why: "This picture is inside a copy of a component. Trace it on the original instead." };
@@ -43,7 +44,7 @@ export async function tracePicture(id: string, actor: Actor = "you", by?: string
   }
 
   // The design may have moved on while the picture loaded: work from how it is now.
-  let doc: Doc = currentDoc();
+  let doc: Doc = room.currentDoc();
   const now = doc.elements[id];
   if (!now) return { why: "That picture is no longer there." };
   // A picture fills its box without stretching, so it may be drawn bigger than the box, centred.
@@ -94,7 +95,7 @@ export async function tracePicture(id: string, actor: Actor = "you", by?: string
   }
   const list = now.parentId ? doc.elements[now.parentId].childIds : doc.rootIds;
   doc = runCommand(doc, "reparent_elements", { ids: [top1], parentId: now.parentId, index: list.indexOf(id) + 1 });
-  restoreDoc(doc, "Trace picture into shapes", actor, by);
-  select([top1]);
+  room.restoreDoc(doc, "Trace picture into shapes", actor, by);
+  room.select([top1]);
   return { ids: made, groupId };
 }

@@ -107,7 +107,10 @@ export interface ChatState {
   earlier: Msg[];
   pictures: Picture[];
   mode: Mode;
+  /** Whether the AI in the conversation on show is at work. */
   running: boolean;
+  /** The project whose conversation the chat's AI is at work in, which may not be the one on show. Null when it is not at work. */
+  busy: string | null;
   minimized: boolean;
   /** null while we are still looking */
   agentFound: boolean | null;
@@ -173,6 +176,7 @@ let state: ChatState = {
   pictures: [],
   mode: savedMode(),
   running: false,
+  busy: null,
   minimized: false,
   agentFound: null,
   sessionId: null,
@@ -204,14 +208,34 @@ export function useChat<T>(selector: (s: ChatState) => T): T {
   return useSyncExternalStore(subscribeChat, () => selector(state));
 }
 
-export function addMsg(m: Omit<Msg, "id">): number {
+/** What a conversation holds. The one on show lives in the chat state; the others are kept aside. */
+type Conversation = Pick<ChatState, "messages" | "earlier" | "pictures" | "sessionId" | "sessionUsed" | "sessionMessages">;
+const blank = (): Conversation => ({ messages: [], earlier: [], pictures: [], sessionId: null, sessionUsed: 0, sessionMessages: 0 });
+
+/**
+ * Change the conversation of one project, on show or not. An AI at work in a project that is not
+ * on screen writes to its own conversation, never to the one the designer is looking at.
+ */
+function inConversation(project: string | null | undefined, change: (c: Conversation) => Partial<Conversation>) {
+  if (project === undefined || project === null || project === shownFor) {
+    set(change(state));
+    return;
+  }
+  const c = kept.get(project) ?? blank();
+  kept.set(project, { ...c, ...change(c) });
+}
+
+/** The messages of one project's conversation, on show or not. */
+export const messagesOf = (project?: string | null): Msg[] => (project === undefined || project === null || project === shownFor ? state.messages : (kept.get(project)?.messages ?? []));
+
+export function addMsg(m: Omit<Msg, "id">, project?: string | null): number {
   const id = nextId++;
-  set({ messages: [...state.messages, { time: Date.now(), ...m, id }] });
+  inConversation(project, (c) => ({ messages: [...c.messages, { time: Date.now(), ...m, id }] }));
   return id;
 }
 
-export function updateMsg(id: number, patch: Partial<Msg>) {
-  set({ messages: state.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+export function updateMsg(id: number, patch: Partial<Msg>, project?: string | null) {
+  inConversation(project, (c) => ({ messages: c.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
 }
 
 /** Keep pictures waiting in the message box, to go with the next message. */
@@ -233,8 +257,8 @@ export function sendPictures(): Picture[] {
   return going;
 }
 
-export function removeWorking() {
-  set({ messages: state.messages.filter((m) => m.role !== "working") });
+export function removeWorking(project?: string | null) {
+  inConversation(project, (c) => ({ messages: c.messages.filter((m) => m.role !== "working") }));
 }
 
 export function setMode(mode: Mode) {
@@ -246,7 +270,8 @@ export function setMode(mode: Mode) {
   set({ mode });
 }
 
-export const setRunning = (running: boolean) => set({ running });
+/** The chat's AI starts work in the conversation on show, or stops wherever it was. */
+export const setRunning = (running: boolean) => set(running ? { running, busy: shownFor } : { running, busy: null });
 export const setMinimized = (minimized: boolean) => set({ minimized });
 export const setAgentFound = (agentFound: boolean) => set({ agentFound });
 
@@ -285,12 +310,12 @@ export function setEffort(effort: string) {
   set({ effort });
 }
 
-export const setSessionId = (sessionId: string | null) => set({ sessionId });
+export const setSessionId = (sessionId: string | null, project?: string | null) => inConversation(project, () => ({ sessionId }));
 
 /** The AI tool starts fresh on the next message, instead of carrying its own session on. */
 export const dropSession = () => set({ sessionId: null, sessionMessages: 0 });
 /** A message went into the AI tool's session, or it has just finished answering. */
-export const sessionUsed = (message = false) => set({ sessionUsed: Date.now(), sessionMessages: state.sessionMessages + (message ? 1 : 0) });
+export const sessionUsed = (message = false, project?: string | null) => inConversation(project, (c) => ({ sessionUsed: Date.now(), sessionMessages: c.sessionMessages + (message ? 1 : 0) }));
 
 /** Start a fresh conversation. The one before is not shown any more, but the project keeps it. */
 export function newConversation() {
@@ -300,18 +325,8 @@ export function newConversation() {
   set({ messages: [], earlier, pictures: state.pictures.filter((p) => !p.sent), sessionId: null, sessionMessages: 0 });
 }
 
-/** A conversation put away while another project is open. */
-interface Kept {
-  messages: Msg[];
-  earlier: Msg[];
-  pictures: Picture[];
-  sessionId: string | null;
-  sessionUsed: number;
-  sessionMessages: number;
-}
-
 /** Conversations of the projects opened earlier, by project file. Kept while Duet is open. */
-const kept = new Map<string, Kept>();
+const kept = new Map<string, Conversation>();
 /** The project file the conversation on show belongs to. Empty for work that has no file yet. */
 let shownFor = "";
 
@@ -326,8 +341,8 @@ export function showConversationFor(project: string, fresh = false) {
   // work without a file is gone once another project opens, and so is its conversation
   if (shownFor && project !== shownFor) {
     kept.set(shownFor, {
-      // a step in the history is not the same step after the project is opened again, so Undo is not offered
-      messages: state.messages.filter((m) => m.role !== "working").map((m) => (m.undoStep === undefined ? m : { ...m, undoStep: undefined })),
+      // the project waits in its tab with its history, so Undo still points at the right step; an AI still at work there keeps its working line
+      messages: shownFor === state.busy ? state.messages : state.messages.filter((m) => m.role !== "working"),
       // pictures still waiting in the message box do not come along
       earlier: state.earlier,
       pictures: state.pictures.filter((p) => p.sent),
@@ -346,8 +361,14 @@ export function showConversationFor(project: string, fresh = false) {
     sessionId: back?.sessionId ?? null,
     sessionUsed: back?.sessionUsed ?? 0,
     sessionMessages: back?.sessionMessages ?? 0,
-    running: false,
+    running: state.busy !== null && state.busy === project,
   });
+}
+
+/** A project was closed. Its history is let go, so Undo in its conversation no longer points anywhere. */
+export function forgetSteps(project: string) {
+  const c = kept.get(project);
+  if (c) kept.set(project, { ...c, messages: c.messages.map((m) => (m.undoStep === undefined ? m : { ...m, undoStep: undefined })) });
 }
 
 /** The project file the conversation on show belongs to. Empty for work that has no file yet. */
