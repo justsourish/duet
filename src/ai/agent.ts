@@ -321,7 +321,7 @@ export async function sendToAgent(text: string) {
   bindAi(name, runFor || null);
   bindAi(name + OUTSIDE, runFor || null);
   turn = { at: Date.now(), after: getChat().messages.reduce((n, m) => Math.max(n, m.id), 0), tool: speaker() ?? agent, model: getChat().models[agent] ?? undefined };
-  // the designer sees the AI at work on the canvas straight away, not after its first change
+  // keeps an area it already has up; the area only appears once the AI claims one or changes the design
   aiStarted(speaker());
   live = true;
   sawText = false;
