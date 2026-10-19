@@ -4604,10 +4604,89 @@ button.agent-perm {
   font-size: 11px;
   color: var(--muted);
 }
-.chathome-fit {
+/* the thin bar over the canvas beside the chat */
+.chatbar {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.toolbar.row {
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  background: none;
+  border: 0;
+}
+.toolbar.row .tool {
+  width: 28px;
+  height: 28px;
+}
+.toolbar.row .tool svg {
+  width: 15px;
+  height: 15px;
+}
+.toolbar.row .tool-gap {
+  width: 1px;
+  height: 16px;
+  margin: 0 6px;
+}
+.chatbar-drop {
+  flex: none;
+  max-width: 180px;
+  height: 28px;
+  padding: 0 26px 0 10px;
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.chatbar-drop::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+}
+.chatbar-drop:hover,
+.chatbar-drop.on {
+  border-color: var(--muted);
+}
+.chatbar-menu {
+  min-width: 170px;
+  max-height: 60vh;
+  overflow-y: auto;
+  user-select: none;
+}
+.chatbar-menu .ctx-item {
+  cursor: pointer;
+}
+.chatbar-menu .ctx-item.on {
+  color: var(--accent);
 }
 .chathome-row:hover {
   background: var(--panel-2);
@@ -4642,9 +4721,6 @@ button.agent-perm {
 }
 .chathome > .canvas {
   grid-area: auto;
-}
-.canvas.viewonly canvas {
-  cursor: grab;
 }
 
 .chathome-projects {

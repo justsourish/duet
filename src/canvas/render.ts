@@ -1,4 +1,4 @@
-import { maskOf, turnOf, turnPoint, turnVector, worldBounds, worldRect } from "../document/geometry";
+import { ancestors, maskOf, turnOf, turnPoint, turnVector, worldBounds, worldRect } from "../document/geometry";
 import { toAbs, trace } from "../document/path";
 import type { Doc, El, Rect } from "../document/types";
 import { seenDoc } from "../state/store";
@@ -400,6 +400,17 @@ function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number
 let quiet = false;
 export const setQuietCanvas = (on: boolean) => void (quiet = on);
 
+/** Beside the chat you can look at one frame alone: only it is drawn, and only it can be picked. */
+let only: string | null = null;
+export const setOnlyFrame = (id: string | null) => void (only = id);
+
+/** Whether a thing is on show: everything, or the one frame being looked at and what is inside it. */
+export function shownOn(doc: Doc, id: string): boolean {
+  if (!only || !doc.elements[only]) return true;
+  return id === only || ancestors(doc, id).includes(only);
+}
+const shownRoots = (doc: Doc) => (only && doc.elements[only] ? [only] : doc.rootIds);
+
 export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: number, dpr: number) {
   const doc = seenDoc(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -413,7 +424,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   ctx.scale(s.viewport.zoom, s.viewport.zoom);
   typingId = s.editingId;
   try {
-    for (const id of doc.rootIds) {
+    for (const id of shownRoots(doc)) {
       const el = doc.elements[id];
       if (el) drawElement(ctx, doc, el, 0, 0);
     }
@@ -442,7 +453,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   // frame names
   ctx.font = `500 12px ${FONT_STACK}`;
   ctx.textBaseline = "alphabetic";
-  for (const id of doc.rootIds) {
+  for (const id of shownRoots(doc)) {
     const el = doc.elements[id];
     if (!el || (el.type !== "frame" && el.type !== "instance")) continue;
     const sr = screenRect(s, worldRect(doc, id));

@@ -292,7 +292,7 @@ export default function App() {
         </div>
       )}
       {chatting ? (
-        <ChatHome onEdit={() => setLayout({ space: "edit" })} />
+        <ChatHome />
       ) : (
         <>
           <Toolbar />

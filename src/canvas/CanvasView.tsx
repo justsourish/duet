@@ -9,7 +9,7 @@ import {
   canTurn,
   descendants,
   frameAt,
-  hitTest,
+  hitTest as hitAnything,
   rectsIntersect,
   snapRect,
   tidyAngle,
@@ -69,8 +69,14 @@ import type { AbsNode } from "../document/path";
 import { logError } from "../errorLog";
 import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
-import { draw, labelRect, screenRect, setQuietCanvas } from "./render";
+import { draw, labelRect, screenRect, setQuietCanvas, shownOn } from "./render";
 import { fontCss, layoutText, lineStep, textLift } from "./text";
+
+/** What is under the pointer, leaving out what is not on show while one frame is looked at alone. */
+function hitTest(doc: Doc, x: number, y: number, ignore?: Set<string>, deep?: boolean): string | null {
+  const id = hitAnything(doc, x, y, ignore, deep);
+  return id && shownOn(doc, id) ? id : null;
+}
 
 type Drag =
   | { kind: "pen"; index: number | null }
@@ -448,6 +454,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     for (let i = doc.rootIds.length - 1; i >= 0; i--) {
       const id = doc.rootIds[i];
       if (doc.elements[id]?.type !== "frame" && doc.elements[id]?.type !== "instance") continue;
+      if (!shownOn(doc, id)) continue;
       const r = labelRect(s, doc, id);
       if (sx >= r.x && sx <= r.x + r.width && sy >= r.y && sy <= r.y + r.height) return id;
     }
@@ -602,7 +609,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     if (!e.shiftKey) select([]);
     // A marquee that starts inside a frame picks that frame's contents, not the frame itself.
     const home = frameAt(doc, p.x, p.y);
-    const scope = home ? doc.elements[home].childIds : doc.rootIds;
+    const scope = (home ? doc.elements[home].childIds : doc.rootIds).filter((id) => shownOn(doc, id));
     dragRef.current = { kind: "marquee", start: { x: p.x, y: p.y }, prev: e.shiftKey ? s.selection : [], additive: e.shiftKey, scope };
   };
 

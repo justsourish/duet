@@ -9,6 +9,7 @@ import { closeProject, closeTab, getRecents, getTabs, inTauri, newProject, openP
 import { getState, setViewport, useStore } from "../state/store";
 import { readyToLeave } from "../ai/agent";
 import ChatPanel from "./ChatPanel";
+import ChatToolbar from "./ChatToolbar";
 import Icon from "./Icons";
 import SkillsPanel from "./SkillsPanel";
 
@@ -176,7 +177,7 @@ function TrashView({ onBack }: { onBack: () => void }) {
  * Chat: your projects down the left, the chat of the project you picked in the middle, and its
  * canvas on the right to watch. The canvas here only looks; changing it is for Edit.
  */
-export default function ChatHome({ onEdit }: { onEdit: () => void }) {
+export default function ChatHome() {
   const current = useStore((s) => s.project);
   const [typed, setTyped] = useState("");
   // read again whenever the list or the open projects change: opening, closing, removing or trashing one
@@ -396,11 +397,9 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
           <ChatPanel docked />
         )}
       </section>
-      <main className="canvas viewonly" onDoubleClick={onEdit} title="Double-click to work on it in Edit">
-        <CanvasView viewOnly />
-        <button className="pill chathome-fit" onClick={() => window.dispatchEvent(new Event("duet:fit"))}>
-          Find your design
-        </button>
+      <main className="canvas chathome-canvas">
+        <CanvasView />
+        <ChatToolbar />
       </main>
     </div>
   );

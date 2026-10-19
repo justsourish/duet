@@ -51,7 +51,8 @@ export function presetFrameBounds(preset: FramePreset, center: { x: number; y: n
   };
 }
 
-export default function Toolbar() {
+/** `row` lays the same tools out in a line, for the thin bar over the canvas beside the chat. */
+export default function Toolbar({ row = false }: { row?: boolean }) {
   const tool = useStore((s) => s.tool);
   const scene = useStore((s) => s.clock.scene);
   const motion = useLayout((d) => d.mode === "motion");
@@ -77,16 +78,17 @@ export default function Toolbar() {
     const updatePos = () => {
       const r = frameBtnRef.current?.getBoundingClientRect();
       if (r) {
-        setMenuPos({
-          top: Math.max(10, Math.min(r.top, window.innerHeight - 340)),
-          left: Math.round(r.right + 6),
-        });
+        setMenuPos(
+          row
+            ? { top: Math.round(r.bottom + 6), left: Math.round(r.left) }
+            : { top: Math.max(10, Math.min(r.top, window.innerHeight - 340)), left: Math.round(r.right + 6) },
+        );
       }
     };
     updatePos();
     window.addEventListener("resize", updatePos);
     return () => window.removeEventListener("resize", updatePos);
-  }, [menuOpen]);
+  }, [menuOpen, row]);
 
   const pickPreset = (preset: FramePreset) => {
     const center = screenCenter();
@@ -100,7 +102,7 @@ export default function Toolbar() {
   };
 
   return (
-    <div className="toolbar" data-name="toolbar">
+    <div className={row ? "toolbar row" : "toolbar"} data-name="toolbar">
       {TOOLS.map((t) => (
         <button
           key={t.tool}
@@ -141,13 +143,15 @@ export default function Toolbar() {
           ))}
         </>
       )}
-      <button
-        className="tool tool-settings"
-        title="Settings"
-        onClick={() => window.dispatchEvent(new Event("duet:settings"))}
-      >
-        <Icon name="settings" />
-      </button>
+      {!row && (
+        <button
+          className="tool tool-settings"
+          title="Settings"
+          onClick={() => window.dispatchEvent(new Event("duet:settings"))}
+        >
+          <Icon name="settings" />
+        </button>
+      )}
 
       {menuOpen && (
         <div
