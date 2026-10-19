@@ -1,4 +1,5 @@
-import { setTool, useStore } from "../state/store";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { currentDoc, dispatch, getState, select, setTool, useStore } from "../state/store";
 import type { Tool } from "../state/store";
 import { pickImages } from "../project/imageImport";
 import { cutNow } from "../video/edit";
@@ -6,6 +7,9 @@ import type { CutKind } from "../video/edit";
 import Icon from "./Icons";
 import type { IconName } from "./Icons";
 import { useLayout } from "./layout";
+import { useDismiss } from "./useDismiss";
+import { FRAME_PRESETS, newId } from "../commands";
+import type { FramePreset } from "../commands";
 
 /** The tools, in a strip down the left edge. Motion adds the cutting tools below the drawing ones, so nothing else moves. */
 
@@ -27,18 +31,92 @@ const CUTS: { kind: CutKind; label: string; key: string; icon: IconName }[] = [
   { kind: "after", label: "Cut away what comes after", key: "W", icon: "cut-after" },
 ];
 
+export function screenCenter(vp = getState().viewport, canvasEl?: Element | null): { x: number; y: number } {
+  const canvas = canvasEl ?? document.querySelector("main.canvas canvas") ?? document.querySelector("main.canvas");
+  const r = canvas?.getBoundingClientRect();
+  const width = r && r.width > 0 ? r.width : (typeof window !== "undefined" && window.innerWidth > 0 ? window.innerWidth : 1200);
+  const height = r && r.height > 0 ? r.height : (typeof window !== "undefined" && window.innerHeight > 0 ? window.innerHeight : 800);
+  const zoom = vp?.zoom || 1;
+  const cx = (width / 2 - (vp?.x || 0)) / zoom;
+  const cy = (height / 2 - (vp?.y || 0)) / zoom;
+  return { x: cx, y: cy };
+}
+
+export function presetFrameBounds(preset: FramePreset, center: { x: number; y: number }): { x: number; y: number; width: number; height: number } {
+  return {
+    x: Math.round(center.x - preset.width / 2),
+    y: Math.round(center.y - preset.height / 2),
+    width: preset.width,
+    height: preset.height,
+  };
+}
+
 export default function Toolbar() {
   const tool = useStore((s) => s.tool);
   const scene = useStore((s) => s.clock.scene);
   const motion = useLayout((d) => d.mode === "motion");
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 50, left: 48 });
+  const frameBtnRef = useRef<HTMLButtonElement | null>(null);
+  const prevTool = useRef(tool);
+
+  useDismiss(menuOpen, () => setMenuOpen(false), ".frame-presets, [data-name='tool-frame']");
+
+  useEffect(() => {
+    if (tool === "frame" && prevTool.current !== "frame") {
+      setMenuOpen(true);
+    } else if (tool !== "frame") {
+      setMenuOpen(false);
+    }
+    prevTool.current = tool;
+  }, [tool]);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const updatePos = () => {
+      const r = frameBtnRef.current?.getBoundingClientRect();
+      if (r) {
+        setMenuPos({
+          top: Math.max(10, Math.min(r.top, window.innerHeight - 340)),
+          left: Math.round(r.right + 6),
+        });
+      }
+    };
+    updatePos();
+    window.addEventListener("resize", updatePos);
+    return () => window.removeEventListener("resize", updatePos);
+  }, [menuOpen]);
+
+  const pickPreset = (preset: FramePreset) => {
+    const center = screenCenter();
+    const id = newId("frame");
+    dispatch("create_preset_frame", { preset, center, id });
+    if (currentDoc().elements[id]) {
+      select([id]);
+    }
+    setTool("move");
+    setMenuOpen(false);
+  };
+
   return (
     <div className="toolbar" data-name="toolbar">
       {TOOLS.map((t) => (
         <button
           key={t.tool}
+          ref={t.tool === "frame" ? frameBtnRef : undefined}
+          data-name={`tool-${t.tool}`}
           className={`tool ${tool === t.tool ? "on" : ""}`}
           title={`${t.label} (${t.key})`}
-          onClick={() => setTool(t.tool)}
+          onClick={() => {
+            if (t.tool === "frame") {
+              setTool("frame");
+              setMenuOpen((open) => (tool === "frame" ? !open : true));
+            } else {
+              setTool(t.tool);
+              setMenuOpen(false);
+            }
+          }}
         >
           <Icon name={t.icon} />
         </button>
@@ -70,6 +148,26 @@ export default function Toolbar() {
       >
         <Icon name="settings" />
       </button>
+
+      {menuOpen && (
+        <div
+          className="ctx frame-presets"
+          data-name="frame-presets"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          {FRAME_PRESETS.map((p) => (
+            <div
+              key={p.name}
+              className="ctx-item frame-preset-item"
+              data-name={`preset-${p.name.toLowerCase().replace(/\s+/g, "-")}`}
+              onClick={() => pickPreset(p)}
+            >
+              <span>{p.name}</span>
+              <kbd>{p.width} x {p.height}</kbd>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
