@@ -3514,7 +3514,7 @@ button.agent-perm {
 
 /* keys in the timeline, one row for each kind of change */
 .time-row.kind .time-name {
-  padding-left: 18px;
+  padding-left: 30px;
   color: var(--muted);
   font-size: 11px;
 }
@@ -3538,6 +3538,59 @@ button.agent-perm {
 }
 .kind-mark:hover {
   background: #fff;
+}
+/* a keyframe picked in the timeline, ready for Delete */
+.kind-mark.picked,
+.time-span u.picked {
+  background: #fff;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+/* the arrow before a layer's name that opens its keyframes */
+.time-fold-room {
+  display: inline-block;
+  width: 14px;
+  margin-left: -6px;
+  vertical-align: middle;
+}
+.time-fold {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.time-fold:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.time-fold svg {
+  transition: transform 0.12s ease-out;
+}
+.time-fold.open svg {
+  transform: rotate(90deg);
+}
+/* the top edge of the timeline, pulled to make it taller or shorter */
+.time {
+  position: relative;
+}
+.time-grip {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 6;
+  touch-action: none;
+}
+.time-grip:hover,
+.time-grip:active {
+  background: linear-gradient(var(--accent), var(--accent)) center / 100% 2px no-repeat;
 }
 .key-chips {
   display: flex;

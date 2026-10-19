@@ -10,13 +10,20 @@ import { setKeyFocus } from "./keyFocus";
 import { QUALITIES, SIZES, addClips, addSounds, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
 import type { ExportChoice } from "../video/scene";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { setLayout, useLayout } from "./layout";
+import { TIME_MIN_H, setLayout, useLayout } from "./layout";
 import { useDismiss } from "./useDismiss";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
 
 const NAMES = 150;
 const SHORTEST = 0.1;
+
+/** A keyframe picked in the timeline: Delete takes it away. Without props it is every change at that moment. */
+interface Picked {
+  id: string;
+  t: number;
+  props?: Moving[];
+}
 
 const clockText = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 
@@ -31,6 +38,8 @@ export default function TimeStrip() {
   const mode = useLayout((d) => d.mode);
   const look = useLayout((d) => d.timeLook ?? "layers");
   const keysOpen = useLayout((d) => d.keysOpen);
+  const timeH = useLayout((d) => d.timeH ?? 170);
+  const [growing, setGrowing] = useState<number | null>(null);
   const doc = useStore((s) => currentDoc(s));
   const selection = useStore((s) => s.selection);
   const clock = useStore((s) => s.clock);
@@ -46,8 +55,32 @@ export default function TimeStrip() {
   // set while a keyframe mark is being dragged, so letting go is not taken for a click
   const draggedMark = useRef(false);
   const [snap, setSnap] = useState<number | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; el: El } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; el: El; mark?: Picked } | null>(null);
   useDismiss(!!menu, () => setMenu(null), ".ctx");
+  const [picked, setPicked] = useState<Picked | null>(null);
+  // a layer opened or folded by its arrow; Option U opens or folds them all again
+  const [folds, setFolds] = useState<Record<string, boolean>>({});
+  useEffect(() => setFolds({}), [keysOpen]);
+  useEffect(() => {
+    if (picked && !selection.includes(picked.id)) setPicked(null);
+  }, [picked, selection]);
+
+  // Delete takes away the keyframe picked, and not the thing it belongs to
+  useEffect(() => {
+    if (!picked) return;
+    const key = (e: KeyboardEvent) => {
+      const on = document.activeElement as HTMLElement | null;
+      if (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable)) return;
+      if (e.key === "Escape") return setPicked(null);
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      dispatch("remove_key", { ids: [picked.id], props: picked.props, t: picked.t });
+      setPicked(null);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [picked]);
 
   // what is selected decides which frame is open, and with nothing selected the open one stays
   const frame = pageFrame(doc, selection[0]) ?? (clock.scene ? (doc.elements[clock.scene] ?? null) : null);
@@ -429,10 +462,41 @@ export default function TimeStrip() {
       setSnap(null);
       if (moved) {
         dragCommit("Move a moment");
+        setPicked(null);
       } else {
         setKeyFocus({ id: el.id, t });
+        setPicked({ id: el.id, t, props });
         seek(t);
       }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const moves = (el: El) => MOVING.some((p) => (el.keys[p]?.length ?? 0) > 0);
+  const opened = (el: El) => folds[el.id] ?? keysOpen;
+  const isPicked = (el: El, t: number, props?: Moving[]) => picked?.id === el.id && picked.t === t && picked.props === props;
+  const markMenu = (e: React.MouseEvent, el: El, t: number, props?: Moving[]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    select([el.id]);
+    setPicked({ id: el.id, t, props });
+    setMenu({ x: e.clientX, y: e.clientY, el, mark: { id: el.id, t, props } });
+  };
+
+  /** Pull the top edge of the timeline to give its rows more room or less. */
+  const grow = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const from = e.clientY;
+    const start = timeH;
+    const at = (y: number) => Math.round(Math.max(TIME_MIN_H, Math.min(window.innerHeight * 0.7, start + from - y)));
+    const move = (ev: PointerEvent) => setGrowing(at(ev.clientY));
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setGrowing(null);
+      setLayout({ timeH: at(ev.clientY) });
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -462,8 +526,10 @@ export default function TimeStrip() {
         {keyTimes.map((t) => (
           <u
             key={t}
+            className={isPicked(el, t) ? "picked" : ""}
             data-name="mark"
-            title={clockText(t)}
+            title={`${clockText(t)}. Click to pick, Delete to remove`}
+            onContextMenu={(e) => markMenu(e, el, t)}
             style={{ left: (t - span.start) * pps, cursor: "ew-resize" }}
             onPointerDown={(e) => dragMark(e, el, t)}
             onClick={(e) => {
@@ -502,9 +568,10 @@ export default function TimeStrip() {
             {times.map((t) => (
               <u
                 key={t}
-                className="kind-mark"
+                className={`kind-mark ${isPicked(el, t, g.props) ? "picked" : ""}`}
                 data-name="mark"
-                title={`${g.name}, ${clockText(t)}`}
+                title={`${g.name}, ${clockText(t)}. Click to pick, Delete to remove`}
+                onContextMenu={(e) => markMenu(e, el, t, g.props)}
                 style={{ left: t * pps, cursor: "ew-resize" }}
                 onPointerDown={(e) => dragMark(e, el, t, g.props)}
                 onClick={(e) => {
@@ -667,7 +734,8 @@ export default function TimeStrip() {
         )}
       </div>
 
-      <div className="time-lanes" ref={lanes}>
+      <div className="time-grip" data-name="timeline-height" onPointerDown={grow} title="Pull to make the timeline taller or shorter" />
+      <div className="time-lanes" ref={lanes} style={{ height: growing ?? timeH, maxHeight: "none" }}>
         <div className="time-row ruler">
           <span className="time-name" />
           <div className="time-lane" onPointerDown={scrub} style={{ width: laneWidth }}>
@@ -682,13 +750,33 @@ export default function TimeStrip() {
           <Fragment key={row.key}>
             <div className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""}`}>
               <span className="time-name" onClick={row.onClick} title={row.name}>
+                {look === "layers" && (
+                  <span className="time-fold-room">
+                    {row.items.some(moves) && (
+                      <button
+                        className={`time-fold ${opened(row.items[0]) ? "open" : ""}`}
+                        data-name={`keys-${row.name}`}
+                        title={opened(row.items[0]) ? "Hide its keyframes" : "Show its keyframes"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const el = row.items[0];
+                          setFolds((f) => ({ ...f, [el.id]: !opened(el) }));
+                        }}
+                      >
+                        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true">
+                          <path d="M2.5 1.5 5.5 4 2.5 6.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    )}
+                  </span>
+                )}
                 {row.name}
               </span>
               <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
                 {row.items.map(renderBar)}
               </div>
             </div>
-            {look === "layers" && keysOpen && row.items.map((el) => renderKindRows(el))}
+            {look === "layers" && row.items.filter(opened).map((el) => renderKindRows(el))}
           </Fragment>
         ))}
         <div className="time-head" style={{ left: NAMES + clock.t * pps }} />
@@ -702,6 +790,24 @@ export default function TimeStrip() {
             top: Math.max(10, Math.min(menu.y, window.innerHeight - 270)),
           }}
         >
+          {menu.mark && (
+            <>
+              <div
+                className="ctx-item"
+                data-name="remove-this-mark"
+                onClick={() => {
+                  const m = menu.mark!;
+                  setMenu(null);
+                  setPicked(null);
+                  dispatch("remove_key", { ids: [m.id], props: m.props, t: m.t });
+                }}
+              >
+                <span>Remove this mark</span>
+                <kbd>Delete</kbd>
+              </div>
+              <div className="ctx-line" />
+            </>
+          )}
           <div
             className="ctx-item"
             onClick={() => {
