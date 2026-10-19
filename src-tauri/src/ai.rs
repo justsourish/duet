@@ -535,10 +535,15 @@ pub fn agent_run(
 /// Stop the agent mid-task.
 #[tauri::command]
 pub fn agent_cancel(state: State<AgentState>) {
-    if let Some(child) = state.child.lock().unwrap().as_mut() {
+    // the slot is emptied now, so a tool that was stopped never leaves "already working" behind
+    let child = state.child.lock().unwrap().take();
+    if let Some(mut child) = child {
         #[cfg(unix)]
         stop_session(child.id(), libc::SIGKILL);
         let _ = child.kill();
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
     }
 }
 

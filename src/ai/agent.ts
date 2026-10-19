@@ -391,11 +391,23 @@ export async function sendToAgent(text: string) {
 }
 
 export async function stopAgent() {
+  const stopping = runFor;
   try {
     await invoke("agent_cancel");
   } catch {
     /* nothing running */
   }
+  // The run normally ends when the tool's output closes. A helper the tool left behind can keep it
+  // open, and Stop would look dead, so if the end has not come, end it here.
+  await new Promise((r) => setTimeout(r, 1200));
+  if (!live || runFor !== stopping) return;
+  live = false;
+  workingId = null;
+  removeWorking(runFor);
+  declineAllWaiting();
+  setRunning(false);
+  addMsg({ role: "note", text: "Stopped." }, runFor);
+  void saveNow();
 }
 
 /**
