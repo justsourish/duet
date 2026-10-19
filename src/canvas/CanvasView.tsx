@@ -733,7 +733,7 @@ export default function CanvasView() {
     if (d.kind === "marquee") {
       const rect = normalize(d.start.x, d.start.y, p.x, p.y);
       const doc = workDoc(s);
-      const inside = d.scope.filter((id) => doc.elements[id] && !doc.elements[id].locked && rectsIntersect(rect, worldBounds(doc, id)));
+      const inside = d.scope.filter((id) => doc.elements[id] && !doc.elements[id].locked && !doc.elements[id].hidden && rectsIntersect(rect, worldBounds(doc, id)));
       setOverlay({ marquee: rect });
       select(d.additive ? Array.from(new Set([...d.prev, ...inside])) : inside);
     }
@@ -1066,7 +1066,7 @@ export default function CanvasView() {
         if (only && (only.type === "frame" || only.type === "group") && only.childIds.length) pool = only.childIds;
         else if (s.selection.length && parents.size === 1 && [...parents][0]) pool = doc.elements[[...parents][0]!].childIds;
         else pool = doc.rootIds;
-        select(pool.filter((i) => doc.elements[i] && !doc.elements[i].locked));
+        select(pool.filter((i) => doc.elements[i] && !doc.elements[i].locked && !doc.elements[i].hidden));
         return;
       }
       if (mod && e.altKey && e.code === "KeyK") {

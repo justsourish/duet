@@ -7,6 +7,7 @@ import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dr
 import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
+import Icon from "./Icons";
 import { setKeyFocus } from "./keyFocus";
 import { QUALITIES, SIZES, addMedia, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
 import type { ExportChoice } from "../video/scene";
@@ -800,8 +801,22 @@ export default function TimeStrip() {
         </div>
         {displayRows.map((row) => (
           <Fragment key={row.key}>
-            <div className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""}`}>
+            <div className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""}`}>
               <span className="time-name" onClick={row.onClick} title={row.name}>
+                {row.items.length === 1 && (
+                  <button
+                    className={`time-eye ${row.items[0].hidden ? "off" : ""}`}
+                    data-name={`eye-${row.name}`}
+                    title={row.items[0].hidden ? "Show" : "Hide, so it is not drawn or exported"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const el = row.items[0];
+                      dispatch("set_props", { ids: [el.id], props: { hidden: !el.hidden }, label: el.hidden ? "Show" : "Hide" });
+                    }}
+                  >
+                    <Icon name={row.items[0].hidden ? "eye-off" : "eye"} size={12} />
+                  </button>
+                )}
                 {look === "layers" && (
                   <span className="time-fold-room">
                     {row.items.length === 1 && (

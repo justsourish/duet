@@ -159,7 +159,8 @@ const clipsIn = (doc: Doc, sceneId: string) => {
   const walk = (id: string) => {
     for (const c of doc.elements[id]?.childIds ?? []) {
       const el = doc.elements[c];
-      if (el && playsFile(el)) out.push(c);
+      if (!el || el.hidden) continue;
+      if (playsFile(el)) out.push(c);
       walk(c);
     }
   };

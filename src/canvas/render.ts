@@ -245,8 +245,8 @@ let typingId: string | null = null;
 
 /** Draw an element and everything inside it. ox and oy are where its parent sits. */
 export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox: number, oy: number) {
-  // a sound is only heard
-  if (el.type === "sound") return;
+  // a sound is only heard, and a hidden thing is not drawn anywhere
+  if (el.type === "sound" || el.hidden) return;
   const x = ox + el.x;
   const y = oy + el.y;
   ctx.save();

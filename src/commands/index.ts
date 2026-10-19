@@ -118,6 +118,7 @@ const createElement: CommandDef<CreateArgs> = {
       overrides: {},
       mask: false,
       locked: false,
+      hidden: false,
       layout: null,
       grow: 0,
       nodes: [],
@@ -543,6 +544,7 @@ const createInstance: CommandDef<CreateInstanceArgs> = {
       transitionMs: 0,
       scroll: false,
       locked: false,
+      hidden: false,
       grow: 0,
     };
     next.elements[a.id] = el;
@@ -649,6 +651,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       overrides: {},
       mask: false,
       locked: false,
+      hidden: false,
       layout: { dir: w >= h ? "row" : "column", gap: 12, padX: 0, padY: 0, align: "start", justify: "start", hug: true },
       grow: 0,
       nodes: [],
@@ -744,6 +747,7 @@ const groupElements: CommandDef<GroupArgs> = {
       overrides: {},
       mask: false,
       locked: false,
+      hidden: false,
       layout: null,
       grow: 0,
       nodes: [],

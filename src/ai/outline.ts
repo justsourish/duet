@@ -40,6 +40,7 @@ function describe(doc: Doc, el: El): string {
   if (el.component) bits.push("COMPONENT");
   if (el.type === "instance") bits.push(`copy of ${doc.elements[el.componentId]?.name ?? el.componentId}${Object.keys(el.overrides).length ? " (changed)" : ""}`);
   if (el.locked) bits.push("locked");
+  if (el.hidden) bits.push("hidden");
   if (el.link) bits.push(`opens ${doc.elements[el.link]?.name ?? el.link}`);
   if (el.textStyleId) bits.push(`style ${doc.styles?.[el.textStyleId]?.name ?? el.textStyleId}`);
   return bits.join(" · ");

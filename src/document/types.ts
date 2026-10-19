@@ -109,6 +109,8 @@ export interface El {
   mask: boolean;
   /** Locked things cannot be picked on the canvas, so you can select what is behind or inside them. */
   locked: boolean;
+  /** Hidden things are not drawn, not picked on the canvas and not exported. */
+  hidden: boolean;
   /** For frames: auto layout, or null to place children by hand. */
   layout: Layout | null;
   /** Inside an auto layout frame: 1 to grow and fill the free space along the direction, 0 to keep its size. */

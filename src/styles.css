@@ -268,6 +268,13 @@ button {
   background: var(--panel-2);
   color: var(--text);
 }
+.eyebtn + .lockbtn {
+  margin-left: 0;
+}
+.row.is-hidden .name,
+.row.is-hidden .ico {
+  opacity: 0.45;
+}
 .row .name {
   white-space: nowrap;
   overflow: hidden;
@@ -3683,6 +3690,32 @@ button.agent-perm {
   box-shadow: 0 0 0 2px var(--accent);
 }
 /* the arrow before a layer's name that opens its keyframes */
+.time-eye {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0 4px 0 -10px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted);
+  opacity: 0.55;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.time-eye:hover,
+.time-eye.off {
+  opacity: 1;
+}
+.time-eye:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.time-row.is-hidden .time-lane > * {
+  opacity: 0.35;
+}
 .time-fold-room {
   display: inline-block;
   width: 14px;

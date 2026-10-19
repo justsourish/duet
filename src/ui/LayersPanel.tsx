@@ -102,7 +102,7 @@ function Row({ doc, id, depth, dnd, folded, onToggleFold }: RowProps) {
   return (
     <>
       <div
-        className={`row ${selected ? "sel" : ""} ${over ? `drop-${over}` : ""}`}
+        className={`row ${selected ? "sel" : ""} ${el.hidden ? "is-hidden" : ""} ${over ? `drop-${over}` : ""}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         draggable={!renaming}
         onDragStart={(e) => {
@@ -186,6 +186,16 @@ function Row({ doc, id, depth, dnd, folded, onToggleFold }: RowProps) {
             )}
           </span>
         )}
+        <span
+          className={`lockbtn eyebtn ${el.hidden ? "on" : ""}`}
+          title={el.hidden ? "Show" : "Hide, so it is not drawn, picked or exported"}
+          onClick={(e) => {
+            e.stopPropagation();
+            dispatch("set_props", { ids: [id], props: { hidden: !el.hidden }, label: el.hidden ? "Show" : "Hide" });
+          }}
+        >
+          <Icon name={el.hidden ? "eye-off" : "eye"} size={13} />
+        </span>
         <span
           className={`lockbtn ${el.locked ? "on" : ""}`}
           title={el.locked ? "Unlock" : "Lock, so it cannot be picked on the canvas (Shift Cmd L)"}

@@ -32,6 +32,7 @@ export function toSvg(doc: Doc, id: string): string {
 
   // a turned thing is drawn upright, then turned around its middle
   const draw = (el: El, dx: number, dy: number): string => {
+    if (el.hidden) return "";
     const body = shape(el, dx, dy);
     const turn = turnOf(el);
     if (!turn || !body) return body;

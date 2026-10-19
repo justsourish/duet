@@ -942,6 +942,24 @@ describe("groups and locking", () => {
     const d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "g" });
     expect(toSvg(d, "box")).toContain("<g>");
   });
+
+  it("a hidden thing cannot be picked, is left out of the SVG, and shows again with one Undo", () => {
+    const shown = scene();
+    const d = runCommand(shown, "set_props", { ids: ["a"], props: { hidden: true }, label: "Hide" });
+    // a sits at 120,80 on the page; with it hidden the click lands on the frame
+    expect(hitTest(shown, 130, 90)).toBe("a");
+    expect(hitTest(d, 130, 90)).toBe("box");
+    const rects = (svg: string) => (svg.match(/<rect /g) ?? []).length;
+    expect(rects(toSvg(d, "box"))).toBe(rects(toSvg(shown, "box")) - 1);
+    expect(shown.elements.a.hidden).toBe(false);
+  });
+
+  it("saves hidden only when it is set", () => {
+    const d = runCommand(scene(), "set_props", { ids: ["a"], props: { hidden: true } });
+    expect(parseDoc(serializeDoc(d)).elements.a.hidden).toBe(true);
+    expect(serializeDoc(scene())).not.toContain('"hidden"');
+    expect(outline(d)).toContain("hidden");
+  });
 });
 
 describe("components", () => {

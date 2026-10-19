@@ -174,7 +174,7 @@ export function soundsOf(doc: Doc, sceneId: string) {
   const walk = (id: string, from: number, to: number) => {
     for (const c of doc.elements[id]?.childIds ?? []) {
       const el = doc.elements[c];
-      if (!el) continue;
+      if (!el || el.hidden) continue;
       const span = spanOf(el, scene);
       // a clip inside a group is heard only while the group shows
       const start = Math.max(span.start, from);
