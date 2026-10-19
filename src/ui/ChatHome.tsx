@@ -3,7 +3,9 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useState } from "react";
 import CanvasView from "../canvas/CanvasView";
 import type { Recent } from "../project/project";
-import { closeTab, getRecents, getTabs, inTauri, newProject, openProjectAt, removeRecent } from "../project/project";
+import { ask } from "@tauri-apps/plugin-dialog";
+import type { Trashed } from "../project/project";
+import { closeProject, closeTab, getRecents, getTabs, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
 import { readyToLeave } from "../ai/agent";
 import ChatPanel from "./ChatPanel";
@@ -47,8 +49,8 @@ export function matchProjects<T extends { name: string }>(all: T[], typed: strin
   return t ? all.filter((r) => r.name.toLowerCase().includes(t)) : all;
 }
 
-/** One project in the list: its picture, its name and when it was last opened. */
-function ProjectRow({ r, on, open, onOpen, onClose, onMenu }: { r: Recent; on: boolean; open: boolean; onOpen: () => void; onClose: () => void; onMenu: (x: number, y: number) => void }) {
+/** One project in the list: its picture, its name and when it was last opened. A dot says it is open. */
+function ProjectRow({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; open: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
   const own = usePreview(r.thumb ? "" : r.path);
   const src = r.thumb ?? own;
   return (
@@ -66,18 +68,59 @@ function ProjectRow({ r, on, open, onOpen, onClose, onMenu }: { r: Recent; on: b
         <div className="chathome-name">{r.name}</div>
         <div className="chathome-when">{on ? "Open now" : open ? "Open" : ago(r.opened)}</div>
       </div>
-      {open && !on && (
-        <button
-          className="chathome-close"
-          title="Close this project. Your work is saved."
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-        >
-          ×
+      {open && !on && <span className="chathome-dot" title="Open" />}
+    </div>
+  );
+}
+
+/** What is in the trash: each can be put back, or deleted for good. */
+function TrashView({ onBack }: { onBack: () => void }) {
+  const [items, setItems] = useState<Trashed[] | null>(null);
+  const load = () => void trashList().then(setItems);
+  useEffect(load, []);
+  const left = (t: Trashed) => Math.max(1, Math.ceil(TRASH_DAYS - (Date.now() - t.trashed) / 86400000));
+  return (
+    <div className="chathome-skills">
+      <div className="chathome-skills-head">
+        <b>Trash</b>
+        <button className="pill" onClick={onBack}>
+          Back to chat
         </button>
-      )}
+      </div>
+      <div className="trash-note">Projects stay here for {TRASH_DAYS} days, then they are cleared out.</div>
+      <div className="trash-list">
+        {items?.map((t) => (
+          <div className="trash-row" key={t.id}>
+            <div className="chathome-meta">
+              <div className="chathome-name">{t.name}</div>
+              <div className="chathome-when">
+                {left(t)} {left(t) === 1 ? "day" : "days"} left
+              </div>
+            </div>
+            <button
+              className="pill"
+              onClick={() =>
+                void trashRestore(t.id)
+                  .then(load)
+                  .catch(() => undefined)
+              }
+            >
+              <Icon name="restore" size={14} /> Put back
+            </button>
+            <button
+              className="pill"
+              onClick={async () => {
+                if (!(await ask(`Delete “${t.name}” for good? It cannot be brought back.`, { title: "Duet", kind: "warning", okLabel: "Delete", cancelLabel: "Keep it" }))) return;
+                await trashDelete(t.id).catch(() => undefined);
+                load();
+              }}
+            >
+              Delete now
+            </button>
+          </div>
+        ))}
+        {items && items.length === 0 && <div className="chathome-none">The trash is empty.</div>}
+      </div>
     </div>
   );
 }
@@ -99,6 +142,7 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   }, []);
   const tabs = getTabs();
   const [skills, setSkills] = useState(false);
+  const [trash, setTrash] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; r: Recent } | null>(null);
   useEffect(() => {
     if (!menu) return;
@@ -121,6 +165,18 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   }, [current.file]);
   const shown = matchProjects(recents, typed);
 
+  /** Close a project: its tab goes, and if it was on screen the next one comes up, or none. */
+  const leave = async (path: string) => {
+    if (!(await readyToLeave(true, path))) return false;
+    const next = path === current.file ? getTabs().filter((p) => p !== path).pop() : null;
+    closeTab(path);
+    if (path === current.file) {
+      if (next) await openProjectAt(next, true);
+      else await closeProject();
+    }
+    return true;
+  };
+
   return (
     <div className="chathome">
       <aside className="chathome-projects">
@@ -132,8 +188,20 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
             <Icon name="search" size={16} />
             <input placeholder="Search projects" value={typed} onChange={(e) => setTyped(e.target.value)} />
           </label>
-          <button className={`chathome-item ${skills ? "on" : ""}`} onClick={() => setSkills(!skills)}>
+          <button className={`chathome-item ${skills ? "on" : ""}`} onClick={() => {
+              setSkills(!skills);
+              setTrash(false);
+            }}>
             <Icon name="skills" size={16} /> Skills
+          </button>
+          <button
+            className={`chathome-item ${trash ? "on" : ""}`}
+            onClick={() => {
+              setTrash(!trash);
+              setSkills(false);
+            }}
+          >
+            <Icon name="trash" size={16} /> Trash
           </button>
           <button className="chathome-item" onClick={() => window.dispatchEvent(new Event("duet:settings"))}>
             <Icon name="settings" size={16} /> Settings
@@ -142,7 +210,7 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
         <div className="chathome-label">Projects</div>
         <div className="chathome-list">
           {shown.map((r) => (
-            <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onClose={() => void readyToLeave(true, r.path).then((ok) => ok && closeTab(r.path))} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
+            <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
           ))}
           {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
         </div>
@@ -155,8 +223,19 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
               setMenu(null);
             }}
           >
-            Show in Finder
+            <Icon name="folder" size={15} /> Show in Finder
           </div>
+          {tabs.includes(menu.r.path) && (
+            <div
+              onClick={() => {
+                void leave(menu.r.path);
+                setMenu(null);
+              }}
+              title="Your work is saved."
+            >
+              <Icon name="close" size={15} /> Close
+            </div>
+          )}
           <div
             onClick={() => {
               removeRecent(menu.r.path);
@@ -164,12 +243,25 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
             }}
             title="Takes it off this list. The file is not deleted."
           >
-            Remove from list
+            <Icon name="unlist" size={15} /> Remove from list
+          </div>
+          <div
+            onClick={async () => {
+              const r = menu.r;
+              setMenu(null);
+              if (tabs.includes(r.path) && !(await leave(r.path))) return;
+              await trashProject(r.path).catch(() => undefined);
+            }}
+            title={`Kept ${TRASH_DAYS} days in the Trash, then cleared out.`}
+          >
+            <Icon name="trash" size={15} /> Move to Trash
           </div>
         </div>
       )}
       <section className="chathome-chat">
-        {skills ? (
+        {trash ? (
+          <TrashView onBack={() => setTrash(false)} />
+        ) : skills ? (
           <div className="chathome-skills">
             <div className="chathome-skills-head">
               <b>Skills</b>

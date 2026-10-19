@@ -4352,16 +4352,16 @@ button.agent-perm {
 .chathome-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px;
-  border-radius: 10px;
+  gap: 9px;
+  padding: 4px 6px;
+  border-radius: 9px;
   cursor: pointer;
   color: var(--text);
 }
 .chathome-thumb {
   flex: none;
-  width: 52px;
-  height: 38px;
+  width: 40px;
+  height: 30px;
   border-radius: 6px;
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -4529,22 +4529,54 @@ button.agent-perm {
 .chathome-row {
   position: relative;
 }
-.chathome-close {
+.chathome-dot {
   margin-left: auto;
   flex: none;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.8;
 }
-.chathome-close:hover {
-  background: var(--line);
-  color: var(--text);
+.chathome-menu div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.chathome-menu svg {
+  color: var(--muted);
+  flex: none;
+}
+.trash-note {
+  padding: 4px 14px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+  overflow: auto;
+}
+.trash-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px;
+  border-radius: 10px;
+}
+.trash-row .chathome-meta {
+  flex: 1;
+}
+.trash-row:hover {
+  background: var(--panel-2);
+}
+.trash-row .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 /* the people in the chat, in quiet colours so no one stands out */
 .chat.docked .member-badge {

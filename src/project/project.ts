@@ -107,6 +107,52 @@ export function removeRecent(path: string) {
   window.dispatchEvent(new Event("duet:recents"));
 }
 
+/** Put a project on the list, newest first. Used when it comes back from the trash. */
+function addRecent(path: string) {
+  try {
+    const rest = getRecents().filter((r) => r.path !== path);
+    localStorage.setItem(RECENT_KEY, JSON.stringify([{ path, name: baseName(path), opened: Date.now() }, ...rest].slice(0, 200)));
+  } catch {
+    /* nothing to do */
+  }
+  window.dispatchEvent(new Event("duet:recents"));
+}
+
+export interface Trashed {
+  id: string;
+  name: string;
+  original: string;
+  /** When it was moved to the trash, as milliseconds. */
+  trashed: number;
+}
+
+/** Days a project stays in the trash before it is cleared out. */
+export const TRASH_DAYS = 30;
+
+/** Move a project to Duet's trash. It leaves the list and can be put back for 30 days. */
+export async function trashProject(path: string) {
+  await invoke("trash_project", { path });
+  removeRecent(path);
+  closeTab(path);
+}
+
+/** What is in the trash, newest first. Anything older than 30 days is cleared out on the way. */
+export async function trashList(): Promise<Trashed[]> {
+  try {
+    return await invoke<Trashed[]>("trash_list");
+  } catch {
+    return [];
+  }
+}
+
+export async function trashRestore(id: string) {
+  addRecent(await invoke<string>("trash_restore", { id }));
+}
+
+export async function trashDelete(id: string) {
+  await invoke("trash_delete", { id });
+}
+
 /** True in Duet dev, a second Duet used only to check work on Duet itself. Set once at launch. */
 let checkCopy = false;
 export const isCheckCopy = () => checkCopy;

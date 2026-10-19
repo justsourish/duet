@@ -3,6 +3,7 @@ mod files;
 mod grade;
 mod keepalive;
 mod package;
+mod trash;
 mod video;
 
 use git2::{Repository, Signature};
@@ -577,7 +578,11 @@ pub fn run() {
             ai::agent_run,
             ai::agent_cancel,
             keepalive::keep_running_for_ai,
-            keepalive::bring_back
+            keepalive::bring_back,
+            trash::trash_project,
+            trash::trash_list,
+            trash::trash_restore,
+            trash::trash_delete
         ])
         .setup(|app| {
             if is_check_copy() {
