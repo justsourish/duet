@@ -600,8 +600,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
             return (
               <div
                 key={m.id}
-                className={`member-badge ${isAnswers ? "answers-ring" : ""}`}
-                style={{ backgroundColor: agentColour(m.name) }}
+                className={`member-badge ${isAnswers ? "answers-ring" : ""} ${isAnswers && running ? "answering" : ""}`}
+                style={{ backgroundColor: agentColour(m.name), ["--who" as string]: agentColour(m.name) }}
                 title={m.name}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -617,8 +617,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
           {outsideAgents.map((name) => (
             <div
               key={name}
-              className="member-badge outside"
-              style={{ backgroundColor: agentColour(name) }}
+              className={`member-badge outside ${busyName === name ? "answering" : ""}`}
+              style={{ backgroundColor: agentColour(name), ["--who" as string]: agentColour(name) }}
               title={name}
               onClick={(e) => {
                 e.stopPropagation();

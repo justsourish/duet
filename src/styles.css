@@ -4711,3 +4711,9 @@ button.agent-perm {
   color: var(--muted);
   border: 1px solid var(--line);
 }
+/* the one that is answering lights up in its own colour */
+.chat.docked .member-badge.answering {
+  background: var(--who) !important;
+  color: #101014;
+  border-color: transparent;
+}
