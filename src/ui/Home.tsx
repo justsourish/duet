@@ -8,7 +8,7 @@ import { getState, useStore } from "../state/store";
 import { useDismiss } from "./useDismiss";
 
 /** How long ago, in plain words. */
-function ago(ms: number): string {
+export function ago(ms: number): string {
   const s = Math.max(0, (Date.now() - ms) / 1000);
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} minutes ago`;
@@ -26,7 +26,7 @@ function where(path: string): string {
 const previews = new Map<string, string | null>();
 
 /** The small picture saved with a project, if there is one. */
-function usePreview(path: string): string | null {
+export function usePreview(path: string): string | null {
   const [src, setSrc] = useState<string | null>(previews.get(path) ?? null);
   useEffect(() => {
     if (!path || !inTauri() || previews.has(path)) return;

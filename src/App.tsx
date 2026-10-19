@@ -176,7 +176,7 @@ export default function App() {
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const chatting = dock.space === "chat";
   const appStyle = chatting
-    ? { gridTemplateColumns: "1fr", gridTemplateAreas: '"tabs" "top" "chathome" "hist"' }
+    ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "var(--tabbar-h) 44px minmax(0, 1fr) 48px", gridTemplateAreas: '"tabs" "top" "chathome" "hist"' }
     : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
     gridTemplateAreas: dock.swapped

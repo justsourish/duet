@@ -1,13 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import CanvasView from "../canvas/CanvasView";
+import type { Recent } from "../project/project";
 import { getRecents, inTauri, newProject, openProjectAt } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
 import ChatPanel from "./ChatPanel";
+import { ago, usePreview } from "./Home";
 
 /** Projects that match what was typed, newest first as they are kept. */
 export function matchProjects<T extends { name: string }>(all: T[], typed: string): T[] {
   const t = typed.trim().toLowerCase();
   return t ? all.filter((r) => r.name.toLowerCase().includes(t)) : all;
+}
+
+/** One project in the list: its picture, its name and when it was last opened. */
+function ProjectRow({ r, on, onOpen }: { r: Recent; on: boolean; onOpen: () => void }) {
+  const own = usePreview(r.thumb ? "" : r.path);
+  const src = r.thumb ?? own;
+  return (
+    <div className={`chathome-row ${on ? "on" : ""}`} onClick={onOpen} title={r.path}>
+      <div className="chathome-thumb">{src ? <img src={src} alt="" /> : null}</div>
+      <div className="chathome-meta">
+        <div className="chathome-name">{r.name}</div>
+        <div className="chathome-when">{ago(r.opened)}</div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -42,14 +59,7 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
         <input className="chathome-find" placeholder="Find a project" value={typed} onChange={(e) => setTyped(e.target.value)} />
         <div className="chathome-list">
           {shown.map((r) => (
-            <div
-              key={r.path}
-              className={`chathome-row ${r.path === current.file ? "on" : ""}`}
-              onClick={() => r.path !== current.file && void openProjectAt(r.path)}
-              title={r.path}
-            >
-              {r.name}
-            </div>
+            <ProjectRow key={r.path} r={r} on={r.path === current.file} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} />
           ))}
           {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
         </div>
@@ -59,6 +69,9 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
       </section>
       <main className="canvas viewonly" onDoubleClick={onEdit} title="Double-click to work on it in Edit">
         <CanvasView viewOnly />
+        <button className="pill chathome-fit" onClick={() => window.dispatchEvent(new Event("duet:fit"))}>
+          Find your design
+        </button>
       </main>
     </div>
   );
