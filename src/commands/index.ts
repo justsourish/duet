@@ -7,6 +7,8 @@ import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../document/types";
 import { CURVES, ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } from "../document/time";
 import type { CurveName, Entrance } from "../document/time";
+import { canGrade, mergeGrade } from "../document/grade";
+import type { Grade } from "../document/grade";
 
 /**
  * Every change to a design goes through one of these named commands.
@@ -107,6 +109,7 @@ const createElement: CommandDef<CreateArgs> = {
       textStyleId: "",
       shadow: null,
       gradient: null,
+      grade: null,
       link: null,
       linkKind: "",
       transition: "",
@@ -282,6 +285,28 @@ const setProps: CommandDef<SetPropsArgs> = {
         el.width = m.width;
         el.height = m.height;
       }
+    }
+    return next;
+  },
+};
+
+// ---- set_grade ----
+export interface SetGradeArgs {
+  ids: string[];
+  /** Only the controls to change. null puts the colour back as it was. */
+  grade: Partial<Grade> | null;
+  label?: string;
+}
+
+const setGrade: CommandDef<SetGradeArgs> = {
+  label: (a) => a.label ?? (a.grade ? "Change colour" : "Reset colour"),
+  run: (doc, a) => {
+    const ids = a.ids.filter((id) => doc.elements[id] && canGrade(doc.elements[id]));
+    if (!ids.length) return doc;
+    const next = clone(doc);
+    for (const id of ids) {
+      const el = next.elements[id];
+      el.grade = a.grade ? mergeGrade(el.grade, a.grade) : null;
     }
     return next;
   },
@@ -640,6 +665,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       textStyleId: "",
       shadow: null,
       gradient: null,
+      grade: null,
       link: null,
       linkKind: "",
       transition: "",
@@ -736,6 +762,7 @@ const groupElements: CommandDef<GroupArgs> = {
       textStyleId: "",
       shadow: null,
       gradient: null,
+      grade: null,
       link: null,
       linkKind: "",
       transition: "",
@@ -1224,6 +1251,7 @@ export const commands = {
   move_elements: moveElements,
   resize_element: resizeElement,
   set_props: setProps,
+  set_grade: setGrade,
   delete_elements: deleteElements,
   reparent_elements: reparentElements,
   paste_elements: pasteElements,

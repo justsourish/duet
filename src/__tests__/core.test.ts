@@ -257,6 +257,8 @@ describe("store and history", () => {
 });
 
 import { DesignFileError, parseDoc, serializeDoc } from "../document/serialize";
+import { whiteBalance } from "../canvas/grade";
+import gradeFixtures from "../document/grade-fixtures.json";
 
 describe("design file", () => {
   const sample = () => {
@@ -952,6 +954,38 @@ describe("groups and locking", () => {
     const rects = (svg: string) => (svg.match(/<rect /g) ?? []).length;
     expect(rects(toSvg(d, "box"))).toBe(rects(toSvg(shown, "box")) - 1);
     expect(shown.elements.a.hidden).toBe(false);
+  });
+
+  it("grades a picture or clip, keeps the numbers in range, and resets with null", () => {
+    let d = frame();
+    d = runCommand(d, "create_element", { id: "p", type: "image", parentId: "f1", x: 0, y: 0, width: 50, height: 50 });
+    d = runCommand(d, "create_element", { id: "r", type: "rect", parentId: "f1", x: 0, y: 0, width: 50, height: 50 });
+    const before = d;
+    d = runCommand(d, "set_grade", { ids: ["p", "r"], grade: { exposure: -9, contrast: 30 } });
+    expect(before.elements.p.grade).toBeNull();
+    expect(d.elements.p.grade).toMatchObject({ exposure: -5, contrast: 30, saturation: 0 });
+    // a shape has no picture to grade
+    expect(d.elements.r.grade).toBeNull();
+    d = runCommand(d, "set_grade", { ids: ["p"], grade: { saturation: 20 } });
+    expect(d.elements.p.grade).toMatchObject({ exposure: -5, contrast: 30, saturation: 20 });
+    expect(serializeDoc(d)).toContain('"grade"');
+    expect(parseDoc(serializeDoc(d)).elements.p.grade).toEqual(d.elements.p.grade);
+    d = runCommand(d, "set_grade", { ids: ["p"], grade: null });
+    expect(d.elements.p.grade).toBeNull();
+    expect(serializeDoc(d)).not.toContain('"grade"');
+    // every control back at zero is the same as no grade
+    const z = runCommand(before, "set_grade", { ids: ["p"], grade: { exposure: 1 } });
+    expect(runCommand(z, "set_grade", { ids: ["p"], grade: { exposure: 0 } }).elements.p.grade).toBeNull();
+  });
+
+  it("works out white balance exactly as the export engine does", () => {
+    for (const c of gradeFixtures.balance) {
+      const m = whiteBalance(c.temperature, c.tint);
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) expect(m[i][j]).toBeCloseTo(c.matrix[i][j], 4);
+    }
+    // no change at all is no change
+    const same = whiteBalance(0, 0);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) expect(same[i][j]).toBeCloseTo(i === j ? 1 : 0, 6);
   });
 
   it("saves hidden only when it is set", () => {

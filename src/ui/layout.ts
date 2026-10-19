@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 /** Where the panels and the chat sit. Kept per person, on this computer. */
 
 export type Corner = "tl" | "tr" | "bl" | "br";
-export type Mode = "design" | "motion";
+export type Mode = "design" | "motion" | "color";
 export type TimeLook = "layers" | "cut";
 
 export interface Dock {
@@ -13,7 +13,7 @@ export interface Dock {
   rightHidden: boolean;
   /** Layers on the right and the design panel on the left. */
   swapped: boolean;
-  /** Whether we are designing or animating. */
+  /** Whether we are designing, animating or changing colour. */
   mode: Mode;
   /** The chat sits in a corner, or wherever it was dropped. */
   chat: { corner: Corner } | { x: number; y: number };
@@ -38,7 +38,7 @@ function load(): Dock {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Dock> | null;
     if (raw && typeof raw === "object") {
-      const mode: Mode = raw.mode === "motion" ? "motion" : "design";
+      const mode: Mode = raw.mode === "motion" || raw.mode === "color" ? raw.mode : "design";
       const timeLook: TimeLook = raw.timeLook === "cut" ? "cut" : "layers";
       return { ...defaults(), ...raw, mode, timeLook };
     }

@@ -1,3 +1,4 @@
+import type { Grade } from "./grade";
 export type ElementType = "frame" | "rect" | "ellipse" | "text" | "image" | "path" | "group" | "instance" | "video" | "sound";
 
 /** One point on a drawn line. All numbers are fractions of the element's box, so resizing just works. */
@@ -97,6 +98,8 @@ export interface El {
   shadow: Shadow | null;
   /** A linear gradient used instead of the solid fill, or null. */
   gradient: Gradient | null;
+  /** Pictures and video clips only: how their colour is changed, or null to leave it as it is. */
+  grade: Grade | null;
   /** For images: where the picture file lives inside the project, like assets/3fa9c1.png. */
   src: string;
   /** A frame or group that other things are copied from. */

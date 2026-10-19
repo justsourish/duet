@@ -205,6 +205,8 @@ export interface ExportChoice {
   ask: boolean;
   /** A full path, used by the builder tools in place of everything above about where. */
   to?: string;
+  /** A ProRes .mov at 10-bit, to keep editing or grading elsewhere, instead of an MP4 to share. */
+  master?: boolean;
 }
 
 export const SIZES: { name: string; longSide: number }[] = [
@@ -228,6 +230,41 @@ export function exportSize(scene: { width: number; height: number }, longSide: n
 }
 
 /**
+ * The clip at the bottom of a picture of the video, when it fills the whole picture. That clip is then
+ * read from its own file at full quality and graded by the export engine, and only what lies over it
+ * is drawn here. Returns null when the picture has to be drawn whole, as the canvas draws it.
+ */
+async function baseClip(doc: Doc, now: Doc, sceneId: string, t: number, sizes: Map<string, Info>) {
+  const scene = now.elements[sceneId];
+  const shown = scene.childIds.map((id) => now.elements[id]).filter((e) => e && !e.hidden && e.type !== "sound");
+  const el = shown[0];
+  if (!el || el.type !== "video" || el.rotation || el.opacity < 0.999 || el.radius || el.mask) return null;
+  if (el.x > 0.01 || el.y > 0.01 || el.x + el.width < scene.width - 0.01 || el.y + el.height < scene.height - 0.01) return null;
+  let info = sizes.get(el.src);
+  if (!info) {
+    info = await invoke<Info>("video_info", { path: el.src }).catch(() => undefined);
+    if (!info) return null;
+    sizes.set(el.src, info);
+  }
+  // the clip fills its box and what does not fit is cut off, just as drawClip lays it
+  const k = Math.max(el.width / info.width, el.height / info.height);
+  const left = el.x + (el.width - info.width * k) / 2;
+  const top = el.y + (el.height - info.height * k) / 2;
+  const even = (n: number) => Math.max(0, Math.round(n / 2) * 2);
+  const cw = Math.min(info.width, even(scene.width / k));
+  const ch = Math.min(info.height, even(scene.height / k));
+  const cx = Math.min(info.width - cw, even(-left / k));
+  const cy = Math.min(info.height - ch, even(-top / k));
+  const { start } = spanOf(doc.elements[el.id], doc.elements[sceneId]);
+  const without = { ...now, elements: { ...now.elements, [el.id]: { ...el, hidden: true }, [sceneId]: { ...scene, fill: "#00000000", gradient: null } } };
+  return {
+    base: { id: el.id, path: el.src, at: Math.max(0, t - start + el.clipFrom), crop: [cx, cy, cw, ch], matrix: info.height <= 576 ? "bt601" : "bt709", grade: el.grade },
+    over: shown.length > 1,
+    without,
+  };
+}
+
+/**
  * Make one video file out of a frame that plays. Every picture of it is drawn here, exactly as the
  * canvas draws it, and handed over one by one. Returns the file, or null if the designer backed out.
  */
@@ -236,8 +273,9 @@ export async function exportScene(sceneId: string, progress: (done: number) => v
   const scene = doc.elements[sceneId];
   if (!scene?.duration) throw new Error("This frame has no length yet.");
   let out: string | null;
+  const ext = choice.master ? "mov" : "mp4";
   if (choice.to) out = choice.to;
-  else if (choice.ask) out = await save({ title: "Save your video", defaultPath: `${scene.name}.mp4`, filters: [{ name: "Video", extensions: ["mp4"] }] });
+  else if (choice.ask) out = await save({ title: "Save your video", defaultPath: `${scene.name}.${ext}`, filters: [{ name: "Video", extensions: [ext] }] });
   else {
     // no question asked: it goes beside the projects, named by the scene and the time
     const dir = `${await invoke<string>("default_projects_dir")}/Exports`;
@@ -245,17 +283,17 @@ export async function exportScene(sceneId: string, progress: (done: number) => v
     const d = new Date();
     const two = (n: number) => String(n).padStart(2, "0");
     const safe = scene.name.replace(/[\\/:*?"<>|]/g, " ").trim() || "Video";
-    out = `${dir}/${safe} ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}.${two(d.getMinutes())}.${two(d.getSeconds())}.mp4`;
+    out = `${dir}/${safe} ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}.${two(d.getMinutes())}.${two(d.getSeconds())}.${ext}`;
   }
   if (!out) return null;
-  const file = out.toLowerCase().endsWith(".mp4") ? out : `${out}.mp4`;
+  const file = out.toLowerCase().endsWith(`.${ext}`) ? out : `${out}.${ext}`;
   const FPS = Math.max(1, Math.min(120, Math.round(choice.fps) || 30));
   const [width, height] = exportSize(scene, choice.longSide);
   const scale = width / scene.width;
   const sheet = document.createElement("canvas");
   sheet.width = width;
   sheet.height = height;
-  const ctx = sheet.getContext("2d");
+  const ctx = sheet.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("The video could not be drawn.");
   const total = Math.max(1, Math.round(scene.duration * FPS));
   stop = false;
@@ -263,23 +301,32 @@ export async function exportScene(sceneId: string, progress: (done: number) => v
   holdClips(true);
   let begun = false;
   try {
-    await invoke("scene_export_begin", { out: file, fps: FPS, seconds: total / FPS, quality: choice.quality, sounds: soundsOf(doc, sceneId) });
+    await invoke("scene_export_begin", { out: file, fps: FPS, seconds: total / FPS, quality: choice.quality, sounds: soundsOf(doc, sceneId), width, height, master: !!choice.master });
     begun = true;
+    const sizes = new Map<string, Info>();
     for (let i = 0; i < total; i++) {
       if (stop) throw new Error("Stopped.");
       const t = i / FPS;
-      const now = docAt(doc, sceneId, t);
-      await seekClips(doc, sceneId, t);
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = "#000000";
-      ctx.fillRect(0, 0, width, height);
-      // the scene is drawn at the size asked for, sharp at any size because it is drawn, not stretched
-      ctx.setTransform(scale, 0, 0, height / scene.height, 0, 0);
-      const el = now.elements[sceneId];
-      drawElement(ctx, now, el, -el.x, -el.y);
-      const blob = await new Promise<Blob | null>((r) => sheet.toBlob(r, "image/jpeg", 0.92));
-      if (!blob) throw new Error("A picture of the video could not be made.");
-      await invoke("scene_export_frame", new Uint8Array(await blob.arrayBuffer()));
+      let now = docAt(doc, sceneId, t);
+      const base = await baseClip(doc, now, sceneId, t, sizes);
+      if (base) now = base.without;
+      const drawn = !base || base.over;
+      let body = new Uint8Array(0);
+      if (drawn) {
+        if (!base) await seekClips(doc, sceneId, t);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        if (base) ctx.clearRect(0, 0, width, height);
+        else {
+          ctx.fillStyle = "#000000";
+          ctx.fillRect(0, 0, width, height);
+        }
+        // the scene is drawn at the size asked for, sharp at any size because it is drawn, not stretched
+        ctx.setTransform(scale, 0, 0, height / scene.height, 0, 0);
+        const el = now.elements[sceneId];
+        drawElement(ctx, now, el, -el.x, -el.y);
+        body = new Uint8Array(ctx.getImageData(0, 0, width, height).data.buffer);
+      }
+      await invoke("scene_export_frame", body, { headers: { "x-duet-frame": JSON.stringify({ base: base?.base ?? null, drawn }) } });
       progress((i + 1) / total);
     }
     await invoke("scene_export_end");

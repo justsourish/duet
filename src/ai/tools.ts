@@ -12,11 +12,13 @@ import { defaultLayout } from "../document/layout";
 import { outlineFromData } from "../document/path";
 import { ENTRANCES, sceneOf } from "../document/time";
 import { MOVING, emptyDoc } from "../document/types";
+import { GRADE_CONTROLS, canGrade, gradeChanges } from "../document/grade";
+import { readings as gradeReadings } from "../canvas/grade";
 import type { Doc, El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
-import { addPicture, mimeFor, preloadPictures } from "../project/assets";
+import { addPicture, getPicture, mimeFor, preloadPictures } from "../project/assets";
 import { renderPng } from "../project/exporter";
-import { fileLength } from "../video/clips";
+import { clipPicture, fileLength, seekClips } from "../video/clips";
 import { QUALITIES, defaultChoice, exportScene } from "../video/scene";
 import { saveNow, tabName } from "../project/project";
 import { tracePicture } from "../project/trace";
@@ -306,7 +308,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "export_video",
     description:
-      "Make an MP4 video of a frame that plays (one with a length), with its clips and sound, exactly as the designer's Export video does. path is the full path of the new file and must end in .mp4 (~ for the home folder works); leave it out to save in Documents, Duet, Exports. It never replaces a file that already exists. fps is 24, 25, 30 (the default) or 60. size is the longer side in pixels (for example 1080 or 3840); leave it out to keep the frame's own size. quality is best, good (the default) or small. The project must be the one on screen. It can take a while for a long video. The designer may be asked to allow it.",
+      "Make an MP4 video of a frame that plays (one with a length), with its clips and sound, exactly as the designer's Export video does. path is the full path of the new file and must end in .mp4, or .mov for a master (~ for the home folder works); leave it out to save in Documents, Duet, Exports. It never replaces a file that already exists. fps is 24, 25, 30 (the default) or 60. size is the longer side in pixels (for example 1080 or 3840); leave it out to keep the frame's own size. quality is best, good (the default) or small. master true makes a 10-bit ProRes .mov to keep editing or grading elsewhere instead of an MP4 to share. Clips that fill the frame are read from their own files at full quality and their colour is worked out in 32-bit. The project must be the one on screen. It can take a while for a long video. The designer may be asked to allow it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -315,6 +317,7 @@ export const TOOLS: ToolDef[] = [
         fps: num,
         size: { ...num, description: "The longer side in pixels. Leave out for the frame's own size." },
         quality: { type: "string", enum: ["best", "good", "small"] },
+        master: { type: "boolean" },
       },
       required: ["id"],
     },
@@ -334,15 +337,50 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "set_grade",
+    description:
+      "Change the colour of pictures and video clips, like the basic panel in Premiere's Lumetri or Lightroom. The designer sees the same controls in the Colour tab. Give only the controls to change; the others keep their values. Controls: exposure (stops of light, -5 to 5, 1 is twice the light), contrast, highlights, shadows, whites, blacks, temperature (minus cooler and bluer, plus warmer and more orange), tint (minus greener, plus more magenta), saturation (-100 is black and white), vibrance (moves dull colours most and skin least), all -100 to 100 with 0 meaning no change, and lookAmount (0 to 1, how much of the look is used). Send reset true to put the colour back as it was. To use a .cube look, use load_look. Work in small steps: read color_readings, change a few controls, then read again and look_at_design to check.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ids,
+        grade: { type: "object", description: "The controls to change, for example {\"exposure\": -0.8, \"highlights\": -40, \"contrast\": -15}." },
+        reset: { type: "boolean", description: "True to remove every colour change from these." },
+      },
+      required: ["ids"],
+    },
+  },
+  {
+    name: "copy_grade",
+    description: "Give other pictures or clips exactly the colour of one, so a whole scene matches. fromId is the one to copy from; ids are the ones that get its colour, look included.",
+    inputSchema: { type: "object", properties: { fromId: { ...str, description: "The picture or clip to copy the colour from." }, ids }, required: ["fromId", "ids"] },
+  },
+  {
+    name: "load_look",
+    description: "Use a look from a .cube LUT file on pictures or clips. Duet keeps a copy in Documents, Duet, Looks. path is the full path of the .cube file (list_looks shows the ones already kept). amount is 0 to 1, 1 if left out. The look runs after the light and white balance controls and before saturation, so fix exposure and white balance first.",
+    inputSchema: { type: "object", properties: { ids, path: { ...str, description: "The full path to a .cube file, starting from the top folder or from ~." }, amount: num }, required: ["ids", "path"] },
+  },
+  {
+    name: "list_looks",
+    description: "The .cube looks already kept in Documents, Duet, Looks, with their full paths, ready for load_look.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "color_readings",
+    description:
+      "Numbers about how a picture or clip looks with its colour as it is now, so you can check a grade without guessing: stopsFromGrey (how far its average brightness is from middle grey, in stops; plus is too bright, around 0 to 0.5 is usual), brightness percentiles (0 to 1), blownPercent and crushedPercent (pure white and pure black), channelClipped, cast (warm plus means too orange, magenta plus means too pink, near 0 is neutral), and saturation. For a clip it reads the picture at t seconds into its frame, or where the playhead is. Send original true to read it without its colour changes. Also returns the current grade.",
+    inputSchema: { type: "object", properties: { id: { ...str, description: "A picture or a clip." }, t: { ...num, description: "For a clip: seconds into its frame." }, original: { type: "boolean" } }, required: ["id"] },
+  },
+  {
     name: "delete_elements",
     description: "Delete elements and everything inside them. The designer may be asked to approve this.",
     inputSchema: { type: "object", properties: { ids }, required: ["ids"] },
   },
 ];
 
-const EDITS = new Set(["create_instance", "create_element", "create_elements", "set_props", "duplicate_elements", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate", "set_curve"]);
+const EDITS = new Set(["set_grade", "copy_grade", "create_instance", "create_element", "create_elements", "set_props", "duplicate_elements", "move_elements", "resize_element", "reparent_elements", "make_mask", "trace_image", "set_duration", "set_timing", "set_entrance", "animate", "set_curve"]);
 /** Things the designer is asked about first in Ask first mode: losing work, and reading or writing a file on the computer. */
-const RISKY = new Set(["delete_elements", "place_image", "place_video", "place_sound", "export_frame", "export_video"]);
+const RISKY = new Set(["load_look", "delete_elements", "place_image", "place_video", "place_sound", "export_frame", "export_video"]);
 
 type Args = Record<string, unknown>;
 
@@ -446,6 +484,15 @@ export function summarise(tool: string, a: Args): string {
       return `Move ${namesOf(a.ids)} ${a.parentId ? `into ${nameOf(a.parentId)}` : "out to the page"}`;
     case "delete_elements":
       return `Delete ${namesOf(a.ids)}`;
+    case "set_grade": {
+      if (!a.grade) return `Reset the colour of ${namesOf(a.ids)}`;
+      const g = a.grade as Record<string, unknown>;
+      return `Change the colour of ${namesOf(a.ids)}: ${Object.entries(g).map(([k, v]) => (k === "look" ? (v ? "a look" : "no look") : `${k} ${String(v)}`)).join(", ")}`;
+    }
+    case "copy_grade":
+      return `Give ${namesOf(a.ids)} the colour of ${nameOf(a.fromId)}`;
+    case "load_look":
+      return `Use the look ${String(a.path).split(/[\\/]/).pop()} on ${namesOf(a.ids)}`;
     default:
       return tool;
   }
@@ -570,7 +617,8 @@ function prepare(tool: string, raw: Args, doc = R.currentDoc()): { args: Args } 
       const el = typeof a.id === "string" ? doc.elements[a.id] : undefined;
       if (!el) return { error: `No element with id: ${String(a.id)}. Use get_document to see the ids.` };
       if (!el.duration) return { error: `${el.name} has no length, so there is no video to make. Give it one with set_duration first.` };
-      if (a.path !== undefined && (typeof a.path !== "string" || !/\.mp4$/i.test(a.path.trim()))) return { error: "path must be a full file path that ends in .mp4." };
+      const ext = a.master === true ? "mov" : "mp4";
+      if (a.path !== undefined && (typeof a.path !== "string" || !new RegExp(`\\.${ext}$`, "i").test(a.path.trim()))) return { error: `path must be a full file path that ends in .${ext}.` };
       if (a.fps !== undefined && ![24, 25, 30, 60].includes(Number(a.fps))) return { error: "fps must be 24, 25, 30 or 60." };
       if (a.size !== undefined && !(Number(a.size) >= 16 && Number(a.size) <= 8192)) return { error: "size must be a number of pixels between 16 and 8192." };
       if (a.quality !== undefined && !["best", "good", "small"].includes(String(a.quality))) return { error: "quality must be best, good or small." };
@@ -630,6 +678,40 @@ function prepare(tool: string, raw: Args, doc = R.currentDoc()): { args: Args } 
       }
       a.props = p;
       return { args: a };
+    }
+    case "set_grade":
+    case "copy_grade":
+    case "load_look": {
+      const bad = missing(a.ids);
+      if (bad.length) return { error: `No element with id: ${bad.join(", ")}.` };
+      const list = a.ids as string[];
+      const plain = list.filter((i) => !canGrade(doc.elements[i]));
+      if (plain.length) return { error: `${namesOf(plain)} is not a picture or a clip. Only pictures and clips have colour to change. A shape's colour is its fill, set with set_props.` };
+      if (tool === "copy_grade") {
+        const from = typeof a.fromId === "string" ? doc.elements[a.fromId] : undefined;
+        if (!from || !canGrade(from)) return { error: `${String(a.fromId)} is not a picture or a clip to copy from.` };
+        return { args: { ids: list, grade: from.grade ? { ...from.grade } : null, label: `Copy the colour of ${from.name}` } };
+      }
+      if (tool === "load_look") {
+        const path = typeof a.path === "string" ? a.path.trim() : "";
+        if (!/^(~[\\/]|[\\/]|[a-zA-Z]:[\\/])/.test(path) || !/\.cube$/i.test(path)) return { error: "Give the full path to a .cube file, starting from the top folder or from ~." };
+        if (a.amount != null && !(typeof a.amount === "number" && a.amount >= 0 && a.amount <= 1)) return { error: "amount must be a number from 0 to 1." };
+        return { args: { ids: list, path, amount: typeof a.amount === "number" ? a.amount : 1 } };
+      }
+      if (a.reset === true) return { args: { ids: list, grade: null } };
+      if (!a.grade || typeof a.grade !== "object") return { error: "Give grade, the controls to change, or reset true." };
+      const known = new Set<string>([...GRADE_CONTROLS.map((c) => c.key), "look"]);
+      const g = a.grade as Record<string, unknown>;
+      const unknown = Object.keys(g).filter((k) => !known.has(k));
+      if (unknown.length) return { error: `I do not know ${unknown.join(", ")}. The controls are: ${GRADE_CONTROLS.map((c) => c.key).join(", ")}.` };
+      for (const c of GRADE_CONTROLS) {
+        if (!(c.key in g)) continue;
+        const v = g[c.key];
+        if (typeof v !== "number" || !Number.isFinite(v)) return { error: `${c.key} must be a number.` };
+        if (v < c.min || v > c.max) return { error: `${c.key} goes from ${c.min} to ${c.max}.` };
+      }
+      if ("look" in g && g.look !== "") return { error: "To use a look, call load_look with the path to the .cube file. Send look as an empty text only to remove it." };
+      return { args: { ids: list, grade: g } };
     }
     case "trace_image": {
       const el = typeof a.id === "string" ? doc.elements[a.id] : undefined;
@@ -859,6 +941,44 @@ async function placeImage(args: Args, by?: string): Promise<ToolResult> {
 }
 
 /** Put a video file from the computer into a frame that plays. The file stays where it is. */
+async function loadLook(args: Args, by?: string): Promise<ToolResult> {
+  let path = String(args.path);
+  if (path.startsWith("~")) path = (await invoke<string>("duet_home")).replace(/[\\/]\.duet[^\\/]*[\\/]?$/, "") + path.slice(1);
+  let kept: string;
+  try {
+    kept = await invoke<string>("look_keep", { path });
+  } catch (e) {
+    return fail(`The look at ${String(args.path)} could not be used. ${String(e)}`);
+  }
+  await ensureSaved();
+  const file = kept.split(/[\\/]/).pop();
+  R.dispatch("set_grade", { ids: args.ids as string[], grade: { look: kept, lookAmount: Number(args.amount) }, label: `Use the look ${file}` }, "ai", by);
+  addMsg({ role: "note", text: summarise("load_look", args), ...stepNow() }, said());
+  saveIfHome();
+  return { text: `Using the look ${file} at ${Math.round(Number(args.amount) * 100)}% on ${namesOf(args.ids)}. It is kept at ${kept}. Check it with color_readings and look_at_design.` };
+}
+
+async function colorReadings(a: Args): Promise<ToolResult> {
+  const doc = R.currentDoc();
+  const el = typeof a.id === "string" ? doc.elements[a.id] : undefined;
+  if (!el) return fail(`No element with id: ${String(a.id)}.`);
+  if (!canGrade(el)) return fail(`${el.name} is not a picture or a clip.`);
+  let pic: HTMLImageElement | HTMLVideoElement | null;
+  if (el.type === "image") {
+    await preloadPictures(doc);
+    pic = getPicture(el.src);
+  } else {
+    const scene = sceneOf(doc, el.id);
+    if (scene && typeof a.t === "number") await seekClips(doc, scene.id, a.t);
+    pic = clipPicture(el.src);
+    if (pic && !pic.videoWidth) pic = null;
+  }
+  if (!pic) return fail(`${el.name} has not loaded yet. Try again in a moment.`);
+  const read = gradeReadings(pic, a.original === true ? null : el.grade);
+  if (!read) return fail("The colour could not be read on this computer.");
+  return { text: JSON.stringify({ id: el.id, name: el.name, grade: gradeChanges(el.grade), readings: read, of: a.original === true ? "the original, without its colour changes" : "with its colour changes" }, null, 2) };
+}
+
 async function placeVideo(args: Args, by?: string): Promise<ToolResult> {
   let path = String(args.path);
   // Duet's own folder sits in the home folder, which is how the home folder is found
@@ -926,7 +1046,7 @@ async function exportVideo(args: Args): Promise<ToolResult> {
   const quality = QUALITIES[{ best: 0, good: 1, small: 2 }[String(args.quality ?? "good") as "best" | "good" | "small"]].quality;
   const began = Date.now();
   try {
-    const file = await exportScene(String(args.id), () => {}, { ...defaultChoice(), fps: Number(args.fps) || 30, longSide: Number(args.size) || 0, quality, ...(to ? { to } : {}) });
+    const file = await exportScene(String(args.id), () => {}, { ...defaultChoice(), fps: Number(args.fps) || 30, longSide: Number(args.size) || 0, quality, master: args.master === true, ...(to ? { to } : {}) });
     if (!file) return fail("The video was not made.");
     return { text: `Made the video ${file} in ${Math.round((Date.now() - began) / 1000)} seconds. The design was not changed.` };
   } catch (e) {
@@ -1006,13 +1126,18 @@ async function apply(tool: string, args: Args, by?: string): Promise<ToolResult>
   if (tool === "place_sound") return placeSound(args, by);
   if (tool === "trace_image") return traceImage(args, by);
   if (tool === "duplicate_elements") return duplicateElements(args, by);
+  if (tool === "load_look") return loadLook(args, by);
   await ensureSaved();
-  // changing a value over time is one tool for the AI and the set_keys command underneath
-  const command = (tool === "animate" ? "set_keys" : tool) as CommandName;
+  // changing a value over time is one tool for the AI and the set_keys command underneath, and copying a colour is setting it
+  const command = (tool === "animate" ? "set_keys" : tool === "copy_grade" ? "set_grade" : tool) as CommandName;
   const label = commandLabel(command, args as never);
   R.dispatch(command, args as never, "ai", by);
   addMsg({ role: "note", text: summarise(tool, args), ...stepNow() }, said());
   saveIfHome();
+  if (tool === "set_grade" || tool === "copy_grade") {
+    const doc = R.currentDoc();
+    return { text: `Done: ${label}. The colour now: ${JSON.stringify(Object.fromEntries((args.ids as string[]).map((i) => [i, gradeChanges(doc.elements[i]?.grade)])))}. Check it with color_readings and look_at_design.` };
+  }
   if (tool === "create_instance") return { text: `Placed a copy with id ${String(args.id)}. Its parts have ids that start with "${String(args.id)}::". Change them with set_props to change this copy only.` };
   if (tool === "make_mask") {
     if (!R.currentDoc().elements[String(args.groupId)]) return fail("That mask could not be made.");
@@ -1163,6 +1288,11 @@ async function answerTool(name: string, raw: unknown, by?: string): Promise<Tool
   if (name === "look_at_image") return lookAtImage(a.id, a.maxSize, R);
   if (name === "look_at_design") return lookAtDesign(a.ids, a.maxSize, R);
   if (name === "look_at_attachment") return lookAtAttachment(a.number);
+  if (name === "color_readings") return colorReadings(a);
+  if (name === "list_looks") {
+    const list = await invoke<string[]>("looks_list").catch(() => []);
+    return { text: list.length ? `Looks kept in Documents, Duet, Looks:\n${list.join("\n")}` : "No looks are kept yet. Give load_look the full path of a .cube file." };
+  }
   if (name === "select_elements") {
     const bad = missing(a.ids);
     if (bad.length) return fail(`No element with id: ${bad.join(", ")}.`);

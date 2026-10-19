@@ -1,5 +1,6 @@
 mod ai;
 mod files;
+mod grade;
 mod keepalive;
 mod package;
 mod video;
@@ -538,6 +539,9 @@ pub fn run() {
             video::video_ready,
             video::video_info,
             video::clip_preview,
+            grade::look_keep,
+            grade::look_read,
+            grade::looks_list,
             video::video_export,
             video::clip_keep_begin,
             video::clip_keep_part,

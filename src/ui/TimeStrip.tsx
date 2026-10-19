@@ -87,7 +87,7 @@ export default function TimeStrip() {
   // what is selected decides which frame is open, and with nothing selected the open one stays
   const frame = pageFrame(doc, selection[0]) ?? (clock.scene ? (doc.elements[clock.scene] ?? null) : null);
   const plays = !!frame && frame.duration > 0;
-  const sceneId = mode === "motion" && plays ? frame.id : null;
+  const sceneId = mode !== "design" && plays ? frame.id : null;
   useEffect(() => openScene(sceneId), [sceneId]);
 
   // the room the timeline has is the panel's own width, measured on the panel so it never depends on what is inside it
@@ -166,7 +166,7 @@ export default function TimeStrip() {
     }
   }, [zoom]);
 
-  if (mode !== "motion") return null;
+  if (mode === "design") return null;
   if (!plays) {
     if (frame && selection.length === 1 && selection[0] === frame.id) {
       return (
@@ -760,15 +760,24 @@ export default function TimeStrip() {
                   </select>
                 </label>
                 <label>
-                  Quality
-                  <select data-name="export-quality" value={choice.quality} onChange={(e) => setChoice({ ...choice, quality: Number(e.target.value) })}>
-                    {QUALITIES.map((q) => (
-                      <option key={q.quality} value={q.quality}>
-                        {q.name}
-                      </option>
-                    ))}
+                  Kind
+                  <select data-name="export-kind" value={choice.master ? "master" : "share"} onChange={(e) => setChoice({ ...choice, master: e.target.value === "master" })}>
+                    <option value="share">MP4, to share</option>
+                    <option value="master">ProRes, to keep editing</option>
                   </select>
                 </label>
+                {!choice.master && (
+                  <label>
+                    Quality
+                    <select data-name="export-quality" value={choice.quality} onChange={(e) => setChoice({ ...choice, quality: Number(e.target.value) })}>
+                      {QUALITIES.map((q) => (
+                        <option key={q.quality} value={q.quality}>
+                          {q.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="export-where">
                   <input type="checkbox" checked={choice.ask} onChange={(e) => setChoice({ ...choice, ask: e.target.checked })} />
                   Ask me where to save

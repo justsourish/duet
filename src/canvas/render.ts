@@ -7,6 +7,7 @@ import { logError } from "../errorLog";
 import { isLooseCopy } from "../document/components";
 import { getPicture } from "../project/assets";
 import { clipPicture } from "../video/clips";
+import { graded } from "./grade";
 import { HANDLES } from "./handles";
 import { agentColour } from "../ai/colours";
 import { plainName } from "../ai/who";
@@ -133,7 +134,7 @@ function layPicture(ctx: CanvasRenderingContext2D, pic: HTMLImageElement, el: El
     const scale = Math.max(el.width / pic.naturalWidth, el.height / pic.naturalHeight);
     const w = pic.naturalWidth * scale;
     const h = pic.naturalHeight * scale;
-    ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+    ctx.drawImage(graded(pic, el.grade, el.src), x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
   } finally {
     ctx.restore();
   }
@@ -161,7 +162,7 @@ function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) 
         const k = Math.hypot(m.a, m.b) || 1;
         const w = Math.max(1, Math.min(4096, Math.ceil(el.width * k)));
         const h = Math.max(1, Math.min(4096, Math.ceil(el.height * k)));
-        const key = `${el.src}|${el.width}|${el.height}|${el.radius}|${w}x${h}`;
+        const key = `${el.src}|${el.width}|${el.height}|${el.radius}|${w}x${h}|${el.grade ? JSON.stringify(el.grade) : ""}`;
         let sheet = cutSheets.get(key);
         if (!sheet) {
           sheet = document.createElement("canvas");
@@ -207,7 +208,7 @@ function drawClip(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
       const k = Math.max(el.width / pic.videoWidth, el.height / pic.videoHeight);
       const w = pic.videoWidth * k;
       const h = pic.videoHeight * k;
-      ctx.drawImage(pic, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+      ctx.drawImage(graded(pic, el.grade, null), x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
     } catch (e) {
       logError("draw clip", e);
     }

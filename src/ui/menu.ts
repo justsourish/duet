@@ -104,6 +104,7 @@ export async function installMenu() {
     items: [
       await item("Design", () => setLayout({ mode: "design" }), "CmdOrCtrl+1"),
       await item("Motion", () => setLayout({ mode: "motion" }), "CmdOrCtrl+2"),
+      await item("Colour", () => setLayout({ mode: "color" }), "CmdOrCtrl+3"),
       await line(),
       await item("Zoom in", () => zoomBy(1.25), "CmdOrCtrl+="),
       await item("Zoom out", () => zoomBy(0.8), "CmdOrCtrl+-"),

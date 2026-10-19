@@ -147,6 +147,9 @@ export default function App() {
       } else if (k === "2" && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setLayout({ mode: "motion" });
+      } else if (k === "3" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setLayout({ mode: "color" });
       } else if (k === ",") {
         e.preventDefault();
         setSettings(true);
@@ -211,9 +214,16 @@ export default function App() {
           >
             Motion
           </button>
+          <button
+            className={dock.mode === "color" ? "active" : ""}
+            data-name="mode-color"
+            onClick={() => setLayout({ mode: "color" })}
+          >
+            Colour
+          </button>
         </div>
         <div className="top-side end">
-          {dock.mode !== "motion" && (
+          {dock.mode === "design" && (
             <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
               Present
             </button>

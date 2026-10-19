@@ -11,6 +11,7 @@ import { KEY_GROUPS, entranceOf, sceneOf, spanOf } from "../document/time";
 import { useKeyFocus } from "./keyFocus";
 import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
+import ColorPanel from "./ColorPanel";
 import { applyColorPreservingOpacity, colorHex, colorOpacity, withOpacity } from "./color";
 
 function NumField({
@@ -609,6 +610,8 @@ export default function PropertiesPanel() {
   useStore((s) => s.clock.scene);
   const doc = workDoc();
   const els = selection.map((id) => doc.elements[id]).filter(Boolean) as El[];
+
+  if (mode === "color") return <ColorPanel els={els} />;
 
   if (els.length === 0) {
     return (

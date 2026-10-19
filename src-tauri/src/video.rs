@@ -253,13 +253,57 @@ pub struct Sound {
     volume: f64,
 }
 
-/// The video being made right now: ffmpeg, waiting for pictures.
-static MAKING: Mutex<Option<Child>> = Mutex::new(None);
+/// A clip read straight from its file, at full quality, one picture at a time, for the frames where
+/// it fills the whole video. Its pictures come out as 16-bit RGB at the video's size.
+struct Reader {
+    child: Child,
+    out: std::process::ChildStdout,
+    /// The second in the file of the next picture it will give.
+    next: f64,
+}
 
-/// The ffmpeg arguments that turn pictures handed in one by one, and the sound of the clips, into one file.
-fn scene_args(fps: u32, seconds: f64, quality: u32, sounds: &[Sound], out: &str) -> Vec<String> {
-    let mut args: Vec<String> = ["-y", "-hide_banner", "-loglevel", "error", "-f", "image2pipe", "-framerate"].map(String::from).to_vec();
-    args.extend([fps.to_string(), "-c:v".into(), "mjpeg".into(), "-i".into(), "-".into()]);
+/// The video being made right now: ffmpeg waiting for 16-bit pictures, and the clips being read.
+struct Making {
+    encoder: Child,
+    width: u32,
+    height: u32,
+    fps: u32,
+    readers: std::collections::HashMap<String, Reader>,
+    /// Grades made ready, by their settings, and looks read, by file, so neither is redone every picture.
+    ready: std::collections::HashMap<String, std::sync::Arc<crate::grade::Ready>>,
+    looks: std::collections::HashMap<String, Option<crate::grade::Lut>>,
+}
+
+impl Drop for Making {
+    fn drop(&mut self) {
+        for r in self.readers.values_mut() {
+            let _ = r.child.kill();
+            let _ = r.child.wait();
+        }
+    }
+}
+
+static MAKING: Mutex<Option<Making>> = Mutex::new(None);
+
+/// How the finished file is made: an MP4 to share, or a ProRes master to keep editing with.
+fn encoder_args(quality: u32, master: bool) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    if master {
+        // ProRes 422 HQ, 10-bit: what editors hand to each other
+        args.extend(["-c:v", "prores_ks", "-profile:v", "3", "-vendor", "apl0", "-vf", "scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv422p10le,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709", "-movflags", "+write_colr"].map(String::from));
+    } else {
+        args.extend(h264(quality));
+        args.extend(["-vf", "scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv420p,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709", "-movflags", "+faststart"].map(String::from));
+    }
+    args.extend(["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"].map(String::from));
+    args
+}
+
+/// The ffmpeg arguments that turn 16-bit pictures handed in one by one, and the sound of the clips, into one file.
+#[allow(clippy::too_many_arguments)]
+fn scene_args(fps: u32, seconds: f64, quality: u32, sounds: &[Sound], out: &str, width: u32, height: u32, master: bool) -> Vec<String> {
+    let mut args: Vec<String> = ["-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb48le", "-s"].map(String::from).to_vec();
+    args.extend([format!("{width}x{height}"), "-framerate".into(), fps.to_string(), "-i".into(), "-".into()]);
     let mut graph = String::new();
     for (i, s) in sounds.iter().enumerate() {
         args.extend(["-ss".into(), format!("{:.3}", s.from.max(0.0)), "-t".into(), format!("{:.3}", s.length.max(0.05)), "-i".into(), s.path.clone()]);
@@ -273,18 +317,22 @@ fn scene_args(fps: u32, seconds: f64, quality: u32, sounds: &[Sound], out: &str)
         }
         // the sound runs exactly as long as the picture, with silence where no clip is heard
         graph += &format!("amix=inputs={}:normalize=0,apad,atrim=duration={seconds:.3}[a]", sounds.len());
-        args.extend(["-filter_complex".into(), graph, "-map".into(), "[a]".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "160k".into()]);
+        let audio: [&str; 2] = if master { ["-c:a", "pcm_s16le"] } else { ["-c:a", "aac"] };
+        args.extend(["-filter_complex".into(), graph, "-map".into(), "[a]".into(), audio[0].into(), audio[1].into()]);
+        if !master {
+            args.extend(["-b:a".into(), "160k".into()]);
+        }
     }
     // quality is ffmpeg's own scale: lower is finer and makes a bigger file
-    args.extend(h264(quality));
-    args.extend(["-pix_fmt", "yuv420p", "-movflags", "+faststart"].map(String::from));
+    args.extend(encoder_args(quality, master));
     args.push(out.into());
     args
 }
 
 /// Start making a video. Pictures follow with `scene_export_frame`, and `scene_export_end` finishes it.
 #[tauri::command]
-pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, quality: Option<u32>, sounds: Vec<Sound>) -> Result<(), String> {
+#[allow(clippy::too_many_arguments)]
+pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, quality: Option<u32>, sounds: Vec<Sound>, width: u32, height: u32, master: Option<bool>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
         // a clip with no sound in it has nothing to add
@@ -294,16 +342,18 @@ pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, quality: Op
                 heard.push(s);
             }
         }
-        let child = crate::quiet_command(ffmpeg)
-            .args(scene_args(fps.clamp(1, 120), seconds, quality.unwrap_or(18), &heard, &out))
+        let fps = fps.clamp(1, 120);
+        let encoder = crate::quiet_command(ffmpeg)
+            .args(scene_args(fps, seconds, quality.unwrap_or(18), &heard, &out, width, height, master.unwrap_or(false)))
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?;
-        if let Some(mut old) = MAKING.lock().map_err(|e| e.to_string())?.replace(child) {
-            let _ = old.kill();
-            let _ = old.wait();
+        let making = Making { encoder, width, height, fps, readers: Default::default(), ready: Default::default(), looks: Default::default() };
+        if let Some(mut old) = MAKING.lock().map_err(|e| e.to_string())?.replace(making) {
+            let _ = old.encoder.kill();
+            let _ = old.encoder.wait();
         }
         Ok(())
     })
@@ -311,30 +361,172 @@ pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, quality: Op
     .map_err(|e| e.to_string())?
 }
 
-/// One picture of the video, as a JPEG.
+/// A clip under everything else in one picture of the video, filling it.
+#[derive(Deserialize)]
+struct Base {
+    /// The element, so each clip keeps its own reader.
+    id: String,
+    path: String,
+    /// The second in the file this picture shows.
+    at: f64,
+    /// The part of the clip's own picture that fills the video: x, y, width, height, in its pixels.
+    crop: [u32; 4],
+    /// "bt601" for standard definition video, otherwise Rec.709.
+    matrix: String,
+    grade: Option<crate::grade::Grade>,
+}
+
+#[derive(Deserialize)]
+struct FrameInfo {
+    base: Option<Base>,
+    /// True when the body holds RGBA pixels of everything drawn over the clip, or of the whole picture when there is no clip.
+    drawn: bool,
+}
+
+fn reader_args(b: &Base, width: u32, height: u32, fps: u32) -> Vec<String> {
+    let [x, y, w, h] = b.crop;
+    let matrix = if b.matrix == "bt601" { "bt601" } else { "bt709" };
+    vec![
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-ss".into(),
+        format!("{:.4}", b.at.max(0.0)),
+        "-i".into(),
+        b.path.clone(),
+        "-an".into(),
+        "-sn".into(),
+        "-vf".into(),
+        format!("fps={fps},crop={w}:{h}:{x}:{y},scale={width}:{height}:flags=lanczos+accurate_rnd+full_chroma_int:in_color_matrix={matrix}:in_range=auto:out_range=full"),
+        "-pix_fmt".into(),
+        "rgb48le".into(),
+        "-f".into(),
+        "rawvideo".into(),
+        "-".into(),
+    ]
+}
+
+impl Making {
+    /// The clip's picture for this moment, read from its file, or black when the file has ended.
+    fn base_picture(&mut self, b: &Base) -> Result<Vec<u16>, String> {
+        use std::io::Read;
+        let step = 1.0 / self.fps as f64;
+        let n = (self.width * self.height * 3) as usize;
+        let fresh = self.readers.get(&b.id).is_none_or(|r| (r.next - b.at).abs() > step / 2.0);
+        if fresh {
+            if let Some(mut old) = self.readers.remove(&b.id) {
+                let _ = old.child.kill();
+                let _ = old.child.wait();
+            }
+            let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
+            let mut child = crate::quiet_command(ffmpeg)
+                .args(reader_args(b, self.width, self.height, self.fps))
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            let out = child.stdout.take().ok_or("The clip could not be read.")?;
+            self.readers.insert(b.id.clone(), Reader { child, out, next: b.at });
+        }
+        let reader = self.readers.get_mut(&b.id).ok_or("The clip could not be read.")?;
+        let mut bytes = vec![0u8; n * 2];
+        let got = reader.out.read_exact(&mut bytes).is_ok();
+        reader.next += step;
+        if !got {
+            return Ok(vec![0; n]);
+        }
+        Ok(bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect())
+    }
+
+    fn ready_for(&mut self, g: &crate::grade::Grade) -> std::sync::Arc<crate::grade::Ready> {
+        let key = serde_json::to_string(g).unwrap_or_default();
+        if let Some(r) = self.ready.get(&key) {
+            return r.clone();
+        }
+        let look = if g.look.is_empty() || g.look_amount <= 0.0 {
+            None
+        } else {
+            self.looks.entry(g.look.clone()).or_insert_with(|| std::fs::read_to_string(&g.look).ok().and_then(|t| crate::grade::Lut::parse(&t).ok())).clone()
+        };
+        if self.ready.len() > 64 {
+            self.ready.clear();
+        }
+        let r = std::sync::Arc::new(crate::grade::Ready::new(g.clone(), look));
+        self.ready.insert(key, r.clone());
+        r
+    }
+}
+
+/// Lay the drawn RGBA pixels, with their see-through parts, over 16-bit RGB pixels.
+fn lay_over(under: &mut [u16], drawn: &[u8]) {
+    for (px, d) in under.chunks_exact_mut(3).zip(drawn.chunks_exact(4)) {
+        let a = d[3] as u32;
+        if a == 0 {
+            continue;
+        }
+        for i in 0..3 {
+            let top = d[i] as u32 * 257;
+            px[i] = ((top * a + px[i] as u32 * (255 - a)) / 255) as u16;
+        }
+    }
+}
+
+/// One picture of the video. The header says what is in it; the body holds what was drawn, as RGBA.
+/// A clip that fills the picture is read from its own file at full quality and graded here, in
+/// 32-bit, and only what is drawn over it comes from the canvas.
 #[tauri::command]
 pub fn scene_export_frame(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("That was not a picture.".into());
     };
+    let info: FrameInfo = request
+        .headers()
+        .get("x-duet-frame")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| serde_json::from_str(h).ok())
+        .unwrap_or(FrameInfo { base: None, drawn: true });
     let mut making = MAKING.lock().map_err(|e| e.to_string())?;
-    let child = making.as_mut().ok_or("No video is being made.")?;
-    let pipe = child.stdin.as_mut().ok_or("No video is being made.")?;
-    pipe.write_all(bytes).map_err(|_| "The video could not be made. ffmpeg stopped early.".to_string())
+    let m = making.as_mut().ok_or("No video is being made.")?;
+    let n = (m.width * m.height) as usize;
+    if info.drawn && bytes.len() != n * 4 {
+        return Err("That picture is not the size of the video.".into());
+    }
+    let pixels = match &info.base {
+        Some(b) => {
+            let mut px = m.base_picture(b)?;
+            if let Some(g) = &b.grade {
+                let ready = m.ready_for(g);
+                crate::grade::frame_rgb48(&ready, &mut px);
+            }
+            if info.drawn {
+                lay_over(&mut px, bytes);
+            }
+            px
+        }
+        None => bytes.chunks_exact(4).flat_map(|d| [d[0] as u16 * 257, d[1] as u16 * 257, d[2] as u16 * 257]).collect(),
+    };
+    let out: Vec<u8> = pixels.iter().flat_map(|v| v.to_le_bytes()).collect();
+    let pipe = m.encoder.stdin.as_mut().ok_or("No video is being made.")?;
+    pipe.write_all(&out).map_err(|_| "The video could not be made. ffmpeg stopped early.".to_string())
 }
 
 /// The last picture has been handed in: finish the file.
 #[tauri::command]
 pub async fn scene_export_end() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut child = MAKING.lock().map_err(|e| e.to_string())?.take().ok_or("No video is being made.")?;
-        drop(child.stdin.take());
-        let done = child.wait_with_output().map_err(|e| e.to_string())?;
-        if done.status.success() {
+        let mut making = MAKING.lock().map_err(|e| e.to_string())?.take().ok_or("No video is being made.")?;
+        drop(making.encoder.stdin.take());
+        let mut err = String::new();
+        if let Some(mut e) = making.encoder.stderr.take() {
+            use std::io::Read;
+            let _ = e.read_to_string(&mut err);
+        }
+        let done = making.encoder.wait().map_err(|e| e.to_string())?;
+        if done.success() {
             return Ok(());
         }
-        let said = String::from_utf8_lossy(&done.stderr);
-        let last: Vec<&str> = said.lines().rev().take(3).collect();
+        let last: Vec<&str> = err.lines().rev().take(3).collect();
         Err(format!("The video could not be made. {}", last.into_iter().rev().collect::<Vec<_>>().join(" ")))
     })
     .await
@@ -345,9 +537,9 @@ pub async fn scene_export_end() -> Result<(), String> {
 #[tauri::command]
 pub fn scene_export_stop() {
     if let Ok(mut making) = MAKING.lock() {
-        if let Some(mut child) = making.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        if let Some(mut m) = making.take() {
+            let _ = m.encoder.kill();
+            let _ = m.encoder.wait();
         }
     }
 }
@@ -390,13 +582,32 @@ mod tests {
     #[test]
     fn a_frame_that_plays_gets_its_pictures_and_each_clip_heard_at_its_moment() {
         let sounds = vec![Sound { path: "a.mp4".into(), from: 1.0, at: 2.5, length: 3.0, volume: 0.5 }];
-        let args = scene_args(30, 10.0, 18, &sounds, "out.mp4").join(" ");
-        assert!(args.contains("-f image2pipe -framerate 30 -c:v mjpeg -i -"));
+        let args = scene_args(30, 10.0, 18, &sounds, "out.mp4", 1920, 1080, false).join(" ");
+        assert!(args.contains("-f rawvideo -pix_fmt rgb48le -s 1920x1080 -framerate 30 -i -"));
+        assert!(args.contains("format=yuv420p") && args.contains("-color_primaries bt709"));
         assert!(args.contains("-ss 1.000 -t 3.000 -i a.mp4"));
         assert!(args.contains("volume=0.500,adelay=2500:all=1[a0]"));
         assert!(args.contains("atrim=duration=10.000[a]"));
-        let silent = scene_args(30, 10.0, 18, &[], "out.mp4").join(" ");
+        let silent = scene_args(30, 10.0, 18, &[], "out.mp4", 1920, 1080, false).join(" ");
         assert!(!silent.contains("filter_complex"));
+        let master = scene_args(30, 10.0, 18, &sounds, "out.mov", 1920, 1080, true).join(" ");
+        assert!(master.contains("prores_ks -profile:v 3") && master.contains("yuv422p10le") && master.contains("pcm_s16le"));
+    }
+
+    #[test]
+    fn a_clip_is_read_at_its_moment_cut_to_the_part_that_fills_the_video() {
+        let b = Base { id: "v".into(), path: "a.mov".into(), at: 2.5, crop: [10, 20, 1900, 1060], matrix: "bt709".into(), grade: None };
+        let args = reader_args(&b, 1920, 1080, 24).join(" ");
+        assert!(args.contains("-ss 2.5000 -i a.mov"));
+        assert!(args.contains("fps=24,crop=1900:1060:10:20,scale=1920:1080"));
+        assert!(args.contains("in_color_matrix=bt709") && args.ends_with("-pix_fmt rgb48le -f rawvideo -"));
+    }
+
+    #[test]
+    fn drawn_pixels_lie_over_the_clip_by_how_see_through_they_are() {
+        let mut under = vec![0u16, 0, 0, 65535, 65535, 65535];
+        lay_over(&mut under, &[255, 0, 0, 255, 0, 0, 0, 0]);
+        assert_eq!(under, vec![65535, 0, 0, 65535, 65535, 65535]);
     }
 }
 
