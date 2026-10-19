@@ -32,6 +32,7 @@ export async function installMenu() {
     text: "Duet",
     items: [
       await PredefinedMenuItem.new({ item: { About: { name: "Duet", version: await getVersion().catch(() => undefined) } } }),
+      await item("Check for updates...", () => send("duet:check-update")),
       await line(),
       await item("Settings...", () => send("duet:settings"), "CmdOrCtrl+,"),
       await line(),

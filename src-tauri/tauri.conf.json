@@ -64,6 +64,18 @@
     ],
     "resources": {
       "binaries/ffmpeg-licences/*": "ffmpeg-licences/"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2QUYwNUQxNjE0M0YwMTEKUldRUjhFTmgwUVd2cGdtK3hxeFYzbVN2dmQwcXNmbjdhallQbXlWUldpMzdkaDl6UFQ4N0ZFcWIK",
+      "endpoints": [
+        "https://github.com/justsourish/duet/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

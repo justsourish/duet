@@ -59,6 +59,9 @@ jobs:
           # "-" signs the Mac app ad hoc, which Apple Silicon needs in order to run it at all.
           # It is not a paid certificate, so people still see the first-launch warning.
           APPLE_SIGNING_IDENTITY: "-"
+          # Duet's own update key (free, not Apple's or Microsoft's): installed copies only accept updates signed with it
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Duet ${{ github.ref_name }}
@@ -71,5 +74,6 @@ jobs:
 
             The AI chat works with Claude Code and the Antigravity CLI. Video and motion are experimental and have mostly been tried on a Mac. On Mac and Windows Duet carries its own ffmpeg (LGPL), so nothing extra needs installing; on Linux the system's ffmpeg is installed with the app. Windows and Linux builds are less tested than Mac.
           releaseDraft: true
-          prerelease: true
+          # not a pre-release, so installed copies find it as the latest version and offer it
+          prerelease: false
           args: ${{ matrix.args }}

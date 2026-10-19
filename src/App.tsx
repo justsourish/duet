@@ -23,6 +23,7 @@ import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
 import PresentView from "./ui/PresentView";
 import SendCopy from "./ui/SendCopy";
+import Update from "./ui/Update";
 import Settings from "./ui/Settings";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
@@ -257,6 +258,7 @@ export default function App() {
       {home && <Home onClose={() => setHome(false)} />}
       {videoCut && <VideoCut onClose={() => setVideoCut(false)} />}
       {sending && <SendCopy onClose={() => setSending(false)} />}
+      <Update />
       {settings && <Settings check={check} onClose={() => setSettings(false)} />}
     </div>
   );

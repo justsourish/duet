@@ -4002,3 +4002,11 @@ button.agent-perm {
 .key-here.moves-here {
   color: var(--key);
 }
+
+/* what is new in an update, as the release says it */
+.update-notes {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
