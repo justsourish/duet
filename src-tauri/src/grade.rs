@@ -304,7 +304,7 @@ fn looks_dir() -> Result<PathBuf, String> {
 }
 
 /// Keep a copy of a .cube look in the Looks folder and say where it is. A look already kept is used again.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn look_keep(path: String) -> Result<String, String> {
     let text = std::fs::read_to_string(&path).map_err(|e| format!("Could not read the look: {e}"))?;
     Lut::parse(&text)?;
@@ -329,7 +329,7 @@ pub fn look_keep(path: String) -> Result<String, String> {
 }
 
 /// The looks kept so far, by full path.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn looks_list() -> Result<Vec<String>, String> {
     let Ok(dir) = std::fs::read_dir(looks_dir()?) else { return Ok(vec![]) };
     let mut list: Vec<String> = dir

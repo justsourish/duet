@@ -461,7 +461,8 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     const s = getState();
     canvasRef.current!.setPointerCapture(e.pointerId);
 
-    if (e.button === 1 || spaceRef.current || s.tool === "hand") {
+    // beside the chat the canvas only looks: any drag moves the view
+    if (viewOnly || e.button === 1 || spaceRef.current || s.tool === "hand") {
       stopGlide();
       dragRef.current = { kind: "pan", sx: p.sx, sy: p.sy, vx: s.viewport.x, vy: s.viewport.y };
       setCursor("grabbing");
@@ -1307,9 +1308,10 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onDoubleClick={onDoubleClick}
+        onDoubleClick={viewOnly ? undefined : onDoubleClick}
         onContextMenu={(e) => {
           e.preventDefault();
+          if (viewOnly) return;
           const p = point(e);
           const doc = workDoc();
           const hit = hitTest(doc, p.x, p.y, new Set(), e.metaKey || e.ctrlKey);

@@ -102,7 +102,7 @@ pub fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Comm
     c
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn check_copy() -> bool {
     is_check_copy()
 }

@@ -4364,6 +4364,6 @@ button.agent-perm {
 .chathome > .canvas {
   grid-area: auto;
 }
-.canvas.viewonly .canvas-wrap {
-  pointer-events: none;
+.canvas.viewonly canvas {
+  cursor: grab;
 }

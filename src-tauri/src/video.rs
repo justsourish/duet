@@ -48,7 +48,7 @@ fn h264(quality: u32) -> Vec<String> {
 }
 
 /// True when this computer has what cutting video needs.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn video_ready() -> bool {
     find("ffmpeg").is_some()
 }

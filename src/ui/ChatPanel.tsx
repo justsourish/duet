@@ -26,7 +26,13 @@ const MODES: { mode: Mode; label: string; hint: string }[] = [
   { mode: "auto", label: "Auto", hint: "Duet does what you ask on its own. You can undo any step." },
 ];
 
-const IDEAS = ["Describe this design", "Tidy the spacing", "Check text contrast"];
+/** What the chips say, and what each one asks. */
+const IDEAS = [
+  { label: "Describe this design", ask: "Describe this design" },
+  { label: "Tidy the spacing", ask: "Tidy the spacing" },
+  { label: "Check text contrast", ask: "Check text contrast" },
+  { label: "Trace a picture", ask: "Trace the selected picture into shapes I can edit. If nothing is selected, tell me which picture to trace." },
+];
 
 type ChatMessage = Msg;
 
@@ -1078,8 +1084,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
           {messages.length === 0 && found !== false && (
             <div className="chips">
               {IDEAS.map((i) => (
-                <span key={i} className="chip" onClick={() => send(i)}>
-                  {i}
+                <span key={i.label} className="chip" onClick={() => send(i.ask)}>
+                  {i.label}
                 </span>
               ))}
             </div>

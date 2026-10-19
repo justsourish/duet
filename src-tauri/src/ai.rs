@@ -383,7 +383,7 @@ pub fn agent_models(program: String) -> Vec<Value> {
 }
 
 /// Is this agent tool installed on this computer?
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agent_available(program: String) -> bool {
     if !known(&program) {
         return false;
@@ -419,7 +419,7 @@ pub fn agent_available(program: String) -> bool {
 /// Put the agent's instructions and connection details in files, so nothing tricky has to be
 /// squeezed through a command line (quotes and line breaks break differently on every system).
 /// The connection file holds the secret token, so only this user may read it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_agent_files(system: String, mcp: String) -> Result<Value, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
@@ -441,7 +441,7 @@ pub fn write_agent_files(system: String, mcp: String) -> Result<Value, String> {
 
 /// Write one file inside Duet's agent workspace (for tools that read their settings from the
 /// folder they run in). Only plain relative paths are accepted, so nothing can escape the workspace.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_agent_file(name: String, body: String) -> Result<String, String> {
     let rel = std::path::Path::new(&name);
     let plain = !name.is_empty()
@@ -695,7 +695,7 @@ pub fn bridge() {
 
 /// Make sure Antigravity knows about Duet. Added once, to Antigravity's own list, and only when it
 /// is missing or points at a Duet that has moved.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agy_connect() -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.to_string_lossy().to_string();
