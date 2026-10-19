@@ -1,6 +1,6 @@
 import { message } from "@tauri-apps/plugin-dialog";
 import { clipKind, dropClips, keepDropped } from "../video/scene";
-import { setLayout } from "../ui/layout";
+import { setLayout, useLayout } from "../ui/layout";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { newId, runCommand } from "../commands";
 import { extractPayload, payloadToText, textToPayload } from "../document/clipboard";
@@ -310,6 +310,19 @@ export default function CanvasView() {
   const dragRef = useRef<Drag | null>(null);
   const spaceRef = useRef(false);
   const rafRef = useRef(0);
+  // Motion and Colour work on one scene: the board goes there, and comes back to where it was when you return to Design
+  const designing = useLayout((d) => d.mode === "design");
+  const scene = useStore((s) => s.clock.scene);
+  const before = useRef<{ x: number; y: number; zoom: number } | null>(null);
+  useEffect(() => {
+    if (scene) {
+      before.current ??= getState().viewport;
+      zoomToElements([scene], sizeRef.current.w, sizeRef.current.h);
+    } else if (designing && before.current) {
+      glideTo(before.current);
+      before.current = null;
+    }
+  }, [scene, designing]);
   const editingId = useStore((s) => s.editingId);
   const viewport = useStore((s) => s.viewport);
 

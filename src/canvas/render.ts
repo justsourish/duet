@@ -412,6 +412,20 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   // screen space from here
   ctx.lineWidth = 1;
 
+  // in Motion and Colour the scene being worked on stands out and the rest of the board goes quiet
+  const open = s.clock.scene ? doc.elements[s.clock.scene] : null;
+  if (open) {
+    const r = screenRect(s, worldRect(doc, open.id));
+    ctx.save();
+    ctx.fillStyle = COLORS.bg;
+    ctx.globalAlpha = 0.78;
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.rect(r.x, r.y, r.width, r.height);
+    ctx.fill("evenodd");
+    ctx.restore();
+  }
+
   // frame names
   ctx.font = `500 12px ${FONT_STACK}`;
   ctx.textBaseline = "alphabetic";
