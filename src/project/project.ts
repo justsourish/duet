@@ -588,6 +588,16 @@ export async function newProject() {
   await once(newProjectDialog);
 }
 
+/** The first free "Untitled", "Untitled 2", … in the projects folder. */
+async function untitledPath(): Promise<string> {
+  const dir = await invoke<string>("default_projects_dir");
+  for (let n = 1; n < 1000; n++) {
+    const file = join(dir, n === 1 ? "Untitled.duet" : `Untitled ${n}.duet`);
+    if (!((await invoke<boolean>("path_exists", { path: file })) === true)) return file;
+  }
+  throw new Error("Too many untitled projects.");
+}
+
 async function newProjectDialog() {
   if (!inTauri()) return;
   const s = getState();
@@ -600,8 +610,9 @@ async function newProjectDialog() {
     });
     if (!go) return;
   }
-  const picked = await chooseFile("Name your new project");
-  if (!picked) return;
+  // no Save window: a new project starts at once in Documents/Duet, named "Untitled", and can be renamed later
+  const picked = await untitledPath().catch(() => null);
+  if (!picked) return void (await oops("Duet could not find a place to keep the new project."));
   if (!getState().project.file && !(await readyToLeave())) return;
   try {
     const doc = emptyDoc();
