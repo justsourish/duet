@@ -126,6 +126,7 @@ export function serializeDoc(doc: Doc): string {
     elements[id] = ordered;
   }
   const out: Record<string, unknown> = { version: doc.version, rootIds: doc.rootIds, elements };
+  if (doc.background) out.background = doc.background;
   if (doc.styles && Object.keys(doc.styles).length) out.styles = doc.styles;
   return JSON.stringify(out, null, 2) + "\n";
 }
@@ -158,5 +159,6 @@ export function parseDoc(text: string): Doc {
     for (const c of el.childIds) if (!elements[c]) throw new DesignFileError(`${el.name} lists a missing child ${c}.`);
   }
   const styles = r.styles && typeof r.styles === "object" ? (r.styles as Doc["styles"]) : undefined;
-  return relayout(syncInstances({ version: 1, rootIds: r.rootIds as string[], elements, ...(styles ? { styles } : {}) }));
+  const background = typeof r.background === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(r.background) ? r.background : undefined;
+  return relayout(syncInstances({ version: 1, rootIds: r.rootIds as string[], elements, ...(background ? { background } : {}), ...(styles ? { styles } : {}) }));
 }

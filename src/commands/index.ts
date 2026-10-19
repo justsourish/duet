@@ -428,6 +428,24 @@ const pasteElements: CommandDef<PasteArgs> = {
   },
 };
 
+// ---- the canvas colour ----
+export interface SetBackgroundArgs {
+  /** A colour like #f4f1ea, or null for the standard dark one. */
+  color: string | null;
+}
+
+const setBackground: CommandDef<SetBackgroundArgs> = {
+  label: () => "Change the background",
+  run: (doc, a) => {
+    const color = a.color && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(a.color) ? a.color.toLowerCase() : undefined;
+    if (color === doc.background) return doc;
+    const next = clone(doc);
+    if (color) next.background = color;
+    else delete next.background;
+    return next;
+  },
+};
+
 // ---- text styles ----
 const TEXT_FACE = ["fontFamily", "fontWeight", "fontSize", "lineHeight", "letterSpacing"] as const;
 
@@ -1252,6 +1270,7 @@ export const commands = {
   resize_element: resizeElement,
   set_props: setProps,
   set_grade: setGrade,
+  set_background: setBackground,
   delete_elements: deleteElements,
   reparent_elements: reparentElements,
   paste_elements: pasteElements,

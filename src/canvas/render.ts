@@ -357,14 +357,23 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
   ctx.restore();
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, s: State, w: number, h: number) {
+/** Dots that show up on the canvas colour, lighter on dark and darker on light. */
+function dotColour(bg?: string): string {
+  if (!bg) return COLORS.dot;
+  const hex = bg.length === 4 ? bg.replace(/[0-9a-f]/gi, (c) => c + c).slice(1) : bg.slice(1);
+  const n = parseInt(hex, 16);
+  const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum > 0.5 ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.14)";
+}
+
+function drawGrid(ctx: CanvasRenderingContext2D, s: State, w: number, h: number, bg?: string) {
   const { zoom, x, y } = s.viewport;
   let step = 24;
   while (step * zoom < 14) step *= 2;
   const sp = step * zoom;
   const startX = ((x % sp) + sp) % sp;
   const startY = ((y % sp) + sp) % sp;
-  ctx.fillStyle = COLORS.dot;
+  ctx.fillStyle = dotColour(bg);
   for (let px = startX; px < w; px += sp) {
     for (let py = startY; py < h; py += sp) ctx.fillRect(Math.round(px), Math.round(py), 1.5, 1.5);
   }
@@ -394,9 +403,9 @@ export const setQuietCanvas = (on: boolean) => void (quiet = on);
 export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: number, dpr: number) {
   const doc = seenDoc(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = COLORS.bg;
+  ctx.fillStyle = doc.background ?? COLORS.bg;
   ctx.fillRect(0, 0, w, h);
-  drawGrid(ctx, s, w, h);
+  drawGrid(ctx, s, w, h, doc.background);
 
   // world space
   ctx.save();

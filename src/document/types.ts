@@ -157,6 +157,8 @@ export interface TextStyle {
 
 export interface Doc {
   version: 1;
+  /** The colour of the canvas behind the design, like #141417. Left out means the standard dark one. */
+  background?: string;
   /** Saved text styles, by id. */
   styles?: Record<string, TextStyle>;
   rootIds: string[];

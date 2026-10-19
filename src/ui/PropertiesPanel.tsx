@@ -590,6 +590,15 @@ export default function PropertiesPanel() {
     return (
       <aside className="right">
         <div className="panel-title">Design</div>
+        <div className="sec">
+          <h4>Background</h4>
+          <ColorField value={doc.background ?? "#141417"} onCommit={(c) => dispatch("set_background", { color: c })} />
+          {doc.background && (
+            <button className="mini" onClick={() => dispatch("set_background", { color: null })}>
+              Back to dark
+            </button>
+          )}
+        </div>
         <div className="empty pad">Select something to change it.</div>
       </aside>
     );

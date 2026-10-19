@@ -1148,6 +1148,22 @@ describe("text", () => {
     expect(wrapLines("aaaa bbbb cccc dddd", face, 25).length).toBeGreaterThan(1);
   });
 
+  it("keeps the canvas colour in the saved file", () => {
+    const d = runCommand(emptyDoc(), "set_background", { color: "#f4f1ea" });
+    expect(parseDoc(serializeDoc(d)).background).toBe("#f4f1ea");
+    expect(serializeDoc(emptyDoc())).not.toContain("background");
+  });
+
+  it("changes the canvas colour, and clearing it goes back to the standard dark", () => {
+    let d = runCommand(emptyDoc(), "set_background", { color: "#F4F1EA" });
+    expect(d.background).toBe("#f4f1ea");
+    expect(emptyDoc().background).toBeUndefined();
+    expect(runCommand(d, "set_background", { color: "#f4f1ea" })).toBe(d);
+    expect(runCommand(d, "set_background", { color: "not a colour" }).background).toBeUndefined();
+    d = runCommand(d, "set_background", { color: null });
+    expect(d.background).toBeUndefined();
+  });
+
   it("saves a text style, and every text using it follows when the style changes", () => {
     let d = runCommand(withText("Title", { fontWeight: 700 }), "create_element", { id: "t2", type: "text", parentId: "f", x: 10, y: 60, width: 50, height: 20, props: { text: "Another", fontSize: 12 } });
     d = runCommand(d, "create_text_style", { styleId: "s1", fromId: "t", name: "Heading" });
