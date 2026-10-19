@@ -387,6 +387,10 @@ function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number
   ctx.textAlign = "left";
 }
 
+/** Beside the chat the canvas only looks, so it does not tell you to draw. */
+let quiet = false;
+export const setQuietCanvas = (on: boolean) => void (quiet = on);
+
 export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: number, dpr: number) {
   const doc = seenDoc(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -734,7 +738,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
   }
 
   // empty hint, but not while an AI is at work: the canvas is about to fill
-  if (doc.rootIds.length === 0 && !s.overlay.draft && !s.aiWork) {
+  if (doc.rootIds.length === 0 && !s.overlay.draft && !s.aiWork && !quiet) {
     ctx.fillStyle = COLORS.muted;
     ctx.font = `500 14px ${FONT_STACK}`;
     ctx.textAlign = "center";

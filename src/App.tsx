@@ -176,7 +176,7 @@ export default function App() {
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const chatting = dock.space === "chat";
   const appStyle = chatting
-    ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "44px var(--tabbar-h) minmax(0, 1fr) 48px", gridTemplateAreas: '"top" "tabs" "chathome" "hist"' }
+    ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "44px minmax(0, 1fr) 48px", gridTemplateAreas: '"top" "chathome" "hist"' }
     : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
     gridTemplateAreas: dock.swapped
@@ -197,32 +197,14 @@ export default function App() {
             {project.path ? STATUS[project.status] : "Not saved yet"}
           </span>
         </div>
-        {!chatting && (
-        <div className="pill mode-switch">
-          <button
-            className={dock.mode === "design" ? "active" : ""}
-            data-name="mode-design"
-            onClick={() => setLayout({ mode: "design" })}
-          >
-            Design
+        <div className="pill mode-switch space-switch">
+          <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
+            Chat
           </button>
-          <button
-            className={dock.mode === "motion" ? "active" : ""}
-            data-name="mode-motion"
-            onClick={() => setLayout({ mode: "motion" })}
-          >
-            Motion
-          </button>
-          <button
-            className={dock.mode === "color" ? "active" : ""}
-            data-name="mode-color"
-            onClick={() => setLayout({ mode: "color" })}
-          >
-            Colour
+          <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
+            Edit
           </button>
         </div>
-        )}
-        {chatting && <div />}
         <div className="top-side end">
           {!chatting && dock.mode === "design" && (
             <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
@@ -262,18 +244,35 @@ export default function App() {
           </div>
         </div>
       </header>
-      {/* under it: Chat or Edit, and in Edit the open projects like tabs in a browser */}
-      <div className="tabbar">
-        <div className="pill mode-switch space-switch">
-          <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
-            Chat
+      {/* in Edit, under it: the open projects like tabs in a browser, and the kind of work */}
+      {!chatting && (
+        <div className="tabbar">
+          <Tabs home={home} setHome={setHome} />
+          <div className="pill mode-switch">
+          <button
+            className={dock.mode === "design" ? "active" : ""}
+            data-name="mode-design"
+            onClick={() => setLayout({ mode: "design" })}
+          >
+            Design
           </button>
-          <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
-            Edit
+          <button
+            className={dock.mode === "motion" ? "active" : ""}
+            data-name="mode-motion"
+            onClick={() => setLayout({ mode: "motion" })}
+          >
+            Motion
+          </button>
+          <button
+            className={dock.mode === "color" ? "active" : ""}
+            data-name="mode-color"
+            onClick={() => setLayout({ mode: "color" })}
+          >
+            Colour
           </button>
         </div>
-        {!chatting && <Tabs home={home} setHome={setHome} />}
-      </div>
+        </div>
+      )}
       {chatting ? (
         <ChatHome onEdit={() => setLayout({ space: "edit" })} />
       ) : (

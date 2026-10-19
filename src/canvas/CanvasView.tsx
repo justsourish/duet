@@ -69,7 +69,7 @@ import type { AbsNode } from "../document/path";
 import { logError } from "../errorLog";
 import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
-import { draw, labelRect, screenRect } from "./render";
+import { draw, labelRect, screenRect, setQuietCanvas } from "./render";
 import { fontCss, layoutText, lineStep, textLift } from "./text";
 
 type Drag =
@@ -306,6 +306,10 @@ export function zoomTo(level: number, width: number, height: number) {
 /** `viewOnly` shows the design and ignores every click and key, as beside the chat. */
 export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setQuietCanvas(viewOnly);
+    return () => setQuietCanvas(false);
+  }, [viewOnly]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
   const dragRef = useRef<Drag | null>(null);

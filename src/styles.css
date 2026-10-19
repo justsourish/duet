@@ -3849,7 +3849,11 @@ button.agent-perm {
   transform: none;
   flex: none;
   align-self: center;
-  margin-right: 14px;
+  margin-left: 14px;
+}
+/* in Chat the title row only says what the page already says; the people and the settings stay */
+.chat.docked .ctitle {
+  visibility: hidden;
 }
 .project-tabs {
   display: flex;
