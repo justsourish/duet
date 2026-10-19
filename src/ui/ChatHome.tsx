@@ -49,6 +49,45 @@ export function matchProjects<T extends { name: string }>(all: T[], typed: strin
   return t ? all.filter((r) => r.name.toLowerCase().includes(t)) : all;
 }
 
+export type ProjectSort = "recent" | "name";
+
+/** Projects in the order asked for: last opened first, or by name. */
+export function sortProjects<T extends { name: string; opened: number }>(all: T[], by: ProjectSort): T[] {
+  return [...all].sort((a, b) => (by === "name" ? a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) : b.opened - a.opened));
+}
+
+const VIEW_KEY = "duet:projects-view";
+const readView = (): "list" | "grid" => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+};
+
+/** One project as a big picture card, or a small line, on the page of all projects. */
+function ProjectTile({ r, view, on, open, onOpen, onMenu }: { r: Recent; view: "list" | "grid"; on: boolean; open: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
+  const own = usePreview(r.thumb ? "" : r.path);
+  const src = r.thumb ?? own;
+  return (
+    <div
+      className={`tile ${view} ${on ? "on" : ""}`}
+      onClick={onOpen}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu(e.clientX, e.clientY);
+      }}
+      title={r.path}
+    >
+      <div className="tile-pic">{src ? <img src={src} alt="" /> : null}</div>
+      <div className="tile-text">
+        <div className="chathome-name">{r.name}</div>
+        <div className="chathome-when">{on ? "Open now" : open ? "Open" : ago(r.opened)}</div>
+      </div>
+    </div>
+  );
+}
+
 /** One project in the list: its picture, its name and when it was last opened. A dot says it is open. */
 function ProjectRow({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; open: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
   const own = usePreview(r.thumb ? "" : r.path);
@@ -144,6 +183,17 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   const [skills, setSkills] = useState(false);
   const [trash, setTrash] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [all, setAll] = useState(false);
+  const [view, setViewState] = useState<"list" | "grid">(readView);
+  const [sort, setSort] = useState<ProjectSort>("recent");
+  const setView = (v: "list" | "grid") => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* nothing to do */
+    }
+  };
   const [menu, setMenu] = useState<{ x: number; y: number; r: Recent } | null>(null);
   useEffect(() => {
     if (!menu) return;
@@ -194,6 +244,9 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
             }}
           >
             <Icon name="search" size={18} />
+          </button>
+          <button className={`rail-btn ${all ? "on" : ""}`} title="All projects" onClick={() => setAll(!all)}>
+            <Icon name="grid" size={18} />
           </button>
           <span className="rail-gap" />
           <button
@@ -278,6 +331,49 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
             <Icon name="trash" size={15} /> Move to Trash
           </div>
         </div>
+      )}
+      {all && (
+        <section className="chathome-all">
+          <div className="all-head">
+            <b>All projects</b>
+            <label className="chathome-search">
+              <Icon name="search" size={15} />
+              <input placeholder="Search projects" value={typed} onChange={(e) => setTyped(e.target.value)} />
+            </label>
+            <select className="all-sort" value={sort} onChange={(e) => setSort(e.target.value as ProjectSort)} title="Order">
+              <option value="recent">Last opened</option>
+              <option value="name">Name</option>
+            </select>
+            <div className="all-switch">
+              <button className={view === "list" ? "on" : ""} title="List" onClick={() => setView("list")}>
+                <Icon name="list" size={16} />
+              </button>
+              <button className={view === "grid" ? "on" : ""} title="Big pictures" onClick={() => setView("grid")}>
+                <Icon name="grid" size={16} />
+              </button>
+            </div>
+            <button className="pill" onClick={() => setAll(false)}>
+              Back to chat
+            </button>
+          </div>
+          <div className={`all-body ${view}`}>
+            {sortProjects(shown, sort).map((r) => (
+              <ProjectTile
+                key={r.path}
+                r={r}
+                view={view}
+                on={r.path === current.file}
+                open={tabs.includes(r.path)}
+                onOpen={() => {
+                  if (r.path !== current.file) void openProjectAt(r.path);
+                  setAll(false);
+                }}
+                onMenu={(x, y) => setMenu({ x, y, r })}
+              />
+            ))}
+            {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
+          </div>
+        </section>
       )}
       <section className="chathome-chat">
         {trash ? (

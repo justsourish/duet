@@ -4717,3 +4717,138 @@ button.agent-perm {
   color: #101014;
   border-color: transparent;
 }
+
+/* the page of all projects covers the chat and the canvas; a grid of big pictures or a list of small ones */
+.chathome-all {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg);
+}
+.all-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.all-head b {
+  margin-right: auto;
+}
+.all-head .chathome-search {
+  width: 220px;
+}
+.all-head .chathome-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+}
+.all-sort {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.all-switch {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.all-switch button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.all-switch button.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.all-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+.all-body.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+.all-body.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tile {
+  cursor: pointer;
+  border-radius: 10px;
+  color: var(--text);
+}
+.tile.grid {
+  padding: 8px;
+}
+.tile.grid .tile-pic {
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.tile.grid .tile-text {
+  padding: 8px 2px 0;
+}
+.tile.list {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 8px;
+}
+.tile.list .tile-pic {
+  flex: none;
+  width: 30px;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.tile.list .tile-text {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+.tile.list .chathome-when {
+  margin-left: auto;
+}
+.tile-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.tile:hover,
+.tile.on {
+  background: var(--panel-2);
+}
+.tile.on .chathome-name {
+  color: var(--accent);
+}
