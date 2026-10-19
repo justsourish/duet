@@ -32,6 +32,7 @@ base64 = "0.23.1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+fontdb = "0.24.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

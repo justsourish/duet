@@ -4,7 +4,6 @@ import type { El, Layout, Moving } from "../document/types";
 import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
-import { COMMON_FONTS } from "../canvas/text";
 import { newId } from "../commands";
 import { useLayout } from "./layout";
 import { KEY_GROUPS, entranceOf, sceneOf, spanOf } from "../document/time";
@@ -12,6 +11,7 @@ import { useKeyFocus } from "./keyFocus";
 import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
 import ColorPanel from "./ColorPanel";
+import FontPicker from "./FontPicker";
 import { applyColorPreservingOpacity, colorHex, colorOpacity, withOpacity } from "./color";
 
 function NumField({
@@ -330,29 +330,6 @@ const WEIGHTS: [number, string][] = [
   [900, "Black"],
 ];
 
-/** A font name, saved when you leave the box or press Enter, so typing does not fill the history. */
-function FontInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
-  const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
-  return (
-    <input
-      list="duet-fonts"
-      value={text}
-      placeholder="System font"
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => text !== value && onCommit(text.trim())}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") {
-          setText(value);
-          e.currentTarget.blur();
-        }
-      }}
-    />
-  );
-}
-
 function TextSection({ els }: { els: El[] }) {
   const doc = workDoc();
   const ids = els.map((e) => e.id);
@@ -399,12 +376,7 @@ function TextSection({ els }: { els: El[] }) {
       <div className="gap" />
       <label className="f">
         <span>Font</span>
-        <FontInput value={first.fontFamily} onCommit={(v) => look({ fontFamily: v }, "Change font")} />
-        <datalist id="duet-fonts">
-          {COMMON_FONTS.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
+        <FontPicker value={first.fontFamily} onCommit={(v) => look({ fontFamily: v }, "Change font")} />
       </label>
       <div className="gap" />
       <div className="field">

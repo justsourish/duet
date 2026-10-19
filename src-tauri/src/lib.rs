@@ -193,6 +193,22 @@ fn launch_file() -> Option<String> {
     std::env::args().skip(1).find(|a| a.to_lowercase().ends_with(".duet") && Path::new(a).exists())
 }
 
+/// The names of every font family installed on this computer, in order, each once.
+#[tauri::command(async)]
+fn system_fonts() -> Vec<String> {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    let mut names: Vec<String> = db
+        .faces()
+        .filter_map(|f| f.families.first().map(|(name, _)| name.clone()))
+        // Mac keeps fonts for its own interface under names that start with a dot
+        .filter(|n| !n.is_empty() && !n.starts_with('.'))
+        .collect();
+    names.sort_by_key(|n| n.to_lowercase());
+    names.dedup();
+    names
+}
+
 /// The one folder where new projects go by default: Documents/Duet. Made if it is missing.
 #[tauri::command]
 fn default_projects_dir() -> Result<String, String> {
@@ -514,6 +530,7 @@ pub fn run() {
             read_text_file,
             read_binary_file,
             default_projects_dir,
+            system_fonts,
             work_dir_for,
             fresh_work_dir,
             pack_project,
@@ -626,6 +643,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lists_the_computers_fonts() {
+        let fonts = system_fonts();
+        // every Mac and Windows computer has Arial
+        assert!(fonts.iter().any(|f| f == "Arial"), "{} fonts, no Arial", fonts.len());
+        assert!(fonts.windows(2).all(|w| w[0].to_lowercase() <= w[1].to_lowercase()));
+        assert!(!fonts.iter().any(|f| f.starts_with('.')));
+    }
 
     fn project(name: &str) -> String {
         let dir = std::env::temp_dir().join(format!("duet-test-{name}-{}", std::process::id()));
