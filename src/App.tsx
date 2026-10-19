@@ -75,6 +75,17 @@ export default function App() {
   // there is no separate home any more: Chat is where your projects are
   const home = false;
   const setHome = (on: boolean) => on && setLayout({ space: "chat" });
+  // in full screen there are no window buttons, so the name moves to the very left
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    if (!inTauri()) return;
+    const win = getCurrentWindow();
+    const look = () => void win.isFullscreen().then(setFull).catch(() => undefined);
+    look();
+    let off: (() => void) | undefined;
+    void win.onResized(look).then((f) => (off = f));
+    return () => off?.();
+  }, []);
   const [videoCut, setVideoCut] = useState(false);
   const [sending, setSending] = useState(false);
   const [settings, setSettings] = useState(false);
@@ -180,12 +191,12 @@ export default function App() {
     : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
     gridTemplateAreas: dock.swapped
-      ? '"top top top top" "tabs tabs tabs tabs" "tools right canvas left" "time time time time" "hist hist hist hist"'
-      : '"top top top top" "tabs tabs tabs tabs" "tools left canvas right" "time time time time" "hist hist hist hist"',
+      ? '"top top top top" "tools right tabs left" "tools right canvas left" "time time time time" "hist hist hist hist"'
+      : '"top top top top" "tools left tabs right" "tools left canvas right" "time time time time" "hist hist hist hist"',
   };
 
   return (
-    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""}`} style={appStyle}>
+    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""} ${full ? "fs" : ""}`} style={appStyle}>
       {/* the top row: the name, how it is saved, the kind of work, and Export; on a Mac it shares the row with the window buttons */}
       <header className="top" data-tauri-drag-region>
         <div className="top-side">
@@ -196,16 +207,42 @@ export default function App() {
           <span className={`status ${project.status}`} title={project.error ?? undefined}>
             {project.path ? STATUS[project.status] : "Not saved yet"}
           </span>
+          <div className="pill mode-switch space-switch">
+            <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
+              Chat
+            </button>
+            <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
+              Edit
+            </button>
+          </div>
         </div>
-        <div className="pill mode-switch space-switch">
-          <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
-            Chat
-          </button>
-          <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
-            Edit
-          </button>
-        </div>
+        <div />
         <div className="top-side end">
+          {!chatting && (
+          <div className="pill mode-switch kind-switch">
+          <button
+            className={dock.mode === "design" ? "active" : ""}
+            data-name="mode-design"
+            onClick={() => setLayout({ mode: "design" })}
+          >
+            Design
+          </button>
+          <button
+            className={dock.mode === "motion" ? "active" : ""}
+            data-name="mode-motion"
+            onClick={() => setLayout({ mode: "motion" })}
+          >
+            Motion
+          </button>
+          <button
+            className={dock.mode === "color" ? "active" : ""}
+            data-name="mode-color"
+            onClick={() => setLayout({ mode: "color" })}
+          >
+            Colour
+          </button>
+        </div>
+          )}
           {!chatting && dock.mode === "design" && (
             <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
               Present
@@ -248,29 +285,6 @@ export default function App() {
       {!chatting && (
         <div className="tabbar">
           <Tabs home={home} setHome={setHome} />
-          <div className="pill mode-switch">
-          <button
-            className={dock.mode === "design" ? "active" : ""}
-            data-name="mode-design"
-            onClick={() => setLayout({ mode: "design" })}
-          >
-            Design
-          </button>
-          <button
-            className={dock.mode === "motion" ? "active" : ""}
-            data-name="mode-motion"
-            onClick={() => setLayout({ mode: "motion" })}
-          >
-            Motion
-          </button>
-          <button
-            className={dock.mode === "color" ? "active" : ""}
-            data-name="mode-color"
-            onClick={() => setLayout({ mode: "color" })}
-          >
-            Colour
-          </button>
-        </div>
         </div>
       )}
       {chatting ? (

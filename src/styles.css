@@ -3844,12 +3844,13 @@ button.agent-perm {
 .app.mac .top {
   padding-left: 80px; /* room for the window buttons */
 }
-.tabbar .mode-switch.pill {
+.app.mac.fs .top {
+  padding-left: 14px;
+}
+.top-side .mode-switch.pill {
   position: static;
   transform: none;
   flex: none;
-  align-self: center;
-  margin-left: 14px;
 }
 /* in Chat the title row only says what the page already says; the people and the settings stay */
 .chat.docked .ctitle {
