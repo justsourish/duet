@@ -328,6 +328,11 @@ button {
   white-space: nowrap;
   margin-right: 4px;
 }
+.f > span.num-label {
+  cursor: ew-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
 .f input {
   width: 100%;
   min-width: 0;
@@ -338,6 +343,11 @@ button {
   font: inherit;
   user-select: text;
   -webkit-user-select: text;
+}
+.f input.dragging-ns {
+  cursor: ns-resize !important;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .f.color input[type="color"] {
   width: 22px;
@@ -2035,6 +2045,15 @@ button {
 }
 .time-bar input {
   width: 64px;
+}
+.time-bar label .time-label {
+  cursor: ew-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.time-unit {
+  color: var(--muted);
+  font-size: 11px;
 }
 .time-now {
   font-variant-numeric: tabular-nums;

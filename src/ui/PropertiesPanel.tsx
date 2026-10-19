@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { getState, workDoc, dispatch, select, useStore } from "../state/store";
+import { useEffect, useRef, useState } from "react";
+import { dragCancel, dragPreview, getState, workDoc, dispatch, select, useStore } from "../state/store";
 import type { El, Layout, Moving } from "../document/types";
 import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
@@ -14,21 +14,163 @@ import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
 import { applyColorPreservingOpacity, colorHex, colorOpacity, withOpacity } from "./color";
 
-function NumField({ label, value, onCommit, min }: { label: string; value: number | ""; onCommit: (n: number) => void; min?: number }) {
+function NumField({
+  label,
+  value,
+  onCommit,
+  onDrag,
+  min,
+}: {
+  label: string;
+  value: number | "";
+  onCommit: (n: number) => void;
+  onDrag?: (n: number) => void;
+  min?: number;
+}) {
   const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
+  const [dragging, setDragging] = useState<"x" | "y" | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    axis: "x" | "y";
+    startX: number;
+    startY: number;
+    startVal: number;
+    hasDragged: boolean;
+    currentVal: number;
+    target: HTMLElement;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!dragRef.current?.hasDragged) setText(String(value));
+  }, [value]);
+
   const commit = () => {
+    if (dragRef.current?.hasDragged) return;
     const n = parseFloat(text);
     if (Number.isFinite(n) && n !== value) onCommit(min !== undefined ? Math.max(min, n) : n);
     else setText(String(value));
   };
+
+  const startDrag = (e: React.PointerEvent<HTMLElement>, axis: "x" | "y") => {
+    if (e.button !== 0) return;
+    if (axis === "x") {
+      e.preventDefault();
+    }
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+
+    const parsed = parseFloat(text);
+    const startVal = typeof value === "number" ? value : Number.isFinite(parsed) ? parsed : 0;
+
+    dragRef.current = {
+      pointerId: e.pointerId,
+      axis,
+      startX: e.clientX,
+      startY: e.clientY,
+      startVal,
+      hasDragged: false,
+      currentVal: startVal,
+      target,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - d.startX;
+    const dy = d.startY - e.clientY;
+    const dist = d.axis === "x" ? Math.abs(dx) : Math.abs(e.clientY - d.startY);
+
+    if (!d.hasDragged) {
+      if (dist < 3) return;
+      d.hasDragged = true;
+      setDragging(d.axis);
+      if (d.axis === "y") {
+        d.target.style.cursor = "ns-resize";
+        window.getSelection()?.removeAllRanges();
+      }
+    }
+
+    e.preventDefault();
+    const rawDelta = d.axis === "x" ? dx : dy;
+    const multiplier = e.shiftKey ? 10 : 1;
+    let next = d.startVal + rawDelta * multiplier;
+    if (min !== undefined) next = Math.max(min, next);
+    const rounded = Math.round(next * 100) / 100;
+
+    d.currentVal = rounded;
+    setText(String(rounded));
+    onDrag?.(rounded);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+
+    try {
+      d.target.releasePointerCapture(e.pointerId);
+    } catch {}
+
+    if (d.axis === "y") {
+      d.target.style.cursor = "";
+    }
+    setDragging(null);
+    const hadDragged = d.hasDragged;
+    const finalVal = d.currentVal;
+    dragRef.current = null;
+
+    if (hadDragged) {
+      dragCancel();
+      onCommit(finalVal);
+      if (d.axis === "y") {
+        (d.target as HTMLInputElement).blur();
+        window.getSelection()?.removeAllRanges();
+      }
+    }
+  };
+
+  const cancelDrag = (e: React.PointerEvent<HTMLElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+
+    try {
+      d.target.releasePointerCapture(e.pointerId);
+    } catch {}
+
+    if (d.axis === "y") {
+      d.target.style.cursor = "";
+    }
+    setDragging(null);
+    const hadDragged = d.hasDragged;
+    dragRef.current = null;
+
+    if (hadDragged) {
+      dragCancel();
+      setText(String(value));
+    }
+  };
+
   return (
     <label className="f">
-      <span>{label}</span>
+      <span
+        className="num-label"
+        onPointerDown={(e) => startDrag(e, "x")}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={cancelDrag}
+      >
+        {label}
+      </span>
       <input
         value={text}
+        className={dragging === "y" ? "dragging-ns" : ""}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
+        onPointerDown={(e) => startDrag(e, "y")}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={cancelDrag}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === "Enter") e.currentTarget.blur();
@@ -97,16 +239,17 @@ function LayoutSection({ frame }: { frame: El }) {
     );
   }
   const change = (patch: Partial<Layout>, label: string) => dispatch("set_props", { ids: [frame.id], props: { layout: { ...l, ...patch } }, label });
+  const preview = (patch: Partial<Layout>) => dragPreview("set_props", { ids: [frame.id], props: { layout: { ...l, ...patch } } });
   return (
     <div className="sec">
       <h4>Auto layout</h4>
       <Seg value={l.dir} options={[["column", "Vertical"], ["row", "Horizontal"]]} onPick={(dir) => change({ dir }, "Change direction")} />
       <div className="gap" />
       <div className="field">
-        <NumField label="Gap" value={l.gap} min={0} onCommit={(n) => change({ gap: n }, "Change gap")} />
+        <NumField label="Gap" value={l.gap} min={0} onCommit={(n) => change({ gap: n }, "Change gap")} onDrag={(n) => preview({ gap: n })} />
         <div />
-        <NumField label="Pad X" value={l.padX} min={0} onCommit={(n) => change({ padX: n }, "Change padding")} />
-        <NumField label="Pad Y" value={l.padY} min={0} onCommit={(n) => change({ padY: n }, "Change padding")} />
+        <NumField label="Pad X" value={l.padX} min={0} onCommit={(n) => change({ padX: n }, "Change padding")} onDrag={(n) => preview({ padX: n })} />
+        <NumField label="Pad Y" value={l.padY} min={0} onCommit={(n) => change({ padY: n }, "Change padding")} onDrag={(n) => preview({ padY: n })} />
       </div>
       <div className="gap" />
       <Seg value={l.align} options={[["start", "Start"], ["center", "Middle"], ["end", "End"], ["stretch", "Stretch"]]} onPick={(align) => change({ align }, "Change alignment")} />
@@ -167,6 +310,10 @@ function TextSection({ els }: { els: El[] }) {
     if (linked) dispatch("update_text_style", { styleId: linked, props: props as never, label } as never);
     else set(props, label);
   };
+  const lookPreview = (props: Partial<El> & Record<string, unknown>) => {
+    if (linked) dragPreview("update_text_style", { styleId: linked, props: props as never });
+    else dragPreview("set_props", { ids, props });
+  };
   const saveStyle = () => {
     const name = styleName.trim();
     if (!name) return;
@@ -214,9 +361,9 @@ function TextSection({ els }: { els: El[] }) {
             ))}
           </select>
         </label>
-        <NumField label="Size" value={first.fontSize} min={1} onCommit={(n) => look({ fontSize: n }, "Change font size")} />
-        <NumField label="Line" value={first.lineHeight ? Math.round(first.lineHeight * 100) / 100 : 1.3} min={0.5} onCommit={(n) => look({ lineHeight: n }, "Change line height")} />
-        <NumField label="Space" value={first.letterSpacing} onCommit={(n) => look({ letterSpacing: n }, "Change letter spacing")} />
+        <NumField label="Size" value={first.fontSize} min={1} onCommit={(n) => look({ fontSize: n }, "Change font size")} onDrag={(n) => lookPreview({ fontSize: n })} />
+        <NumField label="Line" value={first.lineHeight ? Math.round(first.lineHeight * 100) / 100 : 1.3} min={0.5} onCommit={(n) => look({ lineHeight: n }, "Change line height")} onDrag={(n) => lookPreview({ lineHeight: n })} />
+        <NumField label="Space" value={first.letterSpacing} onCommit={(n) => look({ letterSpacing: n }, "Change letter spacing")} onDrag={(n) => lookPreview({ letterSpacing: n })} />
       </div>
       <div className="gap" />
       <Seg value={first.textAlign} options={[["left", "Left"], ["center", "Centre"], ["right", "Right"]]} onPick={(textAlign) => set({ textAlign }, "Change alignment")} />
@@ -499,6 +646,7 @@ export default function PropertiesPanel() {
   const one = els.length === 1 ? els[0] : null;
   const scene = one ? sceneOf(doc, one.id) : null;
   const set = (props: Partial<El>, label?: string) => dispatch("set_props", { ids, props, label });
+  const preview = (props: Partial<El>) => dragPreview("set_props", { ids, props });
   const first = els[0];
   const allText = els.every((e) => e.type === "text");
   const allImages = els.every((e) => e.type === "image");
@@ -535,7 +683,7 @@ export default function PropertiesPanel() {
           {canTurn(doc, one.id) && (
             <>
               <div className="gap" />
-              <NumField label="Rotation" value={one.rotation || 0} onCommit={(n) => set({ rotation: n }, "Rotate")} />
+              <NumField label="Rotation" value={one.rotation || 0} onCommit={(n) => set({ rotation: n }, "Rotate")} onDrag={(n) => preview({ rotation: n })} />
             </>
           )}
         </div>
@@ -544,7 +692,7 @@ export default function PropertiesPanel() {
       {hasRadius && (
         <div className="sec">
           <h4>Corners</h4>
-          <NumField label="Radius" value={first.radius} min={0} onCommit={(n) => set({ radius: n }, "Change corner radius")} />
+          <NumField label="Radius" value={first.radius} min={0} onCommit={(n) => set({ radius: n }, "Change corner radius")} onDrag={(n) => preview({ radius: n })} />
         </div>
       )}
 
@@ -570,7 +718,7 @@ export default function PropertiesPanel() {
               <div className="gap" />
               <ColorField value={first.gradient.to} onCommit={(c) => c && set({ gradient: { ...first.gradient!, to: c } }, "Change gradient")} />
               <div className="gap" />
-              <NumField label="Angle" value={first.gradient.angle} onCommit={(n) => set({ gradient: { ...first.gradient!, angle: n } }, "Change gradient angle")} />
+              <NumField label="Angle" value={first.gradient.angle} onCommit={(n) => set({ gradient: { ...first.gradient!, angle: n } }, "Change gradient angle")} onDrag={(n) => preview({ gradient: { ...first.gradient!, angle: n } })} />
             </>
           ) : (
             <div className="field">
@@ -580,6 +728,7 @@ export default function PropertiesPanel() {
                 value={colorOpacity(first.fill)}
                 min={0}
                 onCommit={(n) => set({ fill: withOpacity(first.fill, Math.min(100, Math.max(0, n))) }, "Change fill opacity")}
+                onDrag={(n) => preview({ fill: withOpacity(first.fill, Math.min(100, Math.max(0, n))) })}
               />
             </div>
           )}
@@ -623,10 +772,11 @@ export default function PropertiesPanel() {
               value={colorOpacity(first.stroke)}
               min={0}
               onCommit={(n) => set({ stroke: withOpacity(first.stroke ?? "#000000", Math.min(100, Math.max(0, n))) }, "Change stroke opacity")}
+              onDrag={(n) => preview({ stroke: withOpacity(first.stroke ?? "#000000", Math.min(100, Math.max(0, n))) })}
             />
           </div>
           <div className="gap" />
-          <NumField label="Width" value={first.strokeWidth} min={0} onCommit={(n) => set({ strokeWidth: n }, "Change stroke width")} />
+          <NumField label="Width" value={first.strokeWidth} min={0} onCommit={(n) => set({ strokeWidth: n }, "Change stroke width")} onDrag={(n) => preview({ strokeWidth: n })} />
         </div>
       )}
 
@@ -638,9 +788,9 @@ export default function PropertiesPanel() {
           {first.shadow ? (
             <>
               <div className="field">
-                <NumField label="X" value={first.shadow.x} onCommit={(n) => set({ shadow: { ...first.shadow!, x: n } }, "Change shadow")} />
-                <NumField label="Y" value={first.shadow.y} onCommit={(n) => set({ shadow: { ...first.shadow!, y: n } }, "Change shadow")} />
-                <NumField label="Blur" value={first.shadow.blur} min={0} onCommit={(n) => set({ shadow: { ...first.shadow!, blur: n } }, "Change shadow")} />
+                <NumField label="X" value={first.shadow.x} onCommit={(n) => set({ shadow: { ...first.shadow!, x: n } }, "Change shadow")} onDrag={(n) => preview({ shadow: { ...first.shadow!, x: n } })} />
+                <NumField label="Y" value={first.shadow.y} onCommit={(n) => set({ shadow: { ...first.shadow!, y: n } }, "Change shadow")} onDrag={(n) => preview({ shadow: { ...first.shadow!, y: n } })} />
+                <NumField label="Blur" value={first.shadow.blur} min={0} onCommit={(n) => set({ shadow: { ...first.shadow!, blur: n } }, "Change shadow")} onDrag={(n) => preview({ shadow: { ...first.shadow!, blur: n } })} />
               </div>
               <div className="gap" />
               <ColorField value={first.shadow.color} onCommit={(c) => c && set({ shadow: { ...first.shadow!, color: c } }, "Change shadow")} />
@@ -700,7 +850,7 @@ export default function PropertiesPanel() {
               {one.transition && (
                 <>
                   <div className="gap" />
-                  <NumField label="Ms" value={one.transitionMs || 300} min={50} onCommit={(n) => set({ transitionMs: Math.round(n) }, "Change the animation time")} />
+                  <NumField label="Ms" value={one.transitionMs || 300} min={50} onCommit={(n) => set({ transitionMs: Math.round(n) }, "Change the animation time")} onDrag={(n) => preview({ transitionMs: Math.round(n) })} />
                 </>
               )}
             </>
@@ -717,7 +867,7 @@ export default function PropertiesPanel() {
 
       <div className="sec">
         <h4>Opacity</h4>
-        <NumField label="%" value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} />
+        <NumField label="%" value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} onDrag={(n) => preview({ opacity: Math.min(100, n) / 100 })} />
       </div>
     </aside>
   );

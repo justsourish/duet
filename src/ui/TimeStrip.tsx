@@ -3,7 +3,7 @@ import { runCommand } from "../commands";
 import { KEY_GROUPS, spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, Moving } from "../document/types";
-import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, select, useStore } from "../state/store";
+import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dragPreviewDoc, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
@@ -596,7 +596,68 @@ export default function TimeStrip() {
           {clockText(clock.t)} / {clockText(length)}
         </span>
         <label title="How long this frame plays, in seconds">
-          Length
+          <span
+            className="time-label"
+            onPointerDown={(e) => {
+              if (e.button !== 0 || !frame) return;
+              e.preventDefault();
+              const target = e.currentTarget;
+              target.setPointerCapture(e.pointerId);
+              const startX = e.clientX;
+              const startVal = length;
+              let hasDragged = false;
+              let currentVal = startVal;
+
+              const onMove = (ev: PointerEvent) => {
+                if (ev.pointerId !== e.pointerId) return;
+                const dx = ev.clientX - startX;
+                if (!hasDragged) {
+                  if (Math.abs(dx) < 3) return;
+                  hasDragged = true;
+                }
+                ev.preventDefault();
+                const mult = ev.shiftKey ? 1.0 : 0.1;
+                const next = Math.max(0, Math.round((startVal + dx * mult) * 10) / 10);
+                currentVal = next;
+                dragPreview("set_duration", { id: frame.id, seconds: next });
+              };
+
+              const onUp = (ev: PointerEvent) => {
+                if (ev.pointerId !== e.pointerId) return;
+                target.removeEventListener("pointermove", onMove);
+                target.removeEventListener("pointerup", onUp);
+                target.removeEventListener("pointercancel", onCancel);
+                try {
+                  target.releasePointerCapture(ev.pointerId);
+                } catch {}
+                if (hasDragged) {
+                  dragCancel();
+                  if (currentVal !== startVal) {
+                    dispatch("set_duration", { id: frame.id, seconds: currentVal });
+                  }
+                }
+              };
+
+              const onCancel = (ev: PointerEvent) => {
+                if (ev.pointerId !== e.pointerId) return;
+                target.removeEventListener("pointermove", onMove);
+                target.removeEventListener("pointerup", onUp);
+                target.removeEventListener("pointercancel", onCancel);
+                try {
+                  target.releasePointerCapture(ev.pointerId);
+                } catch {}
+                if (hasDragged) {
+                  dragCancel();
+                }
+              };
+
+              target.addEventListener("pointermove", onMove);
+              target.addEventListener("pointerup", onUp);
+              target.addEventListener("pointercancel", onCancel);
+            }}
+          >
+            Length
+          </span>
           <input
             key={length}
             data-name="length"
@@ -610,6 +671,7 @@ export default function TimeStrip() {
               if (Number.isFinite(n) && n !== Math.round(length * 10) / 10) dispatch("set_duration", { id: frame.id, seconds: n });
             }}
           />
+          <span className="time-unit">s</span>
         </label>
         <div className="pill time-look">
           <button
