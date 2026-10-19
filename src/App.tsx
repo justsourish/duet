@@ -176,39 +176,27 @@ export default function App() {
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const chatting = dock.space === "chat";
   const appStyle = chatting
-    ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "var(--tabbar-h) 44px minmax(0, 1fr) 48px", gridTemplateAreas: '"tabs" "top" "chathome" "hist"' }
+    ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "44px var(--tabbar-h) minmax(0, 1fr) 48px", gridTemplateAreas: '"top" "tabs" "chathome" "hist"' }
     : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
     gridTemplateAreas: dock.swapped
-      ? '"tabs tabs tabs tabs" "top top top top" "tools right canvas left" "time time time time" "hist hist hist hist"'
-      : '"tabs tabs tabs tabs" "top top top top" "tools left canvas right" "time time time time" "hist hist hist hist"',
+      ? '"top top top top" "tabs tabs tabs tabs" "tools right canvas left" "time time time time" "hist hist hist hist"'
+      : '"top top top top" "tabs tabs tabs tabs" "tools left canvas right" "time time time time" "hist hist hist hist"',
   };
 
   return (
     <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""}`} style={appStyle}>
-      {/* open projects, in their own row like a browser; on a Mac it shares the row with the window buttons */}
-      <div className="tabbar" data-tauri-drag-region>
-        <div className="tabbar-left">
+      {/* the top row: the name, how it is saved, the kind of work, and Export; on a Mac it shares the row with the window buttons */}
+      <header className="top" data-tauri-drag-region>
+        <div className="top-side">
           <span className="logo">
             Du<b>et</b>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
           </span>
-          <div className="pill mode-switch space-switch">
-            <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
-              Chat
-            </button>
-            <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
-              Edit
-            </button>
-          </div>
           <span className={`status ${project.status}`} title={project.error ?? undefined}>
             {project.path ? STATUS[project.status] : "Not saved yet"}
           </span>
         </div>
-        {!chatting && <Tabs home={home} setHome={setHome} />}
-      </div>
-      <header className="top">
-        <div />
         {!chatting && (
         <div className="pill mode-switch">
           <button
@@ -270,6 +258,18 @@ export default function App() {
           </div>
         </div>
       </header>
+      {/* under it: Chat or Edit, and in Edit the open projects like tabs in a browser */}
+      <div className="tabbar">
+        <div className="pill mode-switch space-switch">
+          <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
+            Chat
+          </button>
+          <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
+            Edit
+          </button>
+        </div>
+        {!chatting && <Tabs home={home} setHome={setHome} />}
+      </div>
       {chatting ? (
         <ChatHome onEdit={() => setLayout({ space: "edit" })} />
       ) : (

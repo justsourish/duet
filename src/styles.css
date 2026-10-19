@@ -73,7 +73,7 @@ button {
   display: grid;
   height: 100vh;
   grid-template-columns: auto 232px 1fr 248px;
-  grid-template-rows: var(--tabbar-h) 44px 1fr auto 48px;
+  grid-template-rows: 44px var(--tabbar-h) 1fr auto 48px;
   grid-template-areas: "tabs tabs tabs tabs" "top top top top" "tools left canvas right" "time time time time" "hist hist hist hist";
 }
 
@@ -3841,8 +3841,15 @@ button.agent-perm {
   background: var(--bg);
   user-select: none;
 }
-.app.mac .tabbar {
+.app.mac .top {
   padding-left: 80px; /* room for the window buttons */
+}
+.tabbar .mode-switch.pill {
+  position: static;
+  transform: none;
+  flex: none;
+  align-self: center;
+  margin-right: 14px;
 }
 .project-tabs {
   display: flex;
