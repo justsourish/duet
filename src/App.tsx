@@ -224,17 +224,21 @@ export default function App() {
         )}
         {chatting && <div />}
         <div className="top-side end">
-          {dock.mode === "design" && (
+          {!chatting && dock.mode === "design" && (
             <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
               Present
             </button>
           )}
+          {!chatting && (
+          <>
           <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
             <Icon name="panel-left" size={15} />
           </button>
           <button className={`pill icon ${dock.rightHidden ? "" : "on"}`} title="Show or hide the design panel" onClick={() => setLayout({ rightHidden: !dock.rightHidden })}>
             <Icon name="panel-right" size={15} />
           </button>
+          </>
+          )}
           <ExportMenu />
           <div className="zoomwrap zoomonly">
             <button className="pill" onClick={() => setZoomMenu(!zoomMenu)} title="Zoom">
