@@ -2554,6 +2554,14 @@ button {
   font: inherit;
   font-size: 11px;
 }
+/* preset frame sizes menu beside the left toolbar */
+.frame-presets {
+  min-width: 210px;
+  user-select: none;
+}
+.frame-presets .frame-preset-item {
+  cursor: pointer;
+}
 .ctx-line {
   height: 1px;
   background: var(--line);

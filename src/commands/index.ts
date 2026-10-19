@@ -9,6 +9,7 @@ import { CURVES, ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } fr
 import type { CurveName, Entrance } from "../document/time";
 import { canGrade, mergeGrade } from "../document/grade";
 import type { Grade } from "../document/grade";
+import type { CreatePresetFrameArgs } from "./presets";
 
 /**
  * Every change to a design goes through one of these named commands.
@@ -1262,10 +1263,28 @@ const setEntrance: CommandDef<SetEntranceArgs> = {
   },
 };
 
+const createPresetFrameDef: CommandDef<CreatePresetFrameArgs> = {
+  label: (a) => `Add ${a.preset.name.toLowerCase()} frame`,
+  run: (doc, a) => {
+    const x = a.x ?? (a.center ? Math.round(a.center.x - a.preset.width / 2) : 0);
+    const y = a.y ?? (a.center ? Math.round(a.center.y - a.preset.height / 2) : 0);
+    return createElement.run(doc, {
+      type: "frame",
+      id: a.id,
+      x,
+      y,
+      width: a.preset.width,
+      height: a.preset.height,
+      props: { name: a.preset.name },
+    });
+  },
+};
+
 // ---- registry ----
 export const commands = {
   create_element: createElement,
   create_elements: createElements,
+  create_preset_frame: createPresetFrameDef,
   move_elements: moveElements,
   resize_element: resizeElement,
   set_props: setProps,
@@ -1314,3 +1333,7 @@ export function runCommand<N extends CommandName>(doc: Doc, name: N, args: ArgsO
 export function commandLabel<N extends CommandName>(name: N, args: ArgsOf<N>): string {
   return (commands[name] as CommandDef<ArgsOf<N>>).label(args);
 }
+
+export { FRAME_PRESETS, createPresetFrame } from "./presets";
+export type { FramePreset, CreatePresetFrameArgs } from "./presets";
+
