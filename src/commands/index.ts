@@ -1,6 +1,6 @@
 import { fitText } from "../canvas/text";
 import type { ClipPayload } from "../document/clipboard";
-import { canMask, canTurn, descendants, tidyAngle, turnCentre, turnPoint, worldPos } from "../document/geometry";
+import { ancestors, canMask, canTurn, descendants, tidyAngle, topLevelOnly, turnCentre, turnPoint, worldPos } from "../document/geometry";
 import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
 import { MOVING, playsFile } from "../document/types";
@@ -686,17 +686,27 @@ export interface GroupArgs {
 const groupElements: CommandDef<GroupArgs> = {
   label: () => "Group",
   run: (doc, a) => {
-    const els = a.ids.map((id) => doc.elements[id]).filter(Boolean);
-    if (els.length === 0) return doc;
-    const parentId = els[0].parentId;
-    if (!els.every((e) => e.parentId === parentId)) return doc;
+    const ids = topLevelOnly(doc, a.ids.filter((id) => doc.elements[id]));
+    if (ids.length === 0) return doc;
+    // things picked from different places are grouped at the level they share, where they still look the same
+    const chains = ids.map((id) => [...ancestors(doc, id), null]);
+    const parentId = chains[0].find((p) => chains.every((c) => c.includes(p))) ?? null;
+    const base = parentId ? worldPos(doc, parentId) : { x: 0, y: 0 };
+    const pos = Object.fromEntries(ids.map((id) => {
+      const w = worldPos(doc, id);
+      return [id, { x: w.x - base.x, y: w.y - base.y }];
+    }));
     const next = clone(doc);
     const list = parentId ? next.elements[parentId].childIds : next.rootIds;
-    const x = Math.min(...els.map((e) => e.x));
-    const y = Math.min(...els.map((e) => e.y));
-    const w = Math.max(...els.map((e) => e.x + e.width)) - x;
-    const h = Math.max(...els.map((e) => e.y + e.height)) - y;
-    const at = Math.max(...els.map((e) => list.indexOf(e.id)));
+    const els = ids.map((id) => next.elements[id]);
+    const x = Math.min(...els.map((e) => pos[e.id].x));
+    const y = Math.min(...els.map((e) => pos[e.id].y));
+    const w = Math.max(...els.map((e) => pos[e.id].x + e.width)) - x;
+    const h = Math.max(...els.map((e) => pos[e.id].y + e.height)) - y;
+    // where each picked thing sits in the shared list: itself, or the frame or group that holds it
+    const branch = (id: string) => [id, ...ancestors(doc, id)].find((b) => list.includes(b))!;
+    const top = ids.reduce((best, id) => (list.indexOf(branch(id)) > list.indexOf(branch(best)) ? id : best), ids[0]);
+    const topBranch = branch(top);
     const group: El = {
       id: a.groupId,
       type: "group",
@@ -747,22 +757,48 @@ const groupElements: CommandDef<GroupArgs> = {
       childIds: [],
     };
     next.elements[group.id] = group;
-    // keep the stacking order they already had
-    const ordered = list.filter((id) => a.ids.includes(id));
+    // the group goes just above the highest picked thing, before anything is taken out
+    list.splice(list.indexOf(topBranch) + 1, 0, group.id);
+    // keep the stacking order they already had on the page
+    const order = paintOrder(doc);
+    const ordered = [...ids].sort((p, q) => order.indexOf(p) - order.indexOf(q));
     for (const id of ordered) {
-      const i = list.indexOf(id);
-      if (i >= 0) list.splice(i, 1);
       const el = next.elements[id];
+      const from = el.parentId ? next.elements[el.parentId].childIds : next.rootIds;
+      const i = from.indexOf(id);
+      if (i >= 0) from.splice(i, 1);
+      dropIfEmptyGroup(next, el.parentId);
       el.parentId = group.id;
-      el.x -= x;
-      el.y -= y;
+      el.x = pos[id].x - x;
+      el.y = pos[id].y - y;
       group.childIds.push(id);
     }
-    const insertAt = Math.min(list.length, Math.max(0, at - ordered.length + 1));
-    list.splice(insertAt, 0, group.id);
     return next;
   },
 };
+
+/** Every id in the order it is painted, bottom first. */
+function paintOrder(doc: Doc): string[] {
+  const out: string[] = [];
+  const walk = (ids: string[]) => {
+    for (const id of ids) {
+      out.push(id);
+      walk(doc.elements[id]?.childIds ?? []);
+    }
+  };
+  walk(doc.rootIds);
+  return out;
+}
+
+/** A group left with nothing in it is removed, and so is a group that only held that one. */
+function dropIfEmptyGroup(doc: Doc, id: string | null) {
+  const g = id ? doc.elements[id] : undefined;
+  if (!g || g.type !== "group" || g.childIds.length > 0) return;
+  const list = g.parentId ? doc.elements[g.parentId].childIds : doc.rootIds;
+  list.splice(list.indexOf(g.id), 1);
+  delete doc.elements[g.id];
+  dropIfEmptyGroup(doc, g.parentId);
+}
 
 // ---- make_mask ----
 export interface MaskArgs {

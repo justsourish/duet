@@ -84,8 +84,8 @@ export async function installMenu() {
   const design = await Submenu.new({
     text: "Design",
     items: [
-      await item("Group", groupSelection),
-      await item("Ungroup", ungroupSelection),
+      await item("Group", groupSelection, "CmdOrCtrl+G"),
+      await item("Ungroup", ungroupSelection, "CmdOrCtrl+Shift+G"),
       await item("Use as mask", maskSelection, "CmdOrCtrl+Alt+M"),
       await item("Trace picture into shapes", () => void traceSelection()),
       await line(),

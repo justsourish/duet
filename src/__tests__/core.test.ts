@@ -894,11 +894,39 @@ describe("groups and locking", () => {
     expect(hitTest(d, 380, 400)).toBeNull(); // empty frame area: nothing to pick
   });
 
-  it("will not group things that live in different frames", () => {
+  it("groups things from different frames at the level they share, and they stay where they were", () => {
     let d = runCommand(scene(), "create_element", { id: "two", type: "frame", x: 600, y: 0, width: 100, height: 100 });
-    d = runCommand(d, "create_element", { id: "c", type: "rect", parentId: "two", x: 0, y: 0, width: 10, height: 10 });
-    const same = runCommand(d, "group_elements", { ids: ["a", "c"], groupId: "g" });
-    expect(same.elements.g).toBeUndefined();
+    d = runCommand(d, "create_element", { id: "c", type: "rect", parentId: "two", x: 5, y: 5, width: 10, height: 10 });
+    const before = { a: worldRect(d, "a"), c: worldRect(d, "c") };
+    const g = runCommand(d, "group_elements", { ids: ["a", "c"], groupId: "g" });
+    expect(g.elements.g.parentId).toBeNull();
+    expect(g.elements.g.childIds).toEqual(["a", "c"]);
+    expect(worldRect(g, "a")).toEqual(before.a);
+    expect(worldRect(g, "c")).toEqual(before.c);
+    expect(g.elements.box.childIds).not.toContain("a");
+    // the group sits just above the frame that held the highest one
+    expect(g.rootIds.indexOf("g")).toBe(g.rootIds.indexOf("two") + 1);
+    const back = runCommand(g, "ungroup", { ids: ["g"] });
+    expect(worldRect(back, "a")).toEqual(before.a);
+    expect(worldRect(back, "c")).toEqual(before.c);
+  });
+
+  it("groups a thing inside a frame with one outside it, on the page", () => {
+    let d = runCommand(scene(), "create_element", { id: "out", type: "rect", x: 900, y: 900, width: 10, height: 10 });
+    const before = worldRect(d, "a");
+    d = runCommand(d, "group_elements", { ids: ["a", "out"], groupId: "g" });
+    expect(d.elements.g.parentId).toBeNull();
+    expect(worldRect(d, "a")).toEqual(before);
+    expect(d.rootIds[d.rootIds.length - 1]).toBe("g");
+  });
+
+  it("removes a group left empty when all its things are grouped elsewhere", () => {
+    let d = runCommand(scene(), "group_elements", { ids: ["a", "b"], groupId: "inner" });
+    d = runCommand(d, "create_element", { id: "out", type: "rect", x: 900, y: 900, width: 10, height: 10 });
+    d = runCommand(d, "group_elements", { ids: ["a", "b", "out"], groupId: "g" });
+    expect(d.elements.inner).toBeUndefined();
+    expect(d.elements.box.childIds).not.toContain("inner");
+    expect(d.elements.g.childIds).toEqual(["a", "b", "out"]);
   });
 
   it("saves groups and locks, and leaves other files unchanged", () => {
