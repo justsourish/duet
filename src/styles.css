@@ -4650,6 +4650,66 @@ button.agent-perm {
   height: auto !important;
   max-height: none;
   min-height: 0;
+  transition: padding 200ms ease;
+}
+.chat.docked.is-empty > .cbody {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* when a chat has no messages yet, the box sits in the middle; as soon as a message is sent, it eases to the bottom */
+.chat.docked .chat-start-title {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0 0 12px;
+  max-height: 40px;
+  opacity: 1;
+  overflow: hidden;
+  user-select: none;
+  transition: opacity 200ms ease, max-height 200ms ease, margin-bottom 200ms ease;
+}
+.chat.docked:not(.is-empty) .chat-start-title {
+  max-height: 0;
+  opacity: 0;
+  margin-bottom: 0;
+  pointer-events: none;
+}
+
+.chat.docked .chat-start-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px 0;
+  margin: 0;
+  max-height: 90px;
+  opacity: 1;
+  overflow: hidden;
+  transition: opacity 200ms ease, max-height 200ms ease, padding-top 200ms ease;
+}
+.chat.docked:not(.is-empty) .chat-start-chips {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  pointer-events: none;
+}
+
+.chat.docked .chat-start-spacer {
+  flex-grow: 1;
+  flex-shrink: 1;
+  flex-basis: 0px;
+  min-height: 0;
+  transition: flex-grow 200ms ease;
+}
+.chat.docked:not(.is-empty) .chat-start-spacer {
+  flex-grow: 0;
+}
+
+.chat.docked.is-empty .working-on,
+.chat.docked.is-empty .focus-chip {
+  display: none;
 }
 
 /* the logo, the Chat and Edit switch and the saved mark share the row with the window buttons */
