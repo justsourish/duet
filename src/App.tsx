@@ -188,10 +188,7 @@ export default function App() {
     <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""}`} style={appStyle}>
       {/* open projects, in their own row like a browser; on a Mac it shares the row with the window buttons */}
       <div className="tabbar" data-tauri-drag-region>
-        {!chatting && <Tabs home={home} setHome={setHome} />}
-      </div>
-      <header className="top">
-        <div className="top-side">
+        <div className="tabbar-left">
           <span className="logo">
             Du<b>et</b>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
@@ -208,6 +205,10 @@ export default function App() {
             {project.path ? STATUS[project.status] : "Not saved yet"}
           </span>
         </div>
+        {!chatting && <Tabs home={home} setHome={setHome} />}
+      </div>
+      <header className="top">
+        <div />
         {!chatting && (
         <div className="pill mode-switch">
           <button

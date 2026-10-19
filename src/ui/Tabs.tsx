@@ -90,11 +90,6 @@ export default function Tabs({ home, setHome }: { home: boolean; setHome: (on: b
 
   return (
     <div className="project-tabs" role="tablist" data-tauri-drag-region>
-      <button className={`project-home ${home ? "active" : ""}`} aria-label="All your projects" title="All your projects" onClick={() => setHome(true)}>
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
-          <path d="M2.5 7.2 8 2.5l5.5 4.7V13a.5.5 0 0 1-.5.5H9.75V10h-3.5v3.5H3a.5.5 0 0 1-.5-.5Z" />
-        </svg>
-      </button>
       {list.map((path) => {
         const on = !home && path === live;
         return (

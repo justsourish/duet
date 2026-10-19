@@ -3,8 +3,9 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useState } from "react";
 import CanvasView from "../canvas/CanvasView";
 import type { Recent } from "../project/project";
-import { getRecents, inTauri, newProject, openProjectAt, removeRecent } from "../project/project";
+import { closeTab, getRecents, getTabs, inTauri, newProject, openProjectAt, removeRecent } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
+import { readyToLeave } from "../ai/agent";
 import ChatPanel from "./ChatPanel";
 import Icon from "./Icons";
 import SkillsPanel from "./SkillsPanel";
@@ -47,7 +48,7 @@ export function matchProjects<T extends { name: string }>(all: T[], typed: strin
 }
 
 /** One project in the list: its picture, its name and when it was last opened. */
-function ProjectRow({ r, on, onOpen, onMenu }: { r: Recent; on: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
+function ProjectRow({ r, on, open, onOpen, onClose, onMenu }: { r: Recent; on: boolean; open: boolean; onOpen: () => void; onClose: () => void; onMenu: (x: number, y: number) => void }) {
   const own = usePreview(r.thumb ? "" : r.path);
   const src = r.thumb ?? own;
   return (
@@ -63,8 +64,20 @@ function ProjectRow({ r, on, onOpen, onMenu }: { r: Recent; on: boolean; onOpen:
       <div className="chathome-thumb">{src ? <img src={src} alt="" /> : null}</div>
       <div className="chathome-meta">
         <div className="chathome-name">{r.name}</div>
-        <div className="chathome-when">{ago(r.opened)}</div>
+        <div className="chathome-when">{on ? "Open now" : open ? "Open" : ago(r.opened)}</div>
       </div>
+      {open && !on && (
+        <button
+          className="chathome-close"
+          title="Close this project. Your work is saved."
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
@@ -78,6 +91,13 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   // read again whenever the open project changes, since opening one moves it to the top of the list
   const recents = useMemo(() => getRecents(), [current.file, current.name]);
   const [typed, setTyped] = useState("");
+  const [, again] = useState(0);
+  useEffect(() => {
+    const redo = () => again((n) => n + 1);
+    window.addEventListener("duet:tabs", redo);
+    return () => window.removeEventListener("duet:tabs", redo);
+  }, []);
+  const tabs = getTabs();
   const [skills, setSkills] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; r: Recent } | null>(null);
   useEffect(() => {
@@ -122,7 +142,7 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
         <div className="chathome-label">Projects</div>
         <div className="chathome-list">
           {shown.map((r) => (
-            <ProjectRow key={r.path} r={r} on={r.path === current.file} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
+            <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onClose={() => void readyToLeave(true, r.path).then((ok) => ok && closeTab(r.path))} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
           ))}
           {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
         </div>
