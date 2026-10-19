@@ -24,6 +24,7 @@ import HistoryStrip from "./ui/HistoryStrip";
 import PresentView from "./ui/PresentView";
 import SendCopy from "./ui/SendCopy";
 import Update from "./ui/Update";
+import Feedback, { askFeedback } from "./ui/Feedback";
 import Settings from "./ui/Settings";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
@@ -185,6 +186,9 @@ export default function App() {
           <span className="logo">
             Du<b>et</b>
             <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
+            <button className="feedback-btn" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
+              Feedback
+            </button>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
           </span>
           <span className={`status ${project.status}`} title={project.error ?? undefined}>
@@ -259,6 +263,7 @@ export default function App() {
       {videoCut && <VideoCut onClose={() => setVideoCut(false)} />}
       {sending && <SendCopy onClose={() => setSending(false)} />}
       <Update />
+      <Feedback />
       {settings && <Settings check={check} onClose={() => setSettings(false)} />}
     </div>
   );
