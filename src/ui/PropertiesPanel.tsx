@@ -771,6 +771,11 @@ export default function PropertiesPanel() {
 
       {allText && <TextSection els={els} />}
 
+      <div className="sec">
+        <h4>Opacity</h4>
+        <NumField label="%" mark={mark("opacity")} value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} onDrag={(n) => preview({ opacity: Math.min(100, n) / 100 })} />
+      </div>
+
       {!allText && !allGroups && (
         <div className="sec">
           <h4>Shadow</h4>
@@ -854,10 +859,6 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      <div className="sec">
-        <h4>Opacity</h4>
-        <NumField label="%" mark={mark("opacity")} value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} onDrag={(n) => preview({ opacity: Math.min(100, n) / 100 })} />
-      </div>
 
       {keyed && scene && <InAndOut el={keyed} scene={scene} />}
     </aside>

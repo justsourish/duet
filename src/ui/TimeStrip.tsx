@@ -8,7 +8,7 @@ import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
 import { setKeyFocus } from "./keyFocus";
-import { QUALITIES, SIZES, addClips, addSounds, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
+import { QUALITIES, SIZES, addMedia, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
 import type { ExportChoice } from "../video/scene";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { TIME_MIN_H, setLayout, useLayout } from "./layout";
@@ -395,9 +395,9 @@ export default function TimeStrip() {
     }
   };
 
-  const bring = async (what: "clips" | "sound") => {
+  const bring = async () => {
     setNote("");
-    const problems = await (what === "clips" ? addClips(frame.id) : addSounds(frame.id)).catch((e) => [String(e)]);
+    const problems = await addMedia(frame.id).catch((e) => [String(e)]);
     if (problems.length) setNote(problems.join(" "));
   };
 
@@ -689,11 +689,8 @@ export default function TimeStrip() {
             Cut
           </button>
         </div>
-        <button className="pill" data-name="add-clip" onClick={() => void bring("clips")} title="Bring video files into this scene, at the moment the clock is on">
-          Add clip
-        </button>
-        <button className="pill" data-name="add-sound" onClick={() => void bring("sound")} title="Bring in music or a voice. It is heard from the moment the clock is on">
-          Add sound
+        <button className="pill" data-name="add-media" onClick={() => void bring()} title="Bring in video, music or a voice, at the moment the clock is on">
+          Add
         </button>
         <span className="spacer" />
         <div className="time-zoom">
