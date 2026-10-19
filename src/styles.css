@@ -4287,3 +4287,83 @@ button.agent-perm {
   color: var(--muted);
   flex: none;
 }
+
+/* Chat: projects, the chat, and the canvas to watch */
+.top-side .mode-switch.pill {
+  position: static;
+  transform: none;
+}
+.chathome {
+  grid-area: chathome;
+  display: grid;
+  grid-template-columns: 240px minmax(320px, 1fr) minmax(0, 1.4fr);
+  min-height: 0;
+  min-width: 0;
+}
+.chathome-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-right: 1px solid var(--line);
+  min-height: 0;
+}
+.chathome-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.chathome-find {
+  width: 100%;
+  box-sizing: border-box;
+}
+.chathome-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chathome-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chathome-row:hover {
+  background: var(--panel-2);
+}
+.chathome-row.on {
+  background: var(--panel-2);
+  color: var(--accent);
+}
+.chathome-none {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.chathome-chat {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  padding: 12px;
+}
+.chat.docked {
+  position: static;
+  width: auto !important;
+  height: 100%;
+  max-height: none;
+  box-shadow: none;
+}
+.chat.docked .csize {
+  display: none;
+}
+.chathome > .canvas {
+  grid-area: auto;
+}
+.canvas.viewonly .canvas-wrap {
+  pointer-events: none;
+}

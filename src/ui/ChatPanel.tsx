@@ -99,11 +99,13 @@ const HANDLES: { pos: ResizeHandle; cls: string }[] = [
   { pos: "l", cls: "edge l" },
 ];
 
-export default function ChatPanel() {
+/** `docked` fills the space it is given, as the middle of Chat; otherwise it floats on the canvas. */
+export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const messages = useChat((s) => s.messages);
   const mode = useChat((s) => s.mode);
   const running = useChat((s) => s.running);
-  const minimized = useChat((s) => s.minimized);
+  const folded = useChat((s) => s.minimized);
+  const minimized = folded && !docked;
   const found = useChat((s) => s.agentFound);
   const agent = useChat((s) => s.agent);
   const installed = useChat((s) => s.installed);
@@ -221,7 +223,7 @@ export default function ChatPanel() {
       let rest = el.offsetHeight - el.clientHeight; // the border
       for (const c of Array.from(el.children) as HTMLElement[]) if (c !== body && !c.classList.contains("csize")) rest += c.offsetHeight;
       // hanging from the top it must stop above the bottom edge; sitting on the bottom it may reach up to the top
-      const space = hangs ? parent.clientHeight - el.offsetTop - 16 : parent.clientHeight - 32;
+      const space = docked ? parent.clientHeight : hangs ? parent.clientHeight - el.offsetTop - 16 : parent.clientHeight - 32;
       const next = Math.max(48, Math.floor(space - rest));
       setRoom((was) => (was === next ? was : next));
     };
@@ -230,7 +232,7 @@ export default function ChatPanel() {
     watch.observe(parent);
     watch.observe(el);
     return () => watch.disconnect();
-  }, [minimized, place, dragging]);
+  }, [minimized, place, dragging, docked]);
 
   useEffect(() => {
     if (list.current) list.current.scrollTop = connecting ? 0 : list.current.scrollHeight;
@@ -523,7 +525,7 @@ export default function ChatPanel() {
   return (
     <div
       ref={box}
-      className={`chat ${minimized ? "min" : ""} ${moving ? "moving free" : sizing?.x !== undefined ? "free" : "corner" in place ? `c-${place.corner}` : "free"}`}
+      className={`chat ${docked ? "docked" : ""} ${minimized ? "min" : ""} ${moving ? "moving free" : sizing?.x !== undefined ? "free" : "corner" in place ? `c-${place.corner}` : "free"}`}
       style={{
         ...(moving
           ? { left: moving.x, top: moving.y }
@@ -548,7 +550,7 @@ export default function ChatPanel() {
     >
       <div
         className="chead"
-        onPointerDown={grab}
+        onPointerDown={docked ? undefined : grab}
         title="Drag to move me. Let go near a corner and I will snap there."
         onClick={() => !justMoved.current && setMinimized(!minimized)}
       >

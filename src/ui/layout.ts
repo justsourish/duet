@@ -4,6 +4,8 @@ import { useSyncExternalStore } from "react";
 
 export type Corner = "tl" | "tr" | "bl" | "br";
 export type Mode = "design" | "motion" | "color";
+/** Chat: talk to the AI beside your projects and watch the canvas. Edit: the tools. */
+export type Space = "chat" | "edit";
 export type TimeLook = "layers" | "cut";
 
 export interface Dock {
@@ -15,6 +17,8 @@ export interface Dock {
   swapped: boolean;
   /** Whether we are designing, animating or changing colour. */
   mode: Mode;
+  /** Talking to the AI or working with the tools. */
+  space: Space;
   /** The chat sits in a corner, or wherever it was dropped. */
   chat: { corner: Corner } | { x: number; y: number };
   /** How wide the chat is, and how tall its message area is. */
@@ -30,7 +34,7 @@ export interface Dock {
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170 });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170 });
 export const CHAT_MIN = { w: 280, h: 140 };
 export const TIME_MIN_H = 72;
 
@@ -40,7 +44,8 @@ function load(): Dock {
     if (raw && typeof raw === "object") {
       const mode: Mode = raw.mode === "motion" || raw.mode === "color" ? raw.mode : "design";
       const timeLook: TimeLook = raw.timeLook === "cut" ? "cut" : "layers";
-      return { ...defaults(), ...raw, mode, timeLook };
+      const space: Space = raw.space === "chat" ? "chat" : "edit";
+      return { ...defaults(), ...raw, mode, space, timeLook };
     }
   } catch {
     /* start fresh */

@@ -303,7 +303,8 @@ export function zoomTo(level: number, width: number, height: number) {
   glideTo({ zoom, x: width / 2 - wx * zoom, y: height / 2 - wy * zoom });
 }
 
-export default function CanvasView() {
+/** `viewOnly` shows the design and ignores every click and key, as beside the chat. */
+export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
@@ -959,7 +960,7 @@ export default function CanvasView() {
       return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
     };
     const onCopy = (e: ClipboardEvent, cut: boolean) => {
-      if (typing(e.target)) return;
+      if (viewOnly || typing(e.target)) return;
       const s = getState();
       const payload = extractPayload(workDoc(s), s.selection);
       if (!payload) return;
@@ -974,7 +975,7 @@ export default function CanvasView() {
     const copy = (e: ClipboardEvent) => onCopy(e, false);
     const cut = (e: ClipboardEvent) => onCopy(e, true);
     const paste = (e: ClipboardEvent) => {
-      if (typing(e.target)) return;
+      if (viewOnly || typing(e.target)) return;
       const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
       if (files.length) {
         e.preventDefault();
@@ -1004,7 +1005,7 @@ export default function CanvasView() {
       return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (typing(e.target)) return;
+      if (viewOnly || typing(e.target)) return;
       const s = getState();
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();

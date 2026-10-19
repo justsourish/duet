@@ -14,6 +14,7 @@ import { installMenu } from "./ui/menu";
 import { clampW, getLayout, setLayout, useLayout } from "./ui/layout";
 import Icon from "./ui/Icons";
 import Home from "./ui/Home";
+import ChatHome from "./ui/ChatHome";
 import VideoCut from "./ui/VideoCut";
 import TimeStrip from "./ui/TimeStrip";
 import { wireClips } from "./video/play";
@@ -173,7 +174,10 @@ export default function App() {
   // The grid follows the panels: their widths, which side they are on, and whether they are shown.
   const lw = dock.leftHidden ? 0 : dock.leftW;
   const rw = dock.rightHidden ? 0 : dock.rightW;
-  const appStyle = {
+  const chatting = dock.space === "chat";
+  const appStyle = chatting
+    ? { gridTemplateColumns: "1fr", gridTemplateAreas: '"tabs" "top" "chathome" "hist"' }
+    : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
     gridTemplateAreas: dock.swapped
       ? '"tabs tabs tabs tabs" "top top top top" "tools right canvas left" "time time time time" "hist hist hist hist"'
@@ -192,10 +196,19 @@ export default function App() {
             Du<b>et</b>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
           </span>
+          <div className="pill mode-switch space-switch">
+            <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
+              Chat
+            </button>
+            <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
+              Edit
+            </button>
+          </div>
           <span className={`status ${project.status}`} title={project.error ?? undefined}>
             {project.path ? STATUS[project.status] : "Not saved yet"}
           </span>
         </div>
+        {!chatting && (
         <div className="pill mode-switch">
           <button
             className={dock.mode === "design" ? "active" : ""}
@@ -219,6 +232,8 @@ export default function App() {
             Colour
           </button>
         </div>
+        )}
+        {chatting && <div />}
         <div className="top-side end">
           {dock.mode === "design" && (
             <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
@@ -254,16 +269,22 @@ export default function App() {
           </div>
         </div>
       </header>
-      <Toolbar />
-      {!dock.leftHidden && <LayersPanel />}
-      <main className="canvas">
-        <CanvasView />
-        <Grip side="l" />
-        <Grip side="r" />
-        <ChatPanel />
-      </main>
-      {!dock.rightHidden && <PropertiesPanel />}
-      <TimeStrip />
+      {chatting ? (
+        <ChatHome onEdit={() => setLayout({ space: "edit" })} />
+      ) : (
+        <>
+          <Toolbar />
+          {!dock.leftHidden && <LayersPanel />}
+          <main className="canvas">
+            <CanvasView />
+            <Grip side="l" />
+            <Grip side="r" />
+            <ChatPanel />
+          </main>
+          {!dock.rightHidden && <PropertiesPanel />}
+          <TimeStrip />
+        </>
+      )}
       <HistoryStrip />
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />
