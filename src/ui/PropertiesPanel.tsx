@@ -8,8 +8,7 @@ import { COMMON_FONTS } from "../canvas/text";
 import { newId } from "../commands";
 import { useLayout } from "./layout";
 import { KEY_GROUPS, entranceOf, sceneOf, spanOf } from "../document/time";
-import { seek } from "../video/play";
-import { setKeyFocus } from "./keyFocus";
+import { useKeyFocus } from "./keyFocus";
 import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
 import { applyColorPreservingOpacity, colorHex, colorOpacity, withOpacity } from "./color";
@@ -20,12 +19,15 @@ function NumField({
   onCommit,
   onDrag,
   min,
+  mark,
 }: {
   label: string;
   value: number | "";
   onCommit: (n: number) => void;
   onDrag?: (n: number) => void;
   min?: number;
+  /** In Motion, a property that can change over time shows its keyframe diamond and its colour. */
+  mark?: KeyMark;
 }) {
   const [text, setText] = useState(String(value));
   const [dragging, setDragging] = useState<"x" | "y" | null>(null);
@@ -152,7 +154,7 @@ function NumField({
   };
 
   return (
-    <label className="f">
+    <label className={`f${mark ? ` key-${mark.state}` : ""}`}>
       <span
         className="num-label"
         onPointerDown={(e) => startDrag(e, "x")}
@@ -180,8 +182,44 @@ function NumField({
           }
         }}
       />
+      {mark && (
+        <button
+          type="button"
+          className="key-here"
+          data-name={`key-${mark.name}`}
+          title={mark.state === "here" ? `Take away the ${mark.name} keyframe here` : `Add ${/^[aeiou]/i.test(mark.name) ? "an" : "a"} ${mark.name} keyframe here`}
+          onClick={(e) => {
+            e.preventDefault();
+            mark.toggle();
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M6 1 11 6 6 11 1 6Z" fill={mark.state === "here" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
     </label>
   );
+}
+
+/** Whether a property changes over time: not at all, yes but with no keyframe at the playhead, or with one here. */
+interface KeyMark {
+  name: string;
+  state: "none" | "animated" | "here";
+  toggle: () => void;
+}
+
+const KEY_NAMES: Record<Moving, string> = { x: "X", y: "Y", width: "width", height: "height", rotation: "rotation", opacity: "opacity" };
+
+/** The keyframe mark for one property of one thing at the playhead. The diamond adds or takes away that keyframe. */
+function keyMark(el: El, prop: Moving, t: number): KeyMark {
+  const keys = el.keys[prop] ?? [];
+  const here = keys.some((k) => Math.abs(k.t - t) < 0.004);
+  return {
+    name: KEY_NAMES[prop],
+    state: here ? "here" : keys.length ? "animated" : "none",
+    toggle: () => dispatch(here ? "remove_key" : "key_now", { ids: [el.id], props: [prop], t }),
+  };
 }
 
 function ColorField({ value, onCommit, none }: { value: string | null; onCommit: (c: string | null) => void; none?: boolean }) {
@@ -460,163 +498,86 @@ function momentTimes(el: El, props: Moving[]): number[] {
   return [...times].sort((a, b) => a - b);
 }
 
-function momentsCount(el: El, props: Moving[]): number {
-  const times = new Set<number>();
-  for (const p of props) {
-    const list = el.keys[p];
-    if (list) {
-      for (const k of list) {
-        times.add(Math.round(k.t * 1000) / 1000);
-      }
-    }
-  }
-  return times.size;
-}
-
-/** A keyframe sits at this moment, within a few thousandths of a second. */
-const keyAt = (el: El, props: Moving[], t: number) => props.some((p) => el.keys[p]?.some((k) => Math.abs(k.t - t) < 0.004));
-
-/**
- * One property that can change over time, worked with the mouse alone. The stopwatch starts it moving,
- * with a keyframe at the playhead, or stops it and takes its keyframes away. The diamond adds or takes
- * away the keyframe at the playhead; the arrows on each side go to the keyframe before or after.
- */
-function KeyRow({ el, name, props, t }: { el: El; name: string; props: Moving[]; t: number }) {
-  const times = momentTimes(el, props);
-  const moving = times.length > 0;
-  const here = keyAt(el, props, t);
-  const before = [...times].reverse().find((k) => k < t - 0.004);
-  const after = times.find((k) => k > t + 0.004);
-  const go = (k: number | undefined) => {
-    if (k === undefined) return;
-    setKeyFocus({ id: el.id, t: k });
-    seek(k);
-  };
+/** A frame that plays: how long it is. */
+function LengthSection({ el }: { el: El }) {
   return (
-    <div className="key-row" data-name={`keys-${name}`}>
-      <button
-        type="button"
-        className={`stopwatch ${moving ? "on" : ""}`}
-        title={moving ? `Stop ${name.toLowerCase()} changing: takes away its ${times.length} keyframe${times.length === 1 ? "" : "s"}` : `Make ${name.toLowerCase()} change over time, starting here`}
-        onClick={() => (moving ? dispatch("remove_key", { ids: [el.id], props }) : dispatch("key_now", { ids: [el.id], props, t }))}
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
-          <circle cx="8" cy="9" r="5.5" />
-          <path d="M8 9V6M6.5 1.5h3M12 4l1-1" />
-        </svg>
-      </button>
-      <span className="key-name">{name}</span>
-      <button type="button" className="key-step" disabled={before === undefined} title="Go to the keyframe before" onClick={() => go(before)}>
-        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M5.5 1.5 2.5 4l3 2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </button>
-      <button
-        type="button"
-        className={`key-here ${here ? "on" : ""}`}
-        title={here ? "Take away the keyframe here" : "Add a keyframe here"}
-        onClick={() => (here ? dispatch("remove_key", { ids: [el.id], props, t }) : dispatch("key_now", { ids: [el.id], props, t }))}
-      >
-        <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1 11 6 6 11 1 6Z" fill={here ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
-      </button>
-      <button type="button" className="key-step" disabled={after === undefined} title="Go to the keyframe after" onClick={() => go(after)}>
-        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1.5 5.5 4l-3 2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </button>
+    <div className="sec">
+      <h4>Motion</h4>
+      <NumField label="Length" value={Math.round(el.duration * 100) / 100} min={0} onCommit={(seconds) => dispatch("set_duration", { id: el.id, seconds })} />
     </div>
   );
 }
 
-function MotionSection({ el, scene }: { el: El; scene: El }) {
-  const t = Math.round(getState().clock.t * 1000) / 1000;
-  if (el.id === scene.id) {
-    return (
-      <div className="sec">
-        <h4>Motion</h4>
-        <NumField
-          label="Length"
-          value={Math.round(el.duration * 100) / 100}
-          min={0}
-          onCommit={(seconds) => dispatch("set_duration", { id: el.id, seconds })}
-        />
-      </div>
-    );
-  }
-  const span = spanOf(el, scene);
-  const groupsWithKeys = KEY_GROUPS.map((g) => ({ ...g, count: momentsCount(el, g.props) })).filter((g) => g.count > 0);
+/** How the move that ends at the keyframe picked in the timeline speeds up and slows down. */
+function SpeedSection({ el }: { el: El }) {
+  const focus = useKeyFocus();
+  if (!focus || focus.id !== el.id) return null;
+  const group = KEY_GROUPS.find((g) => g.props.some((p) => el.keys[p]?.some((k) => Math.abs(k.t - focus.t) < 0.005)) && momentTimes(el, g.props).length > 1);
+  if (!group) return null;
   return (
     <div className="sec">
-      <h4>Motion</h4>
-      <div className="field">
-        <NumField
-          label="Appears"
-          value={Math.round(span.start * 100) / 100}
-          min={0}
-          onCommit={(start) => dispatch("set_timing", { ids: [el.id], start, end: span.end })}
-        />
-        <NumField
-          label="Leaves"
-          value={Math.round(span.end * 100) / 100}
-          min={0}
-          onCommit={(end) => dispatch("set_timing", { ids: [el.id], start: span.start, end })}
-        />
-      </div>
-      <div className="gap" />
-      <label className="f">
-        <span>Arrives</span>
-        <select
-          value={entranceOf(el, scene, "in")}
-          onChange={(e) => dispatch("set_entrance", { ids: [el.id], when: "in", kind: e.target.value as Entrance })}
-        >
-          {ENTRANCE_CHOICES.map(([val, label]) => (
-            <option key={val} value={val}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="gap" />
-      <label className="f">
-        <span>Goes</span>
-        <select
-          value={entranceOf(el, scene, "out")}
-          onChange={(e) => dispatch("set_entrance", { ids: [el.id], when: "out", kind: e.target.value as Entrance })}
-        >
-          {ENTRANCE_CHOICES.map(([val, label]) => (
-            <option key={val} value={val}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="gap" />
-      <div className="hint2">Changes over time, at the playhead</div>
-      {KEY_GROUPS.map((g) => (
-        <KeyRow key={g.name} el={el} name={g.name} props={g.props} t={t} />
-      ))}
-      {groupsWithKeys.map((g) => (
-          <div key={g.name}>
-            <div className="motion-row">
-              <span>
-                {g.name}, {g.count} {g.count === 1 ? "keyframe" : "keyframes"}
-              </span>
-            </div>
-            <div className="key-chips">
-              {momentTimes(el, g.props).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  className="mini"
-                  title="Go to this moment"
-                  onClick={() => {
-                    setKeyFocus({ id: el.id, t });
-                    seek(t);
-                  }}
-                >
-                  {Math.round(t * 100) / 100}s
-                </button>
-              ))}
-            </div>
-            {g.count > 1 && <SpeedGraph key={g.name + el.id} el={el} props={g.props} times={momentTimes(el, g.props)} />}
+      <h4>{group.name}, speed</h4>
+      <SpeedGraph key={group.name + el.id} el={el} props={group.props} times={momentTimes(el, group.props)} />
+    </div>
+  );
+}
+
+/** When a thing appears and leaves inside its frame, and how it arrives and goes. Closed until opened. */
+function InAndOut({ el, scene }: { el: El; scene: El }) {
+  const [open, setOpen] = useState(false);
+  const span = spanOf(el, scene);
+  return (
+    <div className="sec">
+      <button type="button" className={`sec-fold ${open ? "open" : ""}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1.5 5.5 4l-3 2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        In and out
+      </button>
+      {open && (
+        <>
+          <div className="field">
+            <NumField
+              label="Appears"
+              value={Math.round(span.start * 100) / 100}
+              min={0}
+              onCommit={(start) => dispatch("set_timing", { ids: [el.id], start, end: span.end })}
+            />
+            <NumField
+              label="Leaves"
+              value={Math.round(span.end * 100) / 100}
+              min={0}
+              onCommit={(end) => dispatch("set_timing", { ids: [el.id], start: span.start, end })}
+            />
           </div>
-      ))}
+          <div className="gap" />
+          <label className="f">
+            <span>Arrives</span>
+            <select
+              value={entranceOf(el, scene, "in")}
+              onChange={(e) => dispatch("set_entrance", { ids: [el.id], when: "in", kind: e.target.value as Entrance })}
+            >
+              {ENTRANCE_CHOICES.map(([val, label]) => (
+                <option key={val} value={val}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="gap" />
+          <label className="f">
+            <span>Goes</span>
+            <select
+              value={entranceOf(el, scene, "out")}
+              onChange={(e) => dispatch("set_entrance", { ids: [el.id], when: "out", kind: e.target.value as Entrance })}
+            >
+              {ENTRANCE_CHOICES.map(([val, label]) => (
+                <option key={val} value={val}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
     </div>
   );
 }
@@ -654,27 +615,34 @@ export default function PropertiesPanel() {
   const allGroups = els.every((e) => e.type === "group" || isLooseCopy(doc, e));
   const noFill = allImages || allGroups || els.every((e) => e.type === "path" && !e.closed);
   const hasRadius = els.every((e) => e.type === "frame" || e.type === "rect" || e.type === "image");
+  // in Motion, one thing inside a frame that plays shows a keyframe diamond beside each property that can change over time
+  const keyed = mode === "motion" && one && scene && one.id !== scene.id ? one : null;
+  const now = Math.round(getState().clock.t * 1000) / 1000;
+  const mark = (prop: Moving) => (keyed ? keyMark(keyed, prop, now) : undefined);
 
   return (
     <aside className="right">
       <div className="panel-title">{one ? one.name : `${els.length} selected`}</div>
 
-      {mode === "motion" && one && scene && <MotionSection el={one} scene={scene} />}
+      {mode === "motion" && one && scene && one.id === scene.id && <LengthSection el={one} />}
+      {keyed && <SpeedSection el={keyed} />}
 
       {one && (
         <div className="sec">
           <h4>Position and size</h4>
           <div className="field">
-            <NumField label="X" value={Math.round(one.x * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: n - one.x, dy: 0 })} />
-            <NumField label="Y" value={Math.round(one.y * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: 0, dy: n - one.y })} />
+            <NumField label="X" mark={mark("x")} value={Math.round(one.x * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: n - one.x, dy: 0 })} />
+            <NumField label="Y" mark={mark("y")} value={Math.round(one.y * 100) / 100} onCommit={(n) => dispatch("move_elements", { ids, dx: 0, dy: n - one.y })} />
             <NumField
               label="W"
+              mark={mark("width")}
               value={Math.round(one.width * 100) / 100}
               min={1}
               onCommit={(n) => dispatch("resize_element", { id: one.id, x: one.x, y: one.y, width: n, height: one.height })}
             />
             <NumField
               label="H"
+              mark={mark("height")}
               value={Math.round(one.height * 100) / 100}
               min={1}
               onCommit={(n) => dispatch("resize_element", { id: one.id, x: one.x, y: one.y, width: one.width, height: n })}
@@ -683,7 +651,7 @@ export default function PropertiesPanel() {
           {canTurn(doc, one.id) && (
             <>
               <div className="gap" />
-              <NumField label="Rotation" value={one.rotation || 0} onCommit={(n) => set({ rotation: n }, "Rotate")} onDrag={(n) => preview({ rotation: n })} />
+              <NumField label="Rotation" mark={mark("rotation")} value={one.rotation || 0} onCommit={(n) => set({ rotation: n }, "Rotate")} onDrag={(n) => preview({ rotation: n })} />
             </>
           )}
         </div>
@@ -694,6 +662,20 @@ export default function PropertiesPanel() {
           <h4>Corners</h4>
           <NumField label="Radius" value={first.radius} min={0} onCommit={(n) => set({ radius: n }, "Change corner radius")} onDrag={(n) => preview({ radius: n })} />
         </div>
+      )}
+
+      {mode !== "motion" && one && canBeComponent(one) && (
+        <div className="sec">
+          <h4>Component</h4>
+          <button className="pill" onClick={() => dispatch("create_component", { id: one.id })}>
+            Make a component
+          </button>
+          <div className="hint2">Turn this into something you can reuse. Place copies from the Assets tab, and changing it changes them all.</div>
+        </div>
+      )}
+
+      {mode !== "motion" && one && (one.component || one.type === "instance") && (
+        <ComponentSection el={one} copies={Object.values(doc.elements).filter((e) => e.type === "instance" && e.componentId === one.id && !e.id.includes("::")).length} />
       )}
 
       {!noFill && (
@@ -735,29 +717,6 @@ export default function PropertiesPanel() {
         </div>
       )}
 
-      {mode !== "motion" && one && canBeComponent(one) && (
-        <div className="sec">
-          <h4>Component</h4>
-          <button className="pill" onClick={() => dispatch("create_component", { id: one.id })}>
-            Make a component
-          </button>
-          <div className="hint2">Turn this into something you can reuse. Place copies from the Assets tab, and changing it changes them all.</div>
-        </div>
-      )}
-
-      {mode !== "motion" && one && (one.component || one.type === "instance") && (
-        <ComponentSection el={one} copies={Object.values(doc.elements).filter((e) => e.type === "instance" && e.componentId === one.id && !e.id.includes("::")).length} />
-      )}
-
-      {one?.type === "frame" && <LayoutSection frame={one} />}
-
-      {one && one.parentId && doc.elements[one.parentId]?.layout && (
-        <div className="sec">
-          <h4>In auto layout</h4>
-          <Seg value={one.grow ? "fill" : "keep"} options={[["keep", "Keep size"], ["fill", "Fill space"]]} onPick={(v) => set({ grow: v === "fill" ? 1 : 0 }, "Change sizing")} />
-        </div>
-      )}
-
       {!allText && !allGroups && (
         <div className="sec">
           <h4>Stroke</h4>
@@ -777,6 +736,15 @@ export default function PropertiesPanel() {
           </div>
           <div className="gap" />
           <NumField label="Width" value={first.strokeWidth} min={0} onCommit={(n) => set({ strokeWidth: n }, "Change stroke width")} onDrag={(n) => preview({ strokeWidth: n })} />
+        </div>
+      )}
+
+      {one?.type === "frame" && <LayoutSection frame={one} />}
+
+      {one && one.parentId && doc.elements[one.parentId]?.layout && (
+        <div className="sec">
+          <h4>In auto layout</h4>
+          <Seg value={one.grow ? "fill" : "keep"} options={[["keep", "Keep size"], ["fill", "Fill space"]]} onPick={(v) => set({ grow: v === "fill" ? 1 : 0 }, "Change sizing")} />
         </div>
       )}
 
@@ -867,8 +835,10 @@ export default function PropertiesPanel() {
 
       <div className="sec">
         <h4>Opacity</h4>
-        <NumField label="%" value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} onDrag={(n) => preview({ opacity: Math.min(100, n) / 100 })} />
+        <NumField label="%" mark={mark("opacity")} value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} onDrag={(n) => preview({ opacity: Math.min(100, n) / 100 })} />
       </div>
+
+      {keyed && scene && <InAndOut el={keyed} scene={scene} />}
     </aside>
   );
 }

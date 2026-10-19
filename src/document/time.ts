@@ -48,7 +48,7 @@ export const KEY_GROUPS: { name: string; props: Moving[] }[] = [
   { name: "Position", props: ["x", "y"] },
   { name: "Size", props: ["width", "height"] },
   { name: "Opacity", props: ["opacity"] },
-  { name: "Turn", props: ["rotation"] },
+  { name: "Rotation", props: ["rotation"] },
 ];
 
 /** The value at one moment. Before the first key it holds the first value, after the last it holds the last. */

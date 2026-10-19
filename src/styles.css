@@ -8,6 +8,8 @@
   --muted: #9b9296;
   --accent: #7c5cff;
   --accent-soft: rgba(124, 92, 255, 0.16);
+  --key: #f2c14e;
+  --key-soft: rgba(242, 193, 78, 0.16);
   --duet: #ff8a5c;
   --duet-soft: rgba(255, 138, 92, 0.16);
   --canvas: #141315;
@@ -3908,19 +3910,7 @@ button.agent-perm {
   }
 }
 
-/* one property that can change over time: stopwatch, name, and the keyframe at the playhead */
-.key-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-}
-.key-row .key-name {
-  flex: 1;
-  color: var(--text);
-}
-.stopwatch,
-.key-step,
+/* the keyframe at the playhead, in the panel and on each timeline row */
 .key-here,
 .time-key {
   display: grid;
@@ -3934,21 +3924,14 @@ button.agent-perm {
   color: var(--muted);
   cursor: pointer;
 }
-.stopwatch:hover,
-.key-step:hover:not(:disabled),
 .key-here:hover,
 .time-key:hover {
   background: var(--panel-2);
   color: var(--text);
 }
-.stopwatch.on,
 .key-here.on,
 .time-key.on {
   color: var(--accent);
-}
-.key-step:disabled {
-  opacity: 0.3;
-  cursor: default;
 }
 .time-key {
   display: inline-grid;
@@ -3956,4 +3939,52 @@ button.agent-perm {
   height: 16px;
   margin-right: 4px;
   vertical-align: middle;
+}
+
+/* in Motion, a property that changes over time: tinted when it moves, stronger when a keyframe sits at the playhead */
+.f.key-animated {
+  background: var(--accent-soft);
+  border-color: rgba(124, 92, 255, 0.35);
+}
+.f.key-here {
+  background: var(--key-soft);
+  border-color: rgba(242, 193, 78, 0.45);
+}
+.f.key-animated .key-here {
+  color: var(--accent);
+}
+.f.key-here .key-here {
+  color: var(--key);
+}
+.f .key-here {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: -2px -4px -2px 0;
+}
+
+/* a section that starts closed, opened by its heading */
+.sec-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+.sec-fold:hover {
+  color: var(--text);
+}
+.sec-fold svg {
+  transition: transform 0.15s ease;
+}
+.sec-fold.open svg {
+  transform: rotate(90deg);
+}
+.sec-fold.open {
+  margin-bottom: 8px;
 }

@@ -884,7 +884,7 @@ export interface SetKeyArgs {
   ease?: Key["ease"];
 }
 
-const propName: Record<Moving, string> = { x: "position", y: "position", width: "size", height: "size", opacity: "opacity", rotation: "turn" };
+const propName: Record<Moving, string> = { x: "position", y: "position", width: "size", height: "size", opacity: "opacity", rotation: "rotation" };
 
 const setKey: CommandDef<SetKeyArgs> = {
   label: (a) => `Set ${propName[a.prop] ?? "a value"} at ${round(a.t)}s`,
