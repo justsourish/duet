@@ -154,7 +154,7 @@ function NumField({
   };
 
   return (
-    <label className={`f${mark ? ` key-${mark.state}` : ""}`}>
+    <label className={`f${mark ? ` moves-${mark.state}` : ""}`}>
       <span
         className="num-label"
         onPointerDown={(e) => startDrag(e, "x")}
@@ -651,7 +651,7 @@ export default function PropertiesPanel() {
           {canTurn(doc, one.id) && (
             <>
               <div className="gap" />
-              <NumField label="Rotation" mark={mark("rotation")} value={one.rotation || 0} onCommit={(n) => set({ rotation: n }, "Rotate")} onDrag={(n) => preview({ rotation: n })} />
+              <NumField label="Rotation" mark={mark("rotation")} value={Math.round((one.rotation || 0) * 100) / 100} onCommit={(n) => set({ rotation: n }, "Rotate")} onDrag={(n) => preview({ rotation: n })} />
             </>
           )}
         </div>

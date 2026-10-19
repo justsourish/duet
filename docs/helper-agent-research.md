@@ -48,6 +48,10 @@ Keep it fair: same task text, a fresh branch from the same starting point, no ex
 | 13 Oct 2026 | 55, group chat | gemini-3.8-flash-high | 19 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 554,767 helper tokens. Branch `helper/55-group-chat`. |
 | 14 Oct 2026 | 65, glide zoom | gemini-3.8-flash-high | 13 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 597,665 helper tokens. Branch `helper/65-glide-zoom`. |
 | 14 Oct 2026 | 64, pen icon | gemini-3.8-flash-high | 16 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 548,138 helper tokens. Branch `helper/64-pen-icon`. |
+| 15 Oct 2026 | 39, working line | gemini-3.8-flash-high | 11 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 496,224 helper tokens. Branch `helper/39-working-line`. |
+| 15 Oct 2026 | 85, auto layout | gemini-3.8-flash-high | 8 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 338,996 helper tokens. Branch `helper/85-auto-layout`. |
+| 15 Oct 2026 | 9, option drag | gemini-3.8-flash-high | 18 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 539,039 helper tokens. Branch `helper/9-option-drag`. |
+| 15 Oct 2026 | 96, two looks | gemini-3.8-flash-high | 11 min | Passed | Yes | Not tested yet | None | Not decided | Started by the main AI with `scripts/helper.py`. 299,849 helper tokens. Branch `helper/96-two-looks`. |
 
 ## What has been learned
 

@@ -3942,18 +3942,18 @@ button.agent-perm {
 }
 
 /* in Motion, a property that changes over time: tinted when it moves, stronger when a keyframe sits at the playhead */
-.f.key-animated {
+.f.moves-animated {
   background: var(--accent-soft);
   border-color: rgba(124, 92, 255, 0.35);
 }
-.f.key-here {
+.f.moves-here {
   background: var(--key-soft);
   border-color: rgba(242, 193, 78, 0.45);
 }
-.f.key-animated .key-here {
+.f.moves-animated .key-here {
   color: var(--accent);
 }
-.f.key-here .key-here {
+.f.moves-here .key-here {
   color: var(--key);
 }
 .f .key-here {
