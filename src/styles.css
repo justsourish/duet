@@ -4497,3 +4497,10 @@ button.agent-perm {
 .chathome-menu div:hover {
   background: var(--panel-2);
 }
+/* beside Chat's project list the messages take all the height, so the box to write in sits at the bottom */
+.chat.docked > .cbody {
+  flex: 1 1 0;
+  height: auto !important;
+  max-height: none;
+  min-height: 0;
+}
