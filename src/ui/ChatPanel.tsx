@@ -86,6 +86,19 @@ function renderYouText(content: string, membersList: { name: string }[]) {
   });
 }
 
+type ResizeHandle = "t" | "b" | "l" | "r" | "tl" | "tr" | "bl" | "br";
+
+const HANDLES: { pos: ResizeHandle; cls: string }[] = [
+  { pos: "tl", cls: "corner t l" },
+  { pos: "t", cls: "edge t" },
+  { pos: "tr", cls: "corner t r" },
+  { pos: "r", cls: "edge r" },
+  { pos: "br", cls: "corner b r" },
+  { pos: "b", cls: "edge b" },
+  { pos: "bl", cls: "corner b l" },
+  { pos: "l", cls: "edge l" },
+];
+
 export default function ChatPanel() {
   const messages = useChat((s) => s.messages);
   const mode = useChat((s) => s.mode);
@@ -112,7 +125,7 @@ export default function ChatPanel() {
   const [connecting, setConnecting] = useState(false);
   const [pictureNote, setPictureNote] = useState<string | null>(null);
   const [agyModels, setAgyModels] = useState<ModelChoice[]>([]);
-  const [sizing, setSizing] = useState<{ w: number; h: number } | null>(null);
+  const [sizing, setSizing] = useState<{ w: number; h: number; x?: number; y?: number } | null>(null);
   const [moving, setMoving] = useState<{ x: number; y: number } | null>(null);
   const [text, setText] = useState("");
   const [room, setRoom] = useState<number | null>(null);
@@ -280,26 +293,73 @@ export default function ChatPanel() {
   const waiting = pictures.filter((p) => !p.sent);
   const attach = (files: File[]) => void attachFiles(files).then(setPictureNote);
 
-  const anchor = "corner" in place ? place.corner : "tl";
-  const growX = anchor.endsWith("l") ? 1 : -1;
-  const growY = anchor.startsWith("t") ? 1 : -1;
-
-  const resize = (e: React.PointerEvent) => {
+  const resize = (e: React.PointerEvent, handle: ResizeHandle) => {
+    if (minimized || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const start = { x: e.clientX, y: e.clientY, w: chatW, h: chatH };
-    const at = (m: PointerEvent) => ({
-      w: Math.max(CHAT_MIN.w, Math.min(CHAT_MAX.w, start.w + (m.clientX - start.x) * growX)),
-      h: Math.max(CHAT_MIN.h, Math.min(CHAT_MAX.h, start.h + (m.clientY - start.y) * growY)),
-    });
-    const move = (m: PointerEvent) => setSizing(at(m));
+    const el = box.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+
+    const b = el.getBoundingClientRect();
+    const p = parent.getBoundingClientRect();
+    const ox = b.left - p.left;
+    const oy = b.top - p.top;
+
+    let isFree = "x" in place;
+    if ("corner" in place) {
+      const c = place.corner;
+      const touchesCorner = handle.includes(c[0]) || handle.includes(c[1]);
+      if (touchesCorner) {
+        isFree = true;
+        setLayout({ chat: { x: ox, y: oy } });
+      }
+    }
+
+    const start = {
+      x: e.clientX,
+      y: e.clientY,
+      w: chatW,
+      h: chatH,
+      ox,
+      oy,
+    };
+
+    const hasL = handle.includes("l");
+    const hasR = handle.includes("r");
+    const hasT = handle.includes("t");
+    const hasB = handle.includes("b");
+
+    const growX = hasR ? 1 : hasL ? -1 : 0;
+    const growY = hasB ? 1 : hasT ? -1 : 0;
+
+    const at = (m: PointerEvent) => {
+      const deltaX = m.clientX - start.x;
+      const deltaY = m.clientY - start.y;
+      const newW = growX !== 0 ? Math.max(CHAT_MIN.w, Math.min(CHAT_MAX.w, start.w + deltaX * growX)) : start.w;
+      const newH = growY !== 0 ? Math.max(CHAT_MIN.h, Math.min(CHAT_MAX.h, start.h + deltaY * growY)) : start.h;
+      const newX = hasL ? start.ox + (start.w - newW) : start.ox;
+      const newY = hasT ? start.oy - (newH - start.h) : start.oy;
+      return { w: newW, h: newH, x: newX, y: newY };
+    };
+
+    const move = (m: PointerEvent) => {
+      const next = at(m);
+      setSizing(isFree ? next : { w: next.w, h: next.h });
+    };
+
     const up = (m: PointerEvent) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       const next = at(m);
       setSizing(null);
-      setLayout({ chatW: next.w, chatH: next.h });
+      if (isFree) {
+        setLayout({ chat: { x: next.x, y: next.y }, chatW: next.w, chatH: next.h });
+      } else {
+        setLayout({ chatW: next.w, chatH: next.h });
+      }
     };
+
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
@@ -488,9 +548,15 @@ export default function ChatPanel() {
   return (
     <div
       ref={box}
-      className={`chat ${big ? "big" : ""} ${minimized ? "min" : ""} ${moving ? "moving free" : "corner" in place ? `c-${place.corner}` : "free"}`}
+      className={`chat ${big ? "big" : ""} ${minimized ? "min" : ""} ${moving ? "moving free" : sizing?.x !== undefined ? "free" : "corner" in place ? `c-${place.corner}` : "free"}`}
       style={{
-        ...(moving ? { left: moving.x, top: moving.y } : "x" in place ? { left: place.x, top: big ? Math.min(place.y, 16) : place.y } : {}),
+        ...(moving
+          ? { left: moving.x, top: moving.y }
+          : sizing?.x !== undefined && sizing?.y !== undefined
+          ? { left: sizing.x, top: big ? Math.min(sizing.y, 16) : sizing.y }
+          : "x" in place
+          ? { left: place.x, top: big ? Math.min(place.y, 16) : place.y }
+          : {}),
         width: big ? 520 : w,
       }}
       onDragOver={(e) => {
@@ -869,7 +935,14 @@ export default function ChatPanel() {
 
       {!minimized && (
         <>
-          <div className={`csize ${growX > 0 ? "r" : "l"} ${growY > 0 ? "b" : "t"}`} onPointerDown={resize} title="Pull to make the chat bigger or smaller" />
+          {HANDLES.map((hnd) => (
+            <div
+              key={hnd.pos}
+              className={`csize ${hnd.cls}`}
+              onPointerDown={(e) => resize(e, hnd.pos)}
+              title="Pull to make the chat bigger or smaller"
+            />
+          ))}
           <div className="cbody" ref={list} style={{ height: big ? undefined : (room === null ? h : Math.min(h, room)) }}>
             {connecting && <ConnectAi />}
             {found === false && (
