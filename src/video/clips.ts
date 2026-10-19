@@ -12,9 +12,9 @@ import { logError } from "../errorLog";
  * jump around in. Making a video uses players on the original file, so nothing is lost in the result.
  */
 
-const players = new Map<string, HTMLVideoElement>();
+const players = new Map<string, HTMLMediaElement>();
 /** Players on the original files, used only while a video is being made. */
-const fullPlayers = new Map<string, HTMLVideoElement>();
+const fullPlayers = new Map<string, HTMLMediaElement>();
 /** Files whose light copy has been asked for, so it is asked for once. */
 const previewAsked = new Set<string>();
 let changed: () => void = () => {};
@@ -30,20 +30,24 @@ export const holdClips = (on: boolean) => {
   held = on;
 };
 
-function makePlayer(src: string, into: Map<string, HTMLVideoElement>): HTMLVideoElement {
-  const v = document.createElement("video");
+/** A sound file gets a sound player: the system will not play a file with nothing to see in a video player. */
+const SOUND_FILE = /\.(mp3|wav|m4a|aac|aiff?|ogg|flac)$/i;
+
+function makePlayer(src: string, into: Map<string, HTMLMediaElement>): HTMLMediaElement {
+  const sound = SOUND_FILE.test(src);
+  const v = document.createElement(sound ? "audio" : "video");
   v.crossOrigin = "anonymous";
   v.preload = "auto";
-  v.playsInline = true;
+  if (v instanceof HTMLVideoElement) v.playsInline = true;
   v.src = convertFileSrc(src);
   for (const ev of ["loadeddata", "seeked"]) v.addEventListener(ev, () => changed());
   v.addEventListener("seeked", () => seekedNext(v));
-  v.addEventListener("error", () => logError("clip", new Error(`This clip could not be played: ${src}`)));
+  v.addEventListener("error", () => logError("clip", new Error(`This clip could not be played (${v.error?.code ?? "?"} ${v.error?.message ?? ""}): ${src}`)));
   into.set(src, v);
   return v;
 }
 
-function player(src: string): HTMLVideoElement {
+function player(src: string): HTMLMediaElement {
   const v = players.get(src) ?? makePlayer(src, players);
   askPreview(src, v);
   return v;
@@ -52,8 +56,9 @@ function player(src: string): HTMLVideoElement {
 const fullPlayer = (src: string) => fullPlayers.get(src) ?? makePlayer(src, fullPlayers);
 
 /** Have Duet make the light copy in the background, then move the player over to it where it was. */
-function askPreview(src: string, v: HTMLVideoElement) {
-  if (previewAsked.has(src) || !("__TAURI_INTERNALS__" in window)) return;
+function askPreview(src: string, v: HTMLMediaElement) {
+  // a sound is already light, and has no picture to make smaller
+  if (SOUND_FILE.test(src) || previewAsked.has(src) || !("__TAURI_INTERNALS__" in window)) return;
   previewAsked.add(src);
   invoke<string>("clip_preview", { path: src })
     .then((copy) => {
@@ -77,31 +82,31 @@ function askPreview(src: string, v: HTMLVideoElement) {
 export function clipPicture(src: string): HTMLVideoElement | null {
   if (!src) return null;
   const v = held ? fullPlayer(src) : player(src);
-  return v.readyState >= 2 ? v : null;
+  return v instanceof HTMLVideoElement && v.readyState >= 2 ? v : null;
 }
 
 // ---- scrubbing: one jump at a time, and only to where the playhead is now ----
 
 /** Where each player should be, and where its jump in flight is heading. */
-const wanted = new Map<HTMLVideoElement, number>();
-const heading = new Map<HTMLVideoElement, number>();
-const settleTimers = new Map<HTMLVideoElement, ReturnType<typeof setTimeout>>();
+const wanted = new Map<HTMLMediaElement, number>();
+const heading = new Map<HTMLMediaElement, number>();
+const settleTimers = new Map<HTMLMediaElement, ReturnType<typeof setTimeout>>();
 
-function jump(v: HTMLVideoElement, at: number, quick: boolean) {
+function jump(v: HTMLMediaElement, at: number, quick: boolean) {
   heading.set(v, at);
   // a quick jump lands on the nearest picture that is fast to show; the exact one follows when the hand stops
   if (quick && typeof v.fastSeek === "function") v.fastSeek(at);
   else v.currentTime = at;
 }
 
-function seekedNext(v: HTMLVideoElement) {
+function seekedNext(v: HTMLMediaElement) {
   const want = wanted.get(v);
   if (want === undefined || want === heading.get(v)) return;
   jump(v, want, true);
 }
 
 /** Move a paused player to a moment. Called on every move of the playhead while scrubbing. */
-function seekTo(v: HTMLVideoElement, at: number) {
+function seekTo(v: HTMLMediaElement, at: number) {
   wanted.set(v, at);
   if (!v.seeking) jump(v, at, true);
   clearTimeout(settleTimers.get(v));
@@ -136,6 +141,14 @@ export function fileLength(src: string): Promise<number> {
     v.addEventListener("loadedmetadata", yes);
     v.addEventListener("error", no);
   });
+}
+
+/** What a clip's player is doing, in words. For checking Duet itself. */
+export function clipState(src: string): string {
+  const v = players.get(src);
+  if (!v) return "no player";
+  if (v.error) return `failed (${v.error.code})`;
+  return `${v.paused ? "paused" : "playing"} at ${Math.round(v.currentTime * 100) / 100}s, ready ${v.readyState}`;
 }
 
 /** How long a clip's file is, in seconds, or 0 while that is not known yet. */
