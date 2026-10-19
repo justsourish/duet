@@ -4601,11 +4601,11 @@ button.agent-perm {
   color: var(--muted);
 }
 /* in Chat the bottom bar only holds the early access note and Feedback, at the right */
-.hist.chat .hist-gap {
+.hist.in-chat-space .hist-gap {
   flex: 1;
 }
-.hist.chat .hist-legend,
-.hist.chat .scroller {
+.hist.in-chat-space .hist-legend,
+.hist.in-chat-space .scroller {
   display: none;
 }
 .chathome-label {

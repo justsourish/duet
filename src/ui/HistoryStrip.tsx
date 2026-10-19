@@ -95,7 +95,7 @@ export default function HistoryStrip({ chat = false }: { chat?: boolean }) {
   );
 
   return (
-    <footer className={`hist ${chat ? "chat" : ""}`}>
+    <footer className={`hist ${chat ? "in-chat-space" : ""}`}>
       {!chat && about}
       <div className="hist-legend">
         {legendItems.map((item) => (
