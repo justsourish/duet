@@ -464,6 +464,9 @@ button {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.tool.tool-settings {
+  margin-top: auto;
+}
 
 /* history */
 .hist {
@@ -3054,6 +3057,29 @@ button {
   color: var(--text);
   background: var(--panel-2);
 }
+.chat-new-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  flex: none;
+}
+.chat-new-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.chat-new-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 .agent-card {
   position: absolute;
   top: calc(100% + 6px);
@@ -3533,6 +3559,38 @@ button.agent-perm.auto:hover {
 }
 button.agent-perm:hover .agent-btn-v,
 button.agent-perm.auto:hover .agent-btn-v {
+  color: var(--text);
+}
+/* model choice in the quiet controls row */
+select.agent-model {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text);
+  cursor: pointer;
+  outline: 0;
+  white-space: nowrap;
+  box-sizing: border-box;
+  max-width: 130px;
+  text-overflow: ellipsis;
+}
+select.agent-model:hover {
+  border-color: var(--accent);
+  background: var(--line);
+}
+select.agent-model:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+select.agent-model option {
+  background: var(--panel);
   color: var(--text);
 }
 /* a written brief that goes with a message shows as its name */

@@ -63,6 +63,13 @@ export default function Toolbar() {
           ))}
         </>
       )}
+      <button
+        className="tool tool-settings"
+        title="Settings"
+        onClick={() => window.dispatchEvent(new Event("duet:settings"))}
+      >
+        <Icon name="settings" />
+      </button>
     </div>
   );
 }
