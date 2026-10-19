@@ -143,6 +143,7 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   const tabs = getTabs();
   const [skills, setSkills] = useState(false);
   const [trash, setTrash] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; r: Recent } | null>(null);
   useEffect(() => {
     if (!menu) return;
@@ -180,41 +181,59 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   return (
     <div className="chathome">
       <aside className="chathome-projects">
-        <div className="chathome-nav">
-          <button className="chathome-item" onClick={() => void newProject()} disabled={!inTauri()}>
-            <Icon name="new-chat" size={16} /> New project
-          </button>
-          <label className="chathome-item chathome-search">
-            <Icon name="search" size={16} />
-            <input placeholder="Search projects" value={typed} onChange={(e) => setTyped(e.target.value)} />
-          </label>
-        </div>
-        <div className="chathome-label">Projects</div>
-        <div className="chathome-list">
-          {shown.map((r) => (
-            <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
-          ))}
-          {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
-        </div>
-        <div className="chathome-nav chathome-foot">
-          <button className={`chathome-item ${skills ? "on" : ""}`} onClick={() => {
-              setSkills(!skills);
-              setTrash(false);
-            }}>
-            <Icon name="skills" size={16} /> Skills
+        <nav className="chathome-rail">
+          <button className="rail-btn" title="New project" onClick={() => void newProject()} disabled={!inTauri()}>
+            <Icon name="new-chat" size={18} />
           </button>
           <button
-            className={`chathome-item ${trash ? "on" : ""}`}
+            className={`rail-btn ${searching ? "on" : ""}`}
+            title="Search projects"
+            onClick={() => {
+              setSearching(!searching);
+              setTyped("");
+            }}
+          >
+            <Icon name="search" size={18} />
+          </button>
+          <span className="rail-gap" />
+          <button
+            className={`rail-btn ${skills ? "on" : ""}`}
+            title="Skills"
+            onClick={() => {
+              setSkills(!skills);
+              setTrash(false);
+            }}
+          >
+            <Icon name="skills" size={18} />
+          </button>
+          <button
+            className={`rail-btn ${trash ? "on" : ""}`}
+            title="Trash"
             onClick={() => {
               setTrash(!trash);
               setSkills(false);
             }}
           >
-            <Icon name="trash" size={16} /> Trash
+            <Icon name="trash" size={18} />
           </button>
-          <button className="chathome-item" onClick={() => window.dispatchEvent(new Event("duet:settings"))}>
-            <Icon name="settings" size={16} /> Settings
+          <button className="rail-btn" title="Settings" onClick={() => window.dispatchEvent(new Event("duet:settings"))}>
+            <Icon name="settings" size={18} />
           </button>
+        </nav>
+        <div className="chathome-body">
+          {searching && (
+            <label className="chathome-search">
+              <Icon name="search" size={15} />
+              <input autoFocus placeholder="Search projects" value={typed} onChange={(e) => setTyped(e.target.value)} />
+            </label>
+          )}
+          <div className="chathome-label">Projects</div>
+          <div className="chathome-list">
+            {shown.map((r) => (
+              <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
+            ))}
+            {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
+          </div>
         </div>
       </aside>
       {menu && (

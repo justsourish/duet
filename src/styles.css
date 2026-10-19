@@ -671,8 +671,16 @@ button {
   display: inline-block;
   min-width: 78px;
 }
-.status.saved {
-  color: #4ade80;
+/* saved is a quiet note, not a bright signal */
+.status.saved::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  opacity: 0.55;
 }
 .status.error {
   color: #f87171;
@@ -4308,7 +4316,7 @@ button.agent-perm {
 .chathome {
   grid-area: chathome;
   display: grid;
-  grid-template-columns: 240px minmax(320px, 1fr) minmax(0, 1.4fr);
+  grid-template-columns: 276px minmax(320px, 1fr) minmax(0, 1.4fr);
   min-height: 0;
   min-width: 0;
 }
@@ -4473,9 +4481,62 @@ button.agent-perm {
 .chathome-search input::placeholder {
   color: var(--muted);
 }
-.chathome-foot {
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
+/* a thin strip of icons down the left, like the tools in Edit; the projects sit beside it */
+.chathome-projects {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr);
+  padding: 0 !important;
+  gap: 0 !important;
+}
+.chathome-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0;
+  border-right: 1px solid var(--line);
+}
+.rail-gap {
+  flex: 1;
+}
+.rail-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.rail-btn:hover,
+.rail-btn.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.chathome-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 10px 8px 0;
+}
+.chathome-body .chathome-label {
+  margin-top: 6px;
+}
+.chathome-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+/* in Chat the bottom bar only holds the early access note and Feedback, at the right */
+.hist.chat .hist-gap {
+  flex: 1;
 }
 .chathome-label {
   margin: 14px 10px 4px;

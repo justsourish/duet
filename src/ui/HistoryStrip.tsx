@@ -28,7 +28,8 @@ function getX(i: number, len: number): number {
 
 const timeText = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-export default function HistoryStrip() {
+/** The history along the bottom. In Chat it only carries the early access note and Feedback, at the right. */
+export default function HistoryStrip({ chat = false }: { chat?: boolean }) {
   const timeline = useStore((s) => s.timeline);
   const cursor = useStore((s) => s.cursor);
   const said = useChat((s) => s.messages);
@@ -84,14 +85,18 @@ export default function HistoryStrip() {
 
   const cutoff = Math.max(0, timeline.length - 40);
 
+  const about = (
+    <span className="hist-about">
+      <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
+      <button className="feedback-btn" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
+        Feedback
+      </button>
+    </span>
+  );
+
   return (
-    <footer className="hist">
-      <span className="hist-about">
-        <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
-        <button className="feedback-btn" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
-          Feedback
-        </button>
-      </span>
+    <footer className={`hist ${chat ? "chat" : ""}`}>
+      {!chat && about}
       <div className="hist-legend">
         {legendItems.map((item) => (
           <span key={item.name} className="hist-legend-item">
@@ -168,17 +173,21 @@ export default function HistoryStrip() {
         </div>
       </div>
 
-      <div className="hist-actions">
-        <button className="mini" disabled={cursor === 0} onClick={undo} title="Undo (Ctrl or Cmd Z)">
-          Undo
-        </button>
-        <button className="mini" disabled={cursor >= timeline.length - 1} onClick={redo} title="Redo (Shift Ctrl or Cmd Z)">
-          Redo
-        </button>
-        <button data-toggle="versions" className={`mini ${open ? "on" : ""}`} onClick={() => setOpen(!open)}>
-          Versions{versions.length ? ` (${versions.length})` : ""}
-        </button>
-      </div>
+      {chat && <span className="hist-gap" />}
+      {chat && about}
+      {!chat && (
+        <div className="hist-actions">
+          <button className="mini" disabled={cursor === 0} onClick={undo} title="Undo (Ctrl or Cmd Z)">
+            Undo
+          </button>
+          <button className="mini" disabled={cursor >= timeline.length - 1} onClick={redo} title="Redo (Shift Ctrl or Cmd Z)">
+            Redo
+          </button>
+          <button data-toggle="versions" className={`mini ${open ? "on" : ""}`} onClick={() => setOpen(!open)}>
+            Versions{versions.length ? ` (${versions.length})` : ""}
+          </button>
+        </div>
+      )}
 
       {tip && (
         <div className="tip" style={{ left: tip.x, top: tip.y - 10 }}>
