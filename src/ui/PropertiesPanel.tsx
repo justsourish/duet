@@ -249,7 +249,8 @@ function ColorField({ value, onCommit, none }: { value: string | null; onCommit:
       <input
         type="color"
         value={value && valid(value) && value.length >= 7 ? value.slice(0, 7) : "#000000"}
-        onChange={(e) => onCommit(e.target.value)}
+        // the system picker knows no see-through, so how see-through the colour was is kept
+        onChange={(e) => onCommit(e.target.value + (value && valid(value) && value.length === 9 ? value.slice(7) : ""))}
       />
       <input
         value={text}

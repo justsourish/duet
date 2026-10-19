@@ -1,6 +1,7 @@
 import { whoColour } from "../ai/colours";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useDismiss } from "./useDismiss";
+import { askFeedback } from "./Feedback";
 import { saveVersion } from "../project/project";
 import { useChat } from "../ai/chat";
 import { wordsBehind } from "../memory/steps";
@@ -85,6 +86,12 @@ export default function HistoryStrip() {
 
   return (
     <footer className="hist">
+      <span className="hist-about">
+        <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
+        <button className="feedback-btn" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
+          Feedback
+        </button>
+      </span>
       <div className="hist-legend">
         {legendItems.map((item) => (
           <span key={item.name} className="hist-legend-item">

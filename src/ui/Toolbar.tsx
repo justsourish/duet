@@ -7,7 +7,7 @@ import Icon from "./Icons";
 import type { IconName } from "./Icons";
 import { useLayout } from "./layout";
 
-/** The tools, in the top bar. The place never moves: Motion adds the cutting tools beside the drawing ones. */
+/** The tools, in a strip down the left edge. Motion adds the cutting tools below the drawing ones, so nothing else moves. */
 
 const TOOLS: { tool: Tool; label: string; key: string; icon: IconName }[] = [
   { tool: "move", label: "Move", key: "V", icon: "move" },

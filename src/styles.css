@@ -45,6 +45,12 @@
   box-sizing: border-box;
 }
 
+/* Thin, quiet scroll bars. Windows otherwise draws its own wide grey ones. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
 html,
 body,
 #root {
@@ -66,9 +72,9 @@ button {
 .app {
   display: grid;
   height: 100vh;
-  grid-template-columns: 232px 1fr 248px;
+  grid-template-columns: auto 232px 1fr 248px;
   grid-template-rows: var(--tabbar-h) 44px 1fr auto 48px;
-  grid-template-areas: "tabs tabs tabs" "top top top" "left canvas right" "time time time" "hist hist hist";
+  grid-template-areas: "tabs tabs tabs tabs" "top top top top" "tools left canvas right" "time time time time" "hist hist hist hist";
 }
 
 /* top bar */
@@ -405,15 +411,21 @@ button {
 
 /* the tools, in the top bar after the save state; Motion adds the cutting tools in the same row */
 .toolbar {
+  grid-area: tools;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 2px;
-  margin-left: 6px;
+  padding: 8px 6px;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
 }
 .tool-gap {
-  width: 1px;
-  height: 18px;
-  margin: 0 6px;
+  flex: none;
+  width: 18px;
+  height: 1px;
+  margin: 6px 0;
   background: var(--line);
 }
 .tool:disabled,
@@ -424,6 +436,7 @@ button {
   background: none;
 }
 .tool {
+  flex: none;
   width: 30px;
   height: 30px;
   display: grid;
@@ -2616,6 +2629,15 @@ button {
 }
 .ver-text.future {
   opacity: 0.45;
+}
+.hist-about {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.hist-about .early {
+  margin-left: 0;
 }
 .hist-legend {
   display: flex;

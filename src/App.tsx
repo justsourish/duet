@@ -24,7 +24,7 @@ import HistoryStrip from "./ui/HistoryStrip";
 import PresentView from "./ui/PresentView";
 import SendCopy from "./ui/SendCopy";
 import Update from "./ui/Update";
-import Feedback, { askFeedback } from "./ui/Feedback";
+import Feedback from "./ui/Feedback";
 import Settings from "./ui/Settings";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
@@ -174,8 +174,10 @@ export default function App() {
   const lw = dock.leftHidden ? 0 : dock.leftW;
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const appStyle = {
-    gridTemplateColumns: dock.swapped ? `${rw}px 1fr ${lw}px` : `${lw}px 1fr ${rw}px`,
-    gridTemplateAreas: dock.swapped ? '"tabs tabs tabs" "top top top" "right canvas left" "time time time" "hist hist hist"' : '"tabs tabs tabs" "top top top" "left canvas right" "time time time" "hist hist hist"',
+    gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
+    gridTemplateAreas: dock.swapped
+      ? '"tabs tabs tabs tabs" "top top top top" "tools right canvas left" "time time time time" "hist hist hist hist"'
+      : '"tabs tabs tabs tabs" "top top top top" "tools left canvas right" "time time time time" "hist hist hist hist"',
   };
 
   return (
@@ -188,16 +190,11 @@ export default function App() {
         <div className="top-side">
           <span className="logo">
             Du<b>et</b>
-            <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
-            <button className="feedback-btn" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
-              Feedback
-            </button>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
           </span>
           <span className={`status ${project.status}`} title={project.error ?? undefined}>
             {project.path ? STATUS[project.status] : "Not saved yet"}
           </span>
-          <Toolbar />
         </div>
         <div className="pill mode-switch">
           <button
@@ -257,6 +254,7 @@ export default function App() {
           </div>
         </div>
       </header>
+      <Toolbar />
       {!dock.leftHidden && <LayersPanel />}
       <main className="canvas">
         <CanvasView />
