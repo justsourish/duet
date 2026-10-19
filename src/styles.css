@@ -4403,6 +4403,9 @@ button.agent-perm {
   height: 100%;
   max-height: none;
   box-shadow: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 .chat.docked .csize {
   display: none;
@@ -4412,4 +4415,66 @@ button.agent-perm {
 }
 .canvas.viewonly canvas {
   cursor: grab;
+}
+
+.chathome-projects {
+  padding: 10px 8px;
+  gap: 4px;
+}
+.chathome-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.chathome-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.chathome-item:hover,
+.chathome-item.on {
+  background: var(--panel-2);
+}
+.chathome-item svg {
+  color: var(--muted);
+  flex: none;
+}
+.chathome-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13.5px;
+}
+.chathome-search input::placeholder {
+  color: var(--muted);
+}
+.chathome-label {
+  margin: 14px 10px 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.chathome-skills {
+  height: 100%;
+  overflow-y: auto;
+  padding: 4px 12px;
+}
+.chathome-skills-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
 }

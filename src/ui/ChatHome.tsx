@@ -4,6 +4,8 @@ import type { Recent } from "../project/project";
 import { getRecents, inTauri, newProject, openProjectAt } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
 import ChatPanel from "./ChatPanel";
+import Icon from "./Icons";
+import SkillsPanel from "./SkillsPanel";
 import { ago, usePreview } from "./Home";
 
 /** Projects that match what was typed, newest first as they are kept. */
@@ -36,6 +38,7 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   // read again whenever the open project changes, since opening one moves it to the top of the list
   const recents = useMemo(() => getRecents(), [current.file, current.name]);
   const [typed, setTyped] = useState("");
+  const [skills, setSkills] = useState(false);
   // the canvas shows the whole design here, and the view goes back to where it was when you return to Edit
   useEffect(() => {
     const before = getState().viewport;
@@ -50,13 +53,22 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
   return (
     <div className="chathome">
       <aside className="chathome-projects">
-        <div className="chathome-head">
-          <b>Projects</b>
-          <button className="pill primary" onClick={() => void newProject()} disabled={!inTauri()}>
-            New
+        <div className="chathome-nav">
+          <button className="chathome-item" onClick={() => void newProject()} disabled={!inTauri()}>
+            <Icon name="new-chat" size={16} /> New project
+          </button>
+          <label className="chathome-item chathome-search">
+            <Icon name="search" size={16} />
+            <input placeholder="Search projects" value={typed} onChange={(e) => setTyped(e.target.value)} />
+          </label>
+          <button className={`chathome-item ${skills ? "on" : ""}`} onClick={() => setSkills(!skills)}>
+            <Icon name="skills" size={16} /> Skills
+          </button>
+          <button className="chathome-item" onClick={() => window.dispatchEvent(new Event("duet:settings"))}>
+            <Icon name="settings" size={16} /> Settings
           </button>
         </div>
-        <input className="chathome-find" placeholder="Find a project" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        <div className="chathome-label">Projects</div>
         <div className="chathome-list">
           {shown.map((r) => (
             <ProjectRow key={r.path} r={r} on={r.path === current.file} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} />
@@ -65,7 +77,19 @@ export default function ChatHome({ onEdit }: { onEdit: () => void }) {
         </div>
       </aside>
       <section className="chathome-chat">
-        <ChatPanel docked />
+        {skills ? (
+          <div className="chathome-skills">
+            <div className="chathome-skills-head">
+              <b>Skills</b>
+              <button className="pill" onClick={() => setSkills(false)}>
+                Back to chat
+              </button>
+            </div>
+            <SkillsPanel />
+          </div>
+        ) : (
+          <ChatPanel docked />
+        )}
       </section>
       <main className="canvas viewonly" onDoubleClick={onEdit} title="Double-click to work on it in Edit">
         <CanvasView viewOnly />
