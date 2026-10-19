@@ -180,14 +180,17 @@ export default function App() {
         <Tabs home={home} setHome={setHome} />
       </div>
       <header className="top">
-        <span className="logo">
-          Du<b>et</b>
-          <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
-          {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
-        </span>
-        <span className={`status ${project.status}`} title={project.error ?? undefined}>
-          {project.path ? STATUS[project.status] : "Not saved yet"}
-        </span>
+        <div className="top-side">
+          <span className="logo">
+            Du<b>et</b>
+            <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
+            {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
+          </span>
+          <span className={`status ${project.status}`} title={project.error ?? undefined}>
+            {project.path ? STATUS[project.status] : "Not saved yet"}
+          </span>
+          <Toolbar />
+        </div>
         <div className="pill mode-switch">
           <button
             className={dock.mode === "design" ? "active" : ""}
@@ -204,38 +207,39 @@ export default function App() {
             Motion
           </button>
         </div>
-        <span className="spacer" />
-        {dock.mode !== "motion" && (
-          <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
-            Present
-          </button>
-        )}
-        <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
-          <Icon name="panel-left" size={15} />
-        </button>
-        <button className={`pill icon ${dock.rightHidden ? "" : "on"}`} title="Show or hide the design panel" onClick={() => setLayout({ rightHidden: !dock.rightHidden })}>
-          <Icon name="panel-right" size={15} />
-        </button>
-        <ExportMenu />
-        <div className="zoomwrap zoomonly">
-          <button className="pill" onClick={() => setZoomMenu(!zoomMenu)} title="Zoom">
-            {Math.round(zoom * 100)}%
-          </button>
-          {zoomMenu && (
-            <div className="zmenu" onClick={() => setZoomMenu(false)}>
-              <div onClick={() => window.dispatchEvent(new Event("duet:fit"))}>
-                Fit everything <kbd>Shift 1</kbd>
-              </div>
-              <div onClick={() => window.dispatchEvent(new CustomEvent("duet:fit-selection"))}>
-                Zoom to selection <kbd>Shift 2</kbd>
-              </div>
-              {[0.5, 1, 2].map((z) => (
-                <div key={z} onClick={() => window.dispatchEvent(new CustomEvent("duet:zoom", { detail: z }))}>
-                  {z * 100}%
-                </div>
-              ))}
-            </div>
+        <div className="top-side end">
+          {dock.mode !== "motion" && (
+            <button className="pill" disabled={!hasFrames} onClick={() => setPresenting(true)} title="Click through your screens (Cmd or Ctrl Enter)">
+              Present
+            </button>
           )}
+          <button className={`pill icon ${dock.leftHidden ? "" : "on"}`} title="Show or hide the layers panel" onClick={() => setLayout({ leftHidden: !dock.leftHidden })}>
+            <Icon name="panel-left" size={15} />
+          </button>
+          <button className={`pill icon ${dock.rightHidden ? "" : "on"}`} title="Show or hide the design panel" onClick={() => setLayout({ rightHidden: !dock.rightHidden })}>
+            <Icon name="panel-right" size={15} />
+          </button>
+          <ExportMenu />
+          <div className="zoomwrap zoomonly">
+            <button className="pill" onClick={() => setZoomMenu(!zoomMenu)} title="Zoom">
+              {Math.round(zoom * 100)}%
+            </button>
+            {zoomMenu && (
+              <div className="zmenu" onClick={() => setZoomMenu(false)}>
+                <div onClick={() => window.dispatchEvent(new Event("duet:fit"))}>
+                  Fit everything <kbd>Shift 1</kbd>
+                </div>
+                <div onClick={() => window.dispatchEvent(new CustomEvent("duet:fit-selection"))}>
+                  Zoom to selection <kbd>Shift 2</kbd>
+                </div>
+                {[0.5, 1, 2].map((z) => (
+                  <div key={z} onClick={() => window.dispatchEvent(new CustomEvent("duet:zoom", { detail: z }))}>
+                    {z * 100}%
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </header>
       {!dock.leftHidden && <LayersPanel />}
@@ -243,7 +247,6 @@ export default function App() {
         <CanvasView />
         <Grip side="l" />
         <Grip side="r" />
-        <Toolbar />
         <ChatPanel />
       </main>
       {!dock.rightHidden && <PropertiesPanel />}

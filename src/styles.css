@@ -47,12 +47,27 @@ button {
 .top {
   position: relative;
   grid-area: top;
-  display: flex;
+  /* the two sides, with the mode switch kept in the middle while there is room for it */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
   gap: 12px;
   padding: 0 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+}
+.top-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.top-side.end {
+  justify-content: flex-end;
+}
+.top > .mode-switch.pill {
+  position: static;
+  transform: none;
 }
 .logo {
   font-weight: 700;
@@ -343,22 +358,29 @@ button {
   -webkit-user-select: text;
 }
 
+/* the tools, in the top bar after the save state; Motion adds the cutting tools in the same row */
 .toolbar {
-  position: absolute;
-  left: 14px;
-  top: 14px;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+}
+.tool-gap {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--line);
+}
+.tool:disabled,
+.tool:disabled:hover {
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: default;
+  background: none;
 }
 .tool {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border: 0;

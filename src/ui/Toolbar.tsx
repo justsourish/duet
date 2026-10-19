@@ -1,8 +1,13 @@
 import { setTool, useStore } from "../state/store";
 import type { Tool } from "../state/store";
 import { pickImages } from "../project/imageImport";
+import { cutNow } from "../video/edit";
+import type { CutKind } from "../video/edit";
 import Icon from "./Icons";
 import type { IconName } from "./Icons";
+import { useLayout } from "./layout";
+
+/** The tools, in the top bar. The place never moves: Motion adds the cutting tools beside the drawing ones. */
 
 const TOOLS: { tool: Tool; label: string; key: string; icon: IconName }[] = [
   { tool: "move", label: "Move", key: "V", icon: "move" },
@@ -15,10 +20,19 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: IconName }[] = [
   { tool: "zoom", label: "Zoom", key: "Z", icon: "zoom" },
 ];
 
+const CUTS: { kind: CutKind; label: string; key: string; icon: IconName }[] = [
+  { kind: "split", label: "Cut here", key: "S", icon: "cut-here" },
+  { kind: "remove", label: "Delete and close the gap", key: "D", icon: "cut-close" },
+  { kind: "before", label: "Cut away what comes before", key: "Q", icon: "cut-before" },
+  { kind: "after", label: "Cut away what comes after", key: "W", icon: "cut-after" },
+];
+
 export default function Toolbar() {
   const tool = useStore((s) => s.tool);
+  const scene = useStore((s) => s.clock.scene);
+  const motion = useLayout((d) => d.mode === "motion");
   return (
-    <div className="toolbar">
+    <div className="toolbar" data-name="toolbar">
       {TOOLS.map((t) => (
         <button
           key={t.tool}
@@ -32,6 +46,23 @@ export default function Toolbar() {
       <button className="tool" title="Image (Shift Cmd K)" onClick={() => void pickImages()}>
         <Icon name="image" />
       </button>
+      {motion && (
+        <>
+          <span className="tool-gap" />
+          {CUTS.map((c) => (
+            <button
+              key={c.kind}
+              className="tool"
+              data-name={`cut-${c.kind}`}
+              disabled={!scene}
+              title={scene ? `${c.label} (${c.key})` : `${c.label}. Select a scene first`}
+              onClick={() => cutNow(c.kind)}
+            >
+              <Icon name={c.icon} />
+            </button>
+          ))}
+        </>
+      )}
     </div>
   );
 }

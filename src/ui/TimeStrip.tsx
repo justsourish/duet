@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { cuttable, newId, runCommand } from "../commands";
+import { runCommand } from "../commands";
 import { KEY_GROUPS, spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, Moving } from "../document/types";
-import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, getState, restoreDoc, select, useStore } from "../state/store";
+import { currentDoc, dispatch, dragBase, dragCommit, dragPreview, dragPreviewDoc, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
+import { cutNow } from "../video/edit";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
 import { setKeyFocus } from "./keyFocus";
 import { QUALITIES, SIZES, addClips, addSounds, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
@@ -134,31 +135,7 @@ export default function TimeStrip() {
       if (k === " ") return e.repeat ? undefined : togglePlay();
       if (k === "l") return play();
       if (k === "k") return pause();
-      const s = getState();
-      const now = currentDoc(s);
-      const t = s.clock.t;
-      const mine = s.selection.filter((id) => now.elements[id]?.parentId === sceneId);
-      // what is selected is cut, and with nothing selected under the playhead, everything there is
-      let under = cuttable(now, sceneId, t, mine.length ? mine : undefined);
-      if (!under.length) under = cuttable(now, sceneId, t);
-      if (k === "s") {
-        if (under.length) dispatch("split_at", { sceneId, t, ids: under });
-        return;
-      }
-      if (k === "d") {
-        if (mine.length) dispatch("ripple_delete", { ids: mine });
-        return;
-      }
-      if (!under.length) return;
-      // Q takes away what comes before the playhead, W what comes after, and the gap closes
-      const newIds = Object.fromEntries(under.map((id) => [id, newId(now.elements[id].type)]));
-      const cut = runCommand(now, "split_at", { sceneId, t, ids: under, newIds });
-      const out = runCommand(cut, "ripple_delete", { ids: k === "q" ? under : Object.values(newIds) });
-      restoreDoc(out, k === "q" ? "Cut away what comes before" : "Cut away what comes after");
-      if (k === "q") {
-        seek(Math.min(...under.map((id) => now.elements[id].start)));
-        select(Object.values(newIds));
-      }
+      cutNow(k === "s" ? "split" : k === "d" ? "remove" : k === "q" ? "before" : "after");
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
