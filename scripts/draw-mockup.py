@@ -6,10 +6,12 @@ The spec is a few lines of Python that call frame, box, dot and text. Duet dev m
 (scripts/dev-duet.sh) and set to Auto. Mockups are kept in scratch/mockups/.
 """
 import json, os, re, sys, urllib.request
+# its own name, not an AI tool's: Duet ties each AI tool to the project it last worked in, which may be closed by now
+client = "mockup-script"
 s = json.load(open(os.path.expanduser("~/.duet-dev/session.json")))
 def call(name, args=None):
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args or {}}}
-    req = urllib.request.Request(f"http://127.0.0.1:{s['port']}/mcp", json.dumps(body).encode(), {"Authorization": f"Bearer {s['token']}", "Content-Type": "application/json", "X-Duet-Client": "claude-code"})
+    req = urllib.request.Request(f"http://127.0.0.1:{s['port']}/mcp", json.dumps(body).encode(), {"Authorization": f"Bearer {s['token']}", "Content-Type": "application/json", "X-Duet-Client": client})
     r = json.load(urllib.request.urlopen(req, timeout=30))["result"]
     text = "\n".join(c.get("text", "") for c in r["content"])
     if r.get("isError"): print("ERROR", name, json.dumps(args)[:120], "->", text[:160])
