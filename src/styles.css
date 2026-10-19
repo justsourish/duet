@@ -4792,6 +4792,19 @@ button.agent-perm {
   color: var(--muted);
   border: 1px solid var(--line);
 }
+/* side by side with a little air, not stacked */
+.chat.docked .members-cluster {
+  gap: 5px;
+}
+.chat.docked .member-badge + .member-badge {
+  margin-left: 0;
+}
+/* the one who answers next wears its own colour as a thin outline, no heavy ring */
+.chat.docked .member-badge.answers-ring {
+  box-shadow: none;
+  color: var(--who);
+  border-color: var(--who);
+}
 /* the one that is answering lights up in its own colour */
 .chat.docked .member-badge.answering {
   background: var(--who) !important;
