@@ -123,6 +123,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const running = useChat((s) => s.running);
   const folded = useChat((s) => s.minimized);
   const minimized = folded && !docked;
+  const isEmpty = docked && messages.length === 0;
   const found = useChat((s) => s.agentFound);
   const agent = useChat((s) => s.agent);
   const installed = useChat((s) => s.installed);
@@ -239,7 +240,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
       const body = list.current;
       if (!body) return;
       let rest = el.offsetHeight - el.clientHeight; // the border
-      for (const c of Array.from(el.children) as HTMLElement[]) if (c !== body && !c.classList.contains("csize")) rest += c.offsetHeight;
+      for (const c of Array.from(el.children) as HTMLElement[]) if (c !== body && !c.classList.contains("csize") && !c.classList.contains("chat-start-spacer")) rest += c.offsetHeight;
       // hanging from the top it must stop above the bottom edge; sitting on the bottom it may reach up to the top
       const space = docked ? parent.clientHeight : hangs ? parent.clientHeight - el.offsetTop - 16 : parent.clientHeight - 32;
       const next = Math.max(48, Math.floor(space - rest));
@@ -543,7 +544,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   return (
     <div
       ref={box}
-      className={`chat ${docked ? "docked" : ""} ${minimized ? "min" : ""} ${moving ? "moving free" : sizing?.x !== undefined ? "free" : "corner" in place ? `c-${place.corner}` : "free"}`}
+      className={`chat ${docked ? "docked" : ""} ${isEmpty ? "is-empty" : ""} ${minimized ? "min" : ""} ${moving ? "moving free" : sizing?.x !== undefined ? "free" : "corner" in place ? `c-${place.corner}` : "free"}`}
       style={{
         ...(moving
           ? { left: moving.x, top: moving.y }
@@ -891,7 +892,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 Install {AGENTS.filter((a) => a.runnable).map((a) => `${a.name} from ${a.install}`).join(" or ")}, sign in once, then reopen Duet.
               </div>
             )}
-            {messages.length === 0 && found !== false && (
+            {!docked && messages.length === 0 && found !== false && (
               <div className="m greeting">
                 <span className="member-badge" style={{ backgroundColor: agentColour(toolName) }}>
                   {chatToolLetter}
@@ -1050,13 +1051,19 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
             )}
           </div>
 
-          {messages.length === 0 && found !== false && (
+          {!docked && messages.length === 0 && found !== false && (
             <div className="chips">
               {IDEAS.map((i) => (
                 <span key={i.label} className="chip" onClick={() => send(i.ask)}>
                   {i.label}
                 </span>
               ))}
+            </div>
+          )}
+
+          {docked && found !== false && (
+            <div className="chat-start-title" aria-hidden={!isEmpty}>
+              What shall we make?
             </div>
           )}
 
@@ -1073,8 +1080,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               {pictureNote && <em>{pictureNote}</em>}
             </div>
           )}
-          {projectName && <div className="working-on" title="The AI works on the project that is open here.">Working on: {projectName}</div>}
-          {focusNames.length > 0 && (
+          {projectName && (!docked || !isEmpty) && <div className="working-on" title="The AI works on the project that is open here.">Working on: {projectName}</div>}
+          {focusNames.length > 0 && (!docked || !isEmpty) && (
             <div className="focus-chip" title="The AI is told to work here. Nothing else is blocked. Press Tab on the canvas to change it.">
               <span>AI focus: {focusNames.slice(0, 3).join(", ")}{focusNames.length > 3 ? ` and ${focusNames.length - 3} more` : ""}</span>
               <button aria-label="Clear focus" onClick={() => setFocus([])}>×</button>
@@ -1291,6 +1298,16 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               </button>
             )}
           </div>
+          {docked && found !== false && (
+            <div className="chips chat-start-chips" aria-hidden={!isEmpty}>
+              {IDEAS.map((i) => (
+                <span key={i.label} className="chip" onClick={() => send(i.ask)}>
+                  {i.label}
+                </span>
+              ))}
+            </div>
+          )}
+          {docked && <div className="chat-start-spacer" />}
         </>
       )}
     </div>
