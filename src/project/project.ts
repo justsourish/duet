@@ -610,7 +610,7 @@ async function newProjectDialog() {
     });
     if (!go) return;
   }
-  // no Save window: a new project starts at once in Documents/Duet, named "Untitled", and can be renamed later
+  // no Save window: a new project starts at once in Documents/Duet, named "Untitled"
   const picked = await untitledPath().catch(() => null);
   if (!picked) return void (await oops("Duet could not find a place to keep the new project."));
   if (!getState().project.file && !(await readyToLeave())) return;
