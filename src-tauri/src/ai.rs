@@ -225,7 +225,7 @@ fn shell_command(program: &str, args: &[String]) -> Command {
 
 #[cfg(windows)]
 fn shell_command(program: &str, args: &[String]) -> Command {
-    let mut c = Command::new("cmd");
+    let mut c = crate::quiet_command("cmd");
     c.arg("/C").arg(program).args(args);
     c
 }
@@ -349,7 +349,7 @@ pub fn agent_available(program: String) -> bool {
     }
     #[cfg(windows)]
     {
-        Command::new("where")
+        crate::quiet_command("where")
             .arg(&program)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -546,7 +546,7 @@ fn open_for_ai() {
         let _ = Command::new("open").arg("-g").arg("-a").arg(bundle).args(["--args", crate::keepalive::BACKGROUND_ARG]).spawn();
         return;
     }
-    let mut cmd = Command::new(exe);
+    let mut cmd = crate::quiet_command(exe);
     cmd.arg(crate::keepalive::BACKGROUND_ARG);
     // Duet dev is found and closed by this word (scripts/dev-duet.sh)
     if std::env::var_os("DUET_DEV").is_some() {

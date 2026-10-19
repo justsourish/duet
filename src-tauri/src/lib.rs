@@ -87,6 +87,20 @@ pub fn duet_dir_name() -> &'static str {
     }
 }
 
+/// A program Duet starts in the background. On Windows every console program gets a black window
+/// of its own unless told not to, so the agent, its checks and ffmpeg would flash one each time.
+pub fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut c = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    c
+}
+
 #[tauri::command]
 fn check_copy() -> bool {
     is_check_copy()

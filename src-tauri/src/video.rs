@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Mutex;
 
 /// Where a tool such as ffmpeg lives. An app started from the Dock does not get the folders a terminal knows.
@@ -29,7 +29,7 @@ fn h264(quality: u32) -> Vec<String> {
     static HAS_X264: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     let x264 = *HAS_X264.get_or_init(|| {
         find("ffmpeg")
-            .and_then(|f| Command::new(f).args(["-hide_banner", "-encoders"]).output().ok())
+            .and_then(|f| crate::quiet_command(f).args(["-hide_banner", "-encoders"]).output().ok())
             .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains("libx264"))
     });
     let crf = quality.clamp(10, 34);
@@ -71,7 +71,7 @@ fn probe(path: &str) -> Result<VideoInfo, String> {
 /// Duet, so this stands in for a separate probing tool.
 fn describe(path: &str) -> Result<String, String> {
     let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
-    let out = Command::new(ffmpeg).args(["-hide_banner", "-i", path]).output().map_err(|e| e.to_string())?;
+    let out = crate::quiet_command(ffmpeg).args(["-hide_banner", "-i", path]).output().map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&out.stderr).to_string();
     if !text.contains("Stream #") {
         return Err("That file could not be read as a video.".into());
@@ -169,7 +169,7 @@ pub async fn video_export(clips: Vec<Clip>, width: u32, height: u32, out: String
             let sound = probe(&clip.path)?.sound;
             with_sound.push((clip, sound));
         }
-        let done = Command::new(ffmpeg).args(join_args(&with_sound, width, height, &out)).output().map_err(|e| e.to_string())?;
+        let done = crate::quiet_command(ffmpeg).args(join_args(&with_sound, width, height, &out)).output().map_err(|e| e.to_string())?;
         if done.status.success() {
             return Ok(());
         }
@@ -294,7 +294,7 @@ pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, quality: Op
                 heard.push(s);
             }
         }
-        let child = Command::new(ffmpeg)
+        let child = crate::quiet_command(ffmpeg)
             .args(scene_args(fps.clamp(1, 120), seconds, quality.unwrap_or(18), &heard, &out))
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -429,7 +429,7 @@ pub fn clip_preview(path: String) -> Result<String, String> {
     } else {
         &["-c:v", "libx264", "-preset", "veryfast", "-crf", "26"]
     };
-    let status = Command::new(&ffmpeg)
+    let status = crate::quiet_command(&ffmpeg)
         .args(["-y", "-v", "error", "-i", &path, "-vf", "scale=w=min(1280\\,iw):h=min(1280\\,ih):force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2", "-g", "12", "-pix_fmt", "yuv420p"])
         .args(encoder)
         .args(["-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"])
