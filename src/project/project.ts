@@ -610,6 +610,8 @@ async function newProjectDialog() {
     });
     if (!go) return;
   }
+  // an Untitled project nobody has touched is the new project already; making another would only pile up empty files
+  if (/^Untitled( \d+)?$/.test(s.project.name) && s.timeline.length <= 1 && s.project.file) return;
   // no Save window: a new project starts at once in Documents/Duet, named "Untitled"
   const picked = await untitledPath().catch(() => null);
   if (!picked) return void (await oops("Duet could not find a place to keep the new project."));

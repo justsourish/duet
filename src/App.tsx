@@ -13,7 +13,6 @@ import ContextMenu from "./ui/ContextMenu";
 import { installMenu } from "./ui/menu";
 import { clampW, getLayout, setLayout, useLayout } from "./ui/layout";
 import Icon from "./ui/Icons";
-import Home from "./ui/Home";
 import ChatHome from "./ui/ChatHome";
 import VideoCut from "./ui/VideoCut";
 import TimeStrip from "./ui/TimeStrip";
@@ -73,7 +72,9 @@ export default function App() {
   const [zoomMenu, setZoomMenu] = useState(false);
   useDismiss(zoomMenu, () => setZoomMenu(false), ".zoomwrap.zoomonly");
   const [presenting, setPresenting] = useState(false);
-  const [home, setHome] = useState(false);
+  // there is no separate home any more: Chat is where your projects are
+  const home = false;
+  const setHome = (on: boolean) => on && setLayout({ space: "chat" });
   const [videoCut, setVideoCut] = useState(false);
   const [sending, setSending] = useState(false);
   const [settings, setSettings] = useState(false);
@@ -86,7 +87,6 @@ export default function App() {
     // every launch starts at your projects; the last one is a click away ("Back to ...")
     void restoreLast().then(() => {
       if (isCheckCopy()) return setCheck(true);
-      if (inTauri()) setHome(true);
     });
     const stops: (() => void)[] = [];
     let alive = true;
@@ -112,7 +112,7 @@ export default function App() {
       startAgentListeners().then((f) => (alive ? stops.push(f) : f()));
     }
     // the menu bar and other parts of the app ask for these
-    const openHome = () => setHome(true);
+    const openHome = () => setLayout({ space: "chat" });
     const openPresent = () => setPresenting(true);
     const openSend = () => setSending(true);
     const openSettings = () => setSettings(true);
@@ -288,7 +288,6 @@ export default function App() {
       <HistoryStrip />
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />
-      {home && <Home onClose={() => setHome(false)} />}
       {videoCut && <VideoCut onClose={() => setVideoCut(false)} />}
       {sending && <SendCopy onClose={() => setSending(false)} />}
       <Update />

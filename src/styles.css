@@ -4478,3 +4478,22 @@ button.agent-perm {
   justify-content: space-between;
   margin-bottom: 8px;
 }
+.chathome-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.chathome-menu div {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: default;
+}
+.chathome-menu div:hover {
+  background: var(--panel-2);
+}

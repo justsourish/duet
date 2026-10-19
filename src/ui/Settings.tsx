@@ -44,11 +44,10 @@ export default function Settings({ check = false, onClose }: SettingsProps) {
   return (
     <div className="settings-screen" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <header className="settings-bar">
-        <span className="settings-title">Settings</span>
-        <span className="spacer" />
-        <button className="pill" onClick={onClose} title="Close">
-          Close
+        <button className="pill" onClick={onClose} title="Back (Esc)">
+          ← Back
         </button>
+        <span className="settings-title">Settings</span>
       </header>
       <main className="settings-main">
         <aside className="settings-left">
