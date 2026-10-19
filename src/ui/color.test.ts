@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyColorPreservingOpacity, colorHex, colorOpacity, withOpacity } from "./color";
+import { applyColorPreservingOpacity, colorHex, colorOpacity, docColors, hexToHsva, hsvaToHex, withOpacity } from "./color";
 
 describe("color helpers for fill and stroke opacity", () => {
   describe("colorHex", () => {
@@ -84,5 +84,35 @@ describe("color helpers for fill and stroke opacity", () => {
     it("adopts explicitly typed 8-digit hex alpha", () => {
       expect(applyColorPreservingOpacity("#00ff0080", "#ff000066")).toBe("#00ff0080");
     });
+  });
+});
+
+describe("the colour picker's colour model", () => {
+  it("goes to hue, saturation and brightness and back unchanged", () => {
+    for (const c of ["#000000", "#ffffff", "#ff0000", "#7c5cff", "#35c9b5", "#12345680"]) {
+      expect(hsvaToHex(hexToHsva(c))).toBe(c);
+    }
+  });
+
+  it("reads pure red as hue 0, full saturation and brightness", () => {
+    expect(hexToHsva("#ff0000")).toEqual({ h: 0, s: 1, v: 1, a: 1 });
+  });
+
+  it("falls back to solid black for something that is not a colour", () => {
+    expect(hexToHsva("nope")).toEqual({ h: 0, s: 0, v: 0, a: 1 });
+  });
+});
+
+describe("docColors", () => {
+  it("lists the colours a design uses, most used first, without see-through or repeats", () => {
+    const doc = {
+      background: "#141417",
+      elements: {
+        a: { fill: "#FF0000", stroke: null },
+        b: { fill: "#ff000080", stroke: "#00ff00" },
+        c: { fill: "#0000ff", stroke: null, gradient: { from: "#ff0000", to: "#ffffff" } },
+      },
+    };
+    expect(docColors(doc)).toEqual(["#ff0000", "#00ff00", "#0000ff", "#ffffff", "#141417"]);
   });
 });

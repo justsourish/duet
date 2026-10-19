@@ -12,7 +12,8 @@ import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
 import ColorPanel from "./ColorPanel";
 import FontPicker from "./FontPicker";
-import { applyColorPreservingOpacity, colorHex, colorOpacity, withOpacity } from "./color";
+import { ColorField } from "./ColorPicker";
+import { colorOpacity, withOpacity } from "./color";
 
 function NumField({
   label,
@@ -238,36 +239,6 @@ function keyMark(el: El, props: Moving[], t: number, name = KEY_NAMES[props[0]])
     state: here ? "here" : moving ? "animated" : "none",
     toggle: () => dispatch(here ? "remove_key" : "key_now", { ids: [el.id], props, t }),
   };
-}
-
-function ColorField({ value, onCommit, none }: { value: string | null; onCommit: (c: string | null) => void; none?: boolean }) {
-  const [text, setText] = useState(value ?? "");
-  useEffect(() => setText(value ?? ""), [value]);
-  const valid = (v: string) => /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v);
-  return (
-    <div className="f color">
-      <input
-        type="color"
-        value={value && valid(value) && value.length >= 7 ? value.slice(0, 7) : "#000000"}
-        // the system picker knows no see-through, so how see-through the colour was is kept
-        onChange={(e) => onCommit(e.target.value + (value && valid(value) && value.length === 9 ? value.slice(7) : ""))}
-      />
-      <input
-        value={text}
-        placeholder={none ? "None" : ""}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => {
-          if (text === "" && none) onCommit(null);
-          else if (valid(text)) onCommit(text);
-          else setText(value ?? "");
-        }}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
-      />
-    </div>
-  );
 }
 
 function Seg<T extends string>({ value, options, onPick }: { value: T; options: [T, string][]; onPick: (v: T) => void }) {
@@ -702,15 +673,15 @@ export default function PropertiesPanel() {
           )}
           {first.gradient && !allText ? (
             <>
-              <ColorField value={first.gradient.from} onCommit={(c) => c && set({ gradient: { ...first.gradient!, from: c } }, "Change gradient")} />
+              <ColorField value={first.gradient.from} onCommit={(c) => c && set({ gradient: { ...first.gradient!, from: c } }, "Change gradient")} onPreview={(c) => preview({ gradient: { ...first.gradient!, from: c } })} />
               <div className="gap" />
-              <ColorField value={first.gradient.to} onCommit={(c) => c && set({ gradient: { ...first.gradient!, to: c } }, "Change gradient")} />
+              <ColorField value={first.gradient.to} onCommit={(c) => c && set({ gradient: { ...first.gradient!, to: c } }, "Change gradient")} onPreview={(c) => preview({ gradient: { ...first.gradient!, to: c } })} />
               <div className="gap" />
               <NumField label="Angle" value={first.gradient.angle} onCommit={(n) => set({ gradient: { ...first.gradient!, angle: n } }, "Change gradient angle")} onDrag={(n) => preview({ gradient: { ...first.gradient!, angle: n } })} />
             </>
           ) : (
             <div className="field">
-              <ColorField value={colorHex(first.fill)} onCommit={(c) => c && set({ fill: applyColorPreservingOpacity(c, first.fill) }, "Change fill")} />
+              <ColorField value={first.fill} onCommit={(c) => c && set({ fill: c }, "Change fill")} onPreview={(c) => preview({ fill: c })} />
               <NumField
                 label="%"
                 value={colorOpacity(first.fill)}
@@ -729,8 +700,9 @@ export default function PropertiesPanel() {
           <div className="field">
             <ColorField
               none
-              value={first.stroke ? colorHex(first.stroke) : null}
-              onCommit={(c) => set({ stroke: c ? applyColorPreservingOpacity(c, first.stroke) : null }, "Change stroke")}
+              value={first.stroke}
+              onCommit={(c) => set({ stroke: c }, "Change stroke")}
+              onPreview={(c) => preview({ stroke: c })}
             />
             <NumField
               label="%"
@@ -772,7 +744,7 @@ export default function PropertiesPanel() {
                 <NumField label="Blur" value={first.shadow.blur} min={0} onCommit={(n) => set({ shadow: { ...first.shadow!, blur: n } }, "Change shadow")} onDrag={(n) => preview({ shadow: { ...first.shadow!, blur: n } })} />
               </div>
               <div className="gap" />
-              <ColorField value={first.shadow.color} onCommit={(c) => c && set({ shadow: { ...first.shadow!, color: c } }, "Change shadow")} />
+              <ColorField value={first.shadow.color} onCommit={(c) => c && set({ shadow: { ...first.shadow!, color: c } }, "Change shadow")} onPreview={(c) => preview({ shadow: { ...first.shadow!, color: c } })} />
               <div className="gap" />
               <div className="linkbtn" onClick={() => set({ shadow: null }, "Remove shadow")}>
                 Remove shadow
