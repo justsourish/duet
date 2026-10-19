@@ -227,7 +227,57 @@ fn shell_command(program: &str, args: &[String]) -> Command {
 fn shell_command(program: &str, args: &[String]) -> Command {
     let mut c = crate::quiet_command("cmd");
     c.arg("/C").arg(program).args(args);
+    c.env("PATH", windows_path());
     c
+}
+
+/// The folders Windows searches for programs, as they are now. Duet's own copy is taken when it
+/// starts, so a tool installed after that (or by an installer that ran Duet) would stay missing.
+#[cfg(windows)]
+fn windows_path() -> std::ffi::OsString {
+    let mut parts: Vec<String> = Vec::new();
+    for key in [r"HKCU\Environment", r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"] {
+        let Ok(out) = crate::quiet_command("reg").args(["query", key, "/v", "Path"]).stdin(Stdio::null()).output() else { continue };
+        let text = String::from_utf8_lossy(&out.stdout);
+        // a line reads "    Path    REG_EXPAND_SZ    C:\...;C:\..."
+        let Some(value) = text.lines().find_map(|l| l.split_once("REG_EXPAND_SZ").or_else(|| l.split_once("REG_SZ")).map(|(_, v)| v.trim().to_string())) else { continue };
+        parts.push(expand_windows_vars(&value));
+    }
+    if let Some(now) = std::env::var_os("PATH") {
+        parts.push(now.to_string_lossy().to_string());
+    }
+    parts.join(";").into()
+}
+
+/// Fill in %NAME% from the environment, as Windows does for the PATH it keeps.
+#[cfg(any(windows, test))]
+fn expand_windows_vars(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        match after.find('%') {
+            Some(end) => {
+                let name = &after[..end];
+                match std::env::var(name) {
+                    Ok(v) if !name.is_empty() => out.push_str(&v),
+                    _ => {
+                        out.push('%');
+                        out.push_str(name);
+                        out.push('%');
+                    }
+                }
+                rest = &after[end + 1..];
+            }
+            None => {
+                out.push_str(&rest[start..]);
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// On Mac and Linux the agent runs in a session of its own. Everything it starts, such as the MCP
@@ -268,7 +318,11 @@ fn supported(program: &str) -> bool {
 /// from inside an app can stall or skip the user's setup, which made installed tools look missing.
 fn find_in_folders(program: &str) -> bool {
     let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default();
-    let mut dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH")
+    #[cfg(windows)]
+    let search = Some(windows_path());
+    #[cfg(not(windows))]
+    let search = std::env::var_os("PATH");
+    let mut dirs: Vec<std::path::PathBuf> = search
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
     for d in [
@@ -290,6 +344,7 @@ fn find_in_folders(program: &str) -> bool {
             ".cargo/bin",
             "AppData/Roaming/npm",
             "AppData/Local/Programs/Antigravity/bin",
+            "AppData/Local/agy/bin",
         ] {
             dirs.push(h.join(d));
         }
@@ -351,6 +406,7 @@ pub fn agent_available(program: String) -> bool {
     {
         crate::quiet_command("where")
             .arg(&program)
+            .env("PATH", windows_path())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -695,7 +751,7 @@ fn http_body(raw: &[u8]) -> String {
 
 #[cfg(test)]
 mod bridge_tests {
-    use super::{http_body, offline_answer};
+    use super::{expand_windows_vars, http_body, offline_answer};
     use serde_json::{json, Value};
 
     #[test]
@@ -718,6 +774,14 @@ mod bridge_tests {
         assert!(offline_answer(&ask("tools/list"), None).is_none());
         // a notification expects no answer
         assert!(offline_answer(&json!({"jsonrpc": "2.0", "method": "notifications/initialized"}), Some(&left)).is_none());
+    }
+
+    #[test]
+    fn windows_folders_fill_in_their_names() {
+        std::env::set_var("DUET_TEST_HOME", r"C:\Users\A B");
+        assert_eq!(expand_windows_vars(r"%DUET_TEST_HOME%\agy\bin;C:\x"), r"C:\Users\A B\agy\bin;C:\x");
+        // a name nobody set, and a lone percent, stay as written
+        assert_eq!(expand_windows_vars(r"%NOT_SET_ANYWHERE%\bin;50%"), r"%NOT_SET_ANYWHERE%\bin;50%");
     }
 
     #[test]

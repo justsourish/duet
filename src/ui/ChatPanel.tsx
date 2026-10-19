@@ -379,7 +379,8 @@ export default function ChatPanel() {
   };
 
   const chosenAgentObj = AGENTS.find((a) => a.id === agent);
-  const toolName = chosenAgentObj?.name || "AI";
+  // with nothing installed, the button must not name a tool that is not there
+  const toolName = found === false ? "No AI installed" : chosenAgentObj?.name || "AI";
   const chatToolLetter = toolName.charAt(0);
 
   const outsideAgents: string[] = [];
@@ -895,9 +896,8 @@ export default function ChatPanel() {
             {connecting && <ConnectAi />}
             {found === false && (
               <div className="m">
-                Duet works with the AI tool you already use, so it costs nothing extra. I could not find{" "}
-                {AGENTS.find((a) => a.id === agent)?.name} on this computer. Install it from {AGENTS.find((a) => a.id === agent)?.install},
-                sign in once, then reopen Duet. Or pick another tool above.
+                Duet works with the AI tool you already use, so it costs nothing extra. No AI tool is installed on this computer yet.
+                Install {AGENTS.filter((a) => a.runnable).map((a) => `${a.name} from ${a.install}`).join(" or ")}, sign in once, then reopen Duet.
               </div>
             )}
             {messages.length === 0 && found !== false && (
@@ -1248,7 +1248,7 @@ export default function ChatPanel() {
               ref={textareaRef}
               value={text}
               rows={1}
-              placeholder={found === false ? "Pick an AI tool that is installed" : `Ask ${toolName}`}
+              placeholder={found === false ? "Install an AI tool to start" : `Ask ${toolName}`}
               disabled={found === false}
               onChange={(e) => {
                 setText(e.target.value);

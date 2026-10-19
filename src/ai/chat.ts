@@ -277,7 +277,9 @@ export const setAgentFound = (agentFound: boolean) => set({ agentFound });
 
 /** Remember which tools are installed, and whether the chosen one is ready. */
 export function setInstalled(installed: Partial<Record<AgentId, boolean>>) {
-  set({ installed, agentFound: installed[state.agent] ?? false });
+  // the tool picked before, or the first one, may not be on this computer: answer with one that is
+  const agent = installed[state.agent] ? state.agent : (AGENTS.find((a) => a.runnable && installed[a.id])?.id ?? state.agent);
+  set({ installed, agent, agentFound: installed[agent] ?? false });
 }
 
 /** Switch to another AI tool. The conversation stays: Duet holds it, and hands the new tool a note of it. */
