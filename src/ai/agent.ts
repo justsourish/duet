@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { saveNow, tabName } from "../project/project";
+import { getState } from "../state/store";
 import {
   AGENTS,
   addMsg,
@@ -60,6 +61,11 @@ let workingId: number | null = null;
 let live = false;
 /** The project whose conversation this turn belongs to. It keeps working there while another project is on screen. */
 let runFor = "";
+
+/** Save what the AI did, but only to a project that has a file: work never saved is not interrupted with a Save window. */
+const keepIt = () => {
+  if (getState().project.path) void saveNow();
+};
 
 /** The name of the agent that is answering in the chat right now. */
 const speaker = () => AGENTS.find((a) => a.id === getChat().agent)?.name;
@@ -274,7 +280,7 @@ export async function startAgentListeners(): Promise<() => void> {
       const detail = stderrLines.filter((l) => !/job control|no tty/i.test(l)).join(" ");
       addMsg({ role: "error", text: friendly(detail) }, runFor);
     }
-    void saveNow();
+    keepIt();
     void e;
   });
   return () => {
@@ -407,7 +413,7 @@ export async function stopAgent() {
   declineAllWaiting();
   setRunning(false);
   addMsg({ role: "note", text: "Stopped." }, runFor);
-  void saveNow();
+  keepIt();
 }
 
 /**
