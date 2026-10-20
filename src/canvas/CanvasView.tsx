@@ -24,6 +24,7 @@ import {
   worldRect,
 } from "../document/geometry";
 import { canBeComponent } from "../document/components";
+import { docAt } from "../document/time";
 import type { Doc, ElementType, Rect } from "../document/types";
 import {
   clearOverlay,
@@ -72,9 +73,18 @@ import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } 
 import { draw, labelRect, screenRect, setQuietCanvas, shownOn } from "./render";
 import { fontCss, layoutText, lineStep, textLift } from "./text";
 
-/** What is under the pointer, leaving out what is not on show while one frame is looked at alone. */
+let atNow: { doc: Doc; scene: string; t: number; out: Doc } | null = null;
+/** The design with only what plays at the moment the clock is on, so a click finds what is seen. */
+function playingNow(doc: Doc): Doc {
+  const { scene, t } = getState().clock;
+  if (!scene) return doc;
+  if (!atNow || atNow.doc !== doc || atNow.scene !== scene || atNow.t !== t) atNow = { doc, scene, t, out: docAt(doc, scene, t) };
+  return atNow.out;
+}
+
+/** What is under the pointer, leaving out what is not on show while one frame is looked at alone, or not playing yet. */
 function hitTest(doc: Doc, x: number, y: number, ignore?: Set<string>, deep?: boolean): string | null {
-  const id = hitAnything(doc, x, y, ignore, deep);
+  const id = hitAnything(playingNow(doc), x, y, ignore, deep);
   return id && shownOn(doc, id) ? id : null;
 }
 
