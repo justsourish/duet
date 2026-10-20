@@ -5588,6 +5588,16 @@ button.agent-perm {
   vertical-align: middle;
   white-space: nowrap;
 }
+.feedback-tag {
+  margin-left: 6px;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.feedback-tag:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
 .popover.versions-pop {
   position: fixed;
   left: 16px;

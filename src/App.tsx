@@ -25,7 +25,7 @@ import Versions from "./ui/Versions";
 import PresentView from "./ui/PresentView";
 import SendCopy from "./ui/SendCopy";
 import Update from "./ui/Update";
-import Feedback from "./ui/Feedback";
+import Feedback, { askFeedback } from "./ui/Feedback";
 import Settings from "./ui/Settings";
 import LayersPanel from "./ui/LayersPanel";
 import PropertiesPanel from "./ui/PropertiesPanel";
@@ -209,6 +209,9 @@ export default function App() {
             Du<b>et</b>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
             <i className="early-tag" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
+            <button className="early-tag feedback-tag" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
+              Feedback
+            </button>
           </span>
           <span className={`status ${project.status}`} title={project.error ?? undefined}>
             {project.path ? STATUS[project.status] : "Not saved yet"}

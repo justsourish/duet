@@ -413,6 +413,9 @@ export function shownOn(doc: Doc, id: string): boolean {
 }
 const shownRoots = (doc: Doc) => (only && doc.elements[only] ? [only] : doc.rootIds);
 
+/** How far down the canvas a label sits at least, so the bar floating along its top does not cover it. */
+const LABEL_CLEAR = 64;
+
 export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: number, dpr: number) {
   const doc = seenDoc(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -551,12 +554,14 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     ctx.globalAlpha = 1;
     ctx.font = `600 12px ${FONT_STACK}`;
     const lw = ctx.measureText(label).width + 16;
+    // the bar along the top of the canvas would hide it there, so it slides down the box, never out of it
+    const ly = Math.max(y, Math.min(LABEL_CLEAR, y + h - 12));
     ctx.beginPath();
-    ctx.roundRect(x + 14, y - 11, lw, 22, 11);
+    ctx.roundRect(x + 14, ly - 11, lw, 22, 11);
     ctx.fill();
     ctx.fillStyle = "#101014";
     ctx.textBaseline = "middle";
-    ctx.fillText(label, x + 22, y + 0.5);
+    ctx.fillText(label, x + 22, ly + 0.5);
     ctx.restore();
   }
   if (sel.length === 1 && !s.overlay.nodeEdit) {

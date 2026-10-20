@@ -1,6 +1,5 @@
 import { whoColour } from "../ai/colours";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { askFeedback } from "./Feedback";
 import { useChat } from "../ai/chat";
 import { nameOf } from "../ai/names";
 import { wordsBehind } from "../memory/steps";
@@ -71,11 +70,6 @@ export default function HistoryStrip() {
 
   return (
     <footer className="hist">
-      <span className="hist-about">
-        <button className="feedback-btn" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
-          Feedback
-        </button>
-      </span>
       <div className="hist-legend">
         {legendItems.map((item) => (
           <span key={item.name} className="hist-legend-item">
