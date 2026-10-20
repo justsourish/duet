@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { runCommand } from "../commands";
 import { KEY_GROUPS, fileTimeAt, frameTimeAt, spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
@@ -180,6 +180,70 @@ export default function TimeStrip() {
       lanes.current.scrollLeft = 0;
     }
   }, [zoom]);
+
+  // Pinch (or Cmd and scroll) zooms the time under the fingers; two fingers scroll along it.
+  // The time under the pointer is kept in place while the length of the lanes changes.
+  const hold = useRef<{ t: number; at: number } | null>(null);
+  const zoomNow = useRef({ zoom, pps });
+  zoomNow.current = { zoom, pps };
+  const zoomTo = (clientX: number, factor: number) => {
+    const box = lanes.current;
+    if (!box) return;
+    const { zoom: z, pps: per } = zoomNow.current;
+    const next = Math.max(1, Math.min(200, z * factor));
+    if (next === z) return;
+    const left = box.getBoundingClientRect().left;
+    hold.current = { t: (clientX - left + box.scrollLeft - NAMES) / per, at: clientX - left };
+    zoomNow.current = { zoom: next, pps: (per * next) / z };
+    setZoom(next);
+  };
+  useLayoutEffect(() => {
+    const h = hold.current;
+    hold.current = null;
+    if (h && lanes.current && zoom > 1) lanes.current.scrollLeft = Math.max(0, h.t * zoomNow.current.pps + NAMES - h.at);
+  }, [zoom]);
+  useEffect(() => {
+    const box = lanes.current;
+    if (!box) return;
+    // a pinch on a Mac trackpad arrives as gesture events; while one runs, the wheel's zoom is ignored
+    let pinching: { zoom: number } | null = null;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (pinching) return;
+        zoomTo(e.clientX, Math.exp(-Math.max(-40, Math.min(40, e.deltaY)) * 0.01));
+      } else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        box.scrollLeft += e.deltaX;
+      }
+    };
+    type Pinch = Event & { scale: number; clientX: number };
+    const onStart = (e: Event) => {
+      e.preventDefault();
+      pinching = { zoom: zoomNow.current.zoom };
+    };
+    const onChange = (e: Event) => {
+      e.preventDefault();
+      if (!pinching) return;
+      const g = e as Pinch;
+      zoomTo(g.clientX, (pinching.zoom * g.scale) / zoomNow.current.zoom);
+    };
+    const onEnd = (e: Event) => {
+      e.preventDefault();
+      pinching = null;
+    };
+    box.addEventListener("wheel", onWheel, { passive: false });
+    box.addEventListener("gesturestart", onStart);
+    box.addEventListener("gesturechange", onChange);
+    box.addEventListener("gestureend", onEnd);
+    return () => {
+      box.removeEventListener("wheel", onWheel);
+      box.removeEventListener("gesturestart", onStart);
+      box.removeEventListener("gesturechange", onChange);
+      box.removeEventListener("gestureend", onEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, plays]);
 
   if (mode === "design") return null;
   if (!plays) {

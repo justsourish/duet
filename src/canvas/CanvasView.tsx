@@ -1000,7 +1000,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     let pinch: { zoom: number; wx: number; wy: number } | null = null;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (getState().editingId || lockedRef.current) return;
+      if (getState().editingId) return;
       stopGlide();
       const p = point(e);
       if (e.ctrlKey || e.metaKey) {
@@ -1023,7 +1023,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     };
     const onGestureChange = (e: Event) => {
       e.preventDefault();
-      if (!pinch || lockedRef.current) return;
+      if (!pinch) return;
       const g = e as GestureEvent;
       const p = point(g);
       const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinch.zoom * g.scale));
