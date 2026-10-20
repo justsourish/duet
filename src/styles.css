@@ -3931,7 +3931,8 @@ button.agent-perm {
   font-size: 12px;
 }
 .project-tab.active {
-  background: var(--panel);
+  /* the open tab is one piece with the work under it */
+  background: var(--canvas);
   color: var(--text);
 }
 .project-tab:not(.active):hover {
