@@ -9,7 +9,8 @@ import { cutNow } from "../video/edit";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
 import Icon from "./Icons";
 import { setKeyFocus } from "./keyFocus";
-import { QUALITIES, SIZES, addMedia, defaultChoice, exportScene, exportSize, stopExport } from "../video/scene";
+import { QUALITIES, SIZES, addMedia, clipKind, defaultChoice, dropClips, exportScene, exportSize, keepDropped, stopExport } from "../video/scene";
+import { droppedPaths } from "../canvas/CanvasView";
 import type { ExportChoice } from "../video/scene";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { TIME_MIN_H, setLayout, useLayout } from "./layout";
@@ -292,6 +293,13 @@ export default function TimeStrip() {
       }
     }
     return bestTarget !== null ? { time: bestTarget, dist: bestDist } : null;
+  };
+
+  /** The moment under the pointer, on the timeline. */
+  const dropTime = (clientX: number) => {
+    const box = lanes.current?.getBoundingClientRect();
+    if (!box || !lanes.current) return 0;
+    return Math.max(0, Math.min(length, (clientX - box.left + lanes.current.scrollLeft - NAMES) / pps));
   };
 
   const toggle = (id: string) => {
@@ -834,7 +842,39 @@ export default function TimeStrip() {
       </div>
 
       <div className="time-grip" data-name="timeline-height" onPointerDown={grow} title="Pull to make the timeline taller or shorter" />
-      <div className="time-lanes" ref={lanes} style={{ height: growing ?? timeH, maxHeight: "none" }}>
+      <div
+        className="time-lanes"
+        ref={lanes}
+        style={{ height: growing ?? timeH, maxHeight: "none" }}
+        // video and sound dropped from the computer land at the moment under the pointer
+        onDragOver={(e) => {
+          if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+          e.preventDefault();
+          setSnap(dropTime(e.clientX));
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setSnap(null);
+        }}
+        onDrop={(e) => {
+          const files = Array.from(e.dataTransfer.files).filter((f) => clipKind(f.name));
+          if (!files.length) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setSnap(null);
+          const known = droppedPaths(e.dataTransfer).filter((p) => clipKind(p));
+          const at = dropTime(e.clientX);
+          seek(at);
+          void (async () => {
+            try {
+              const paths = known.length ? known : await keepDropped(files);
+              const problems = await dropClips(frame.id, paths, at);
+              if (problems.length) setNote(problems.join(" "));
+            } catch (err) {
+              setNote(String(err instanceof Error ? err.message : err));
+            }
+          })();
+        }}
+      >
         <div className="time-row ruler">
           <span className="time-name" />
           <div className="time-lane" onPointerDown={scrub} style={{ width: laneWidth }}>

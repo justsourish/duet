@@ -74,7 +74,7 @@ export const clipKind = (path: string): "video" | "sound" | null => {
  * Files dropped onto a frame. The frame becomes a scene if it was not one, as long as the first clip.
  * Returns what could not be read.
  */
-export async function dropClips(frameId: string, paths: string[]): Promise<string[]> {
+export async function dropClips(frameId: string, paths: string[], from?: number): Promise<string[]> {
   const videos = paths.filter((p) => clipKind(p) === "video");
   const sounds = paths.filter((p) => clipKind(p) === "sound");
   const frame = currentDoc().elements[frameId];
@@ -88,21 +88,22 @@ export async function dropClips(frameId: string, paths: string[]): Promise<strin
   } catch (e) {
     return [String(e instanceof Error ? e.message : e)];
   }
-  problems.push(...(await placeClips(frameId, videos)));
+  problems.push(...(await placeClips(frameId, videos, from)));
   problems.push(...(await placeSounds(frameId, sounds)));
   return problems;
 }
 
-/** Put video files in a scene, one after another, starting at the moment the clock is on. Returns what could not be read. */
-export async function placeClips(sceneId: string, paths: string[]): Promise<string[]> {
+/** Put video files in a scene, one after another, starting at the moment the clock is on or the one given. Returns what could not be read. */
+export async function placeClips(sceneId: string, paths: string[], from?: number): Promise<string[]> {
   const problems: string[] = [];
-  let at = getState().clock.scene === sceneId ? getState().clock.t : 0;
+  let at = from ?? (getState().clock.scene === sceneId ? getState().clock.t : 0);
   for (const path of paths) {
     try {
       const info = await invoke<Info>("video_info", { path });
       const scene = currentDoc().elements[sceneId];
       if (!scene) break;
-      if (at >= scene.duration - 0.05) at = 0;
+      // the clock left at the end starts again from the beginning; a drop at the end adds the clip after it
+      if (from === undefined && at >= scene.duration - 0.05) at = 0;
       const end = Math.round((at + info.duration) * 1000) / 1000;
       // the frame grows to hold a clip that runs past its end
       if (end > scene.duration) dispatch("set_duration", { id: sceneId, seconds: end });

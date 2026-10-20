@@ -101,7 +101,7 @@ type Drag =
   | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
 
 /** Where files dragged in from the computer are, when the system says so. */
-function droppedPaths(data: DataTransfer): string[] {
+export function droppedPaths(data: DataTransfer): string[] {
   const out: string[] = [];
   for (const kind of ["text/uri-list", "public.file-url", "text/plain"]) {
     for (const line of data.getData(kind).split(/\r?\n/)) {
