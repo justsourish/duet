@@ -1,6 +1,6 @@
 import { fitText } from "../canvas/text";
 import type { ClipPayload } from "../document/clipboard";
-import { ancestors, canMask, canTurn, descendants, tidyAngle, topLevelOnly, turnCentre, turnPoint, worldPos } from "../document/geometry";
+import { ancestors, canMask, canTurn, descendants, tidyAngle, topLevelOnly, turnCentre, turnPoint, worldBounds, worldPos, worldRect } from "../document/geometry";
 import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
 import { MOVING, playsFile } from "../document/types";
@@ -194,6 +194,97 @@ const moveElements: CommandDef<MoveArgs> = {
     }
     // in an auto layout frame, moving a child past its neighbours changes the order
     for (const pid of new Set(a.ids.map((id) => next.elements[id]?.parentId))) orderByPosition(next, pid ?? null);
+    return next;
+  },
+};
+
+// ---- align_elements ----
+/** Line things up with each other, space them evenly, or tidy them into rows. */
+export type AlignHow = "left" | "centre" | "right" | "top" | "middle" | "bottom" | "space-across" | "space-down" | "tidy";
+
+export interface AlignArgs {
+  ids: string[];
+  how: AlignHow;
+}
+
+const alignElements: CommandDef<AlignArgs> = {
+  label: (a) => ({ left: "Line up left", centre: "Line up centres", right: "Line up right", top: "Line up tops", middle: "Line up middles", bottom: "Line up bottoms", "space-across": "Space evenly across", "space-down": "Space evenly down", tidy: "Tidy up" })[a.how] ?? "Arrange",
+  run: (doc, a) => {
+    // things inside an auto layout frame are placed by the frame, so they stay where it puts them
+    const ids = a.ids.filter((id) => doc.elements[id] && !(doc.elements[id].parentId && doc.elements[doc.elements[id].parentId!]?.layout));
+    if (!ids.length) return doc;
+    const boxes = new Map(ids.map((id) => [id, worldBounds(doc, id)]));
+    const list = ids.map((id) => ({ id, ...boxes.get(id)! }));
+    const move = new Map<string, { dx: number; dy: number }>();
+    const put = (id: string, dx: number, dy: number) => {
+      if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) move.set(id, { dx: round(dx), dy: round(dy) });
+    };
+    // one thing lines up with the frame that holds it; several line up with each other
+    let area = { x: Math.min(...list.map((b) => b.x)), y: Math.min(...list.map((b) => b.y)), right: Math.max(...list.map((b) => b.x + b.width)), bottom: Math.max(...list.map((b) => b.y + b.height)) };
+    const parent = list.length === 1 ? doc.elements[doc.elements[list[0].id].parentId ?? ""] : undefined;
+    if (parent) {
+      const r = worldRect(doc, parent.id);
+      area = { x: r.x, y: r.y, right: r.x + r.width, bottom: r.y + r.height };
+    }
+    const evenly = (axis: "x" | "y") => {
+      if (list.length < 3) return;
+      const size = axis === "x" ? "width" : "height";
+      const sorted = [...list].sort((p, q) => p[axis] + p[size] / 2 - (q[axis] + q[size] / 2));
+      const first = sorted[0][axis];
+      const last = sorted[sorted.length - 1][axis] + sorted[sorted.length - 1][size];
+      const gap = (last - first - sorted.reduce((n, b) => n + b[size], 0)) / (sorted.length - 1);
+      let at = first;
+      for (const b of sorted) {
+        if (axis === "x") put(b.id, at - b.x, 0);
+        else put(b.id, 0, at - b.y);
+        at += b[size] + gap;
+      }
+    };
+    if (a.how === "left") for (const b of list) put(b.id, area.x - b.x, 0);
+    else if (a.how === "right") for (const b of list) put(b.id, area.right - (b.x + b.width), 0);
+    else if (a.how === "centre") for (const b of list) put(b.id, (area.x + area.right) / 2 - (b.x + b.width / 2), 0);
+    else if (a.how === "top") for (const b of list) put(b.id, 0, area.y - b.y);
+    else if (a.how === "bottom") for (const b of list) put(b.id, 0, area.bottom - (b.y + b.height));
+    else if (a.how === "middle") for (const b of list) put(b.id, 0, (area.y + area.bottom) / 2 - (b.y + b.height / 2));
+    else if (a.how === "space-across") evenly("x");
+    else if (a.how === "space-down") evenly("y");
+    else if (a.how === "tidy" && list.length > 1) {
+      // rows: things whose middles are close in height share a row. In a row they sit on one top with an even gap; rows stack with an even gap.
+      const byHeight = [...list].sort((p, q) => p.y + p.height / 2 - (q.y + q.height / 2));
+      const rows: (typeof list)[] = [];
+      for (const b of byHeight) {
+        const row = rows[rows.length - 1];
+        const mid = b.y + b.height / 2;
+        const rowTop = row ? Math.min(...row.map((r) => r.y)) : 0;
+        const rowBottom = row ? Math.max(...row.map((r) => r.y + r.height)) : 0;
+        if (row && mid <= rowBottom && mid >= rowTop) row.push(b);
+        else rows.push([b]);
+      }
+      const gaps: number[] = [];
+      for (const row of rows) {
+        row.sort((p, q) => p.x - q.x);
+        for (let i = 1; i < row.length; i++) gaps.push(row[i].x - (row[i - 1].x + row[i - 1].width));
+      }
+      const positive = gaps.filter((g) => g > 0);
+      const gap = positive.length ? Math.round(positive.reduce((n, g) => n + g, 0) / positive.length) : 16;
+      let y = area.y;
+      for (const row of rows) {
+        let x = area.x;
+        const top = Math.min(...row.map((r) => r.y));
+        for (const b of row) {
+          put(b.id, x - b.x, y - b.y);
+          x += b.width + gap;
+        }
+        y += Math.max(...row.map((r) => r.y + r.height - top)) + gap;
+      }
+    }
+    if (!move.size) return doc;
+    const next = clone(doc);
+    for (const [id, m] of move) {
+      next.elements[id].x += m.dx;
+      next.elements[id].y += m.dy;
+    }
+    for (const pid of new Set(ids.map((id) => next.elements[id].parentId))) orderByPosition(next, pid ?? null);
     return next;
   },
 };
@@ -1529,6 +1620,7 @@ export const commands = {
   set_duration: setDuration,
   set_timing: setTiming,
   set_speed: setSpeed,
+  align_elements: alignElements,
   add_marker: addMarker,
   update_marker: updateMarker,
   remove_marker: removeMarker,

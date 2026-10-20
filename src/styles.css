@@ -5868,3 +5868,30 @@ input.chathome-name.rename {
   border-radius: 50%;
   cursor: pointer;
 }
+
+/* line up: a row of small icon buttons at the top of the right panel */
+.align-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.align-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.align-btn:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.align-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}

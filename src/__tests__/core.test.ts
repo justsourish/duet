@@ -2710,3 +2710,55 @@ describe("roto by hand: editing a mask's points at a moment", () => {
     expect(atStart.elements.p.shapeKeys).toEqual([]);
   });
 });
+
+describe("line up, space evenly, tidy up", () => {
+  const three = () => {
+    let d = emptyDoc();
+    d = runCommand(d, "create_element", { id: "a", type: "rect", x: 0, y: 10, width: 20, height: 20 });
+    d = runCommand(d, "create_element", { id: "b", type: "rect", x: 50, y: 40, width: 30, height: 10 });
+    d = runCommand(d, "create_element", { id: "c", type: "rect", x: 200, y: 0, width: 20, height: 40 });
+    return d;
+  };
+  const at = (d: ReturnType<typeof three>, id: string) => [d.elements[id].x, d.elements[id].y];
+
+  it("lines several things up with each other", () => {
+    const left = runCommand(three(), "align_elements", { ids: ["a", "b", "c"], how: "left" });
+    expect(["a", "b", "c"].map((i) => at(left, i)[0])).toEqual([0, 0, 0]);
+    const bottom = runCommand(three(), "align_elements", { ids: ["a", "b", "c"], how: "bottom" });
+    expect(["a", "b", "c"].map((i) => bottom.elements[i].y + bottom.elements[i].height)).toEqual([50, 50, 50]);
+    const centre = runCommand(three(), "align_elements", { ids: ["a", "b", "c"], how: "centre" });
+    expect(["a", "b", "c"].map((i) => centre.elements[i].x + centre.elements[i].width / 2)).toEqual([110, 110, 110]);
+  });
+
+  it("lines one thing up with the frame that holds it", () => {
+    let d = runCommand(emptyDoc(), "create_element", { id: "f", type: "frame", x: 100, y: 100, width: 300, height: 200 });
+    d = runCommand(d, "create_element", { id: "r", type: "rect", x: 10, y: 10, width: 50, height: 50, parentId: "f" });
+    const out = runCommand(d, "align_elements", { ids: ["r"], how: "centre" });
+    expect(out.elements.r.x).toBe(125);
+  });
+
+  it("spaces three or more evenly and keeps the outer two where they are", () => {
+    const out = runCommand(three(), "align_elements", { ids: ["a", "b", "c"], how: "space-across" });
+    expect(at(out, "a")[0]).toBe(0);
+    expect(at(out, "c")[0]).toBe(200);
+    // 220 wide in all, 70 taken by the things, so 75 between each
+    expect(out.elements.b.x).toBe(95);
+    // two things have nothing to space
+    const two = runCommand(three(), "align_elements", { ids: ["a", "c"], how: "space-across" });
+    expect(at(two, "a")[0]).toBe(0);
+  });
+
+  it("tidies a scatter into rows with an even gap", () => {
+    const out = runCommand(three(), "align_elements", { ids: ["a", "b", "c"], how: "tidy" });
+    // a, b and c's middles overlap in height, so they become one row on a shared top, 16 apart or the average gap
+    const tops = ["a", "b", "c"].map((i) => out.elements[i].y);
+    expect(new Set(tops).size).toBeLessThanOrEqual(2);
+    const sorted = ["a", "b", "c"].map((i) => out.elements[i]).sort((p, q) => p.x - q.x);
+    for (let i = 1; i < sorted.length; i++) if (sorted[i].y === sorted[i - 1].y) expect(sorted[i].x).toBeGreaterThanOrEqual(sorted[i - 1].x + sorted[i - 1].width);
+  });
+
+  it("does nothing when everything is already in place", () => {
+    const d = three();
+    expect(runCommand(d, "align_elements", { ids: ["a"], how: "left" })).toBe(d);
+  });
+});

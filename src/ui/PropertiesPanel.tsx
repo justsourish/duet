@@ -6,6 +6,7 @@ import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
 import { newId } from "../commands";
+import type { AlignHow } from "../commands";
 import { useLayout } from "./layout";
 import { KEY_GROUPS, entranceOf, sceneOf, spanOf } from "../document/time";
 import { useKeyFocus } from "./keyFocus";
@@ -473,6 +474,44 @@ function LengthSection({ el }: { el: El }) {
   );
 }
 
+const ALIGNS: { how: AlignHow; label: string; need: number; icon: React.ReactNode }[] = [
+  { how: "left", label: "Line up left edges", need: 1, icon: <><path d="M3 2v12" /><rect x="5" y="4" width="8" height="3" /><rect x="5" y="9" width="5" height="3" /></> },
+  { how: "centre", label: "Line up centres", need: 1, icon: <><path d="M8 2v12" /><rect x="3" y="4" width="10" height="3" /><rect x="5" y="9" width="6" height="3" /></> },
+  { how: "right", label: "Line up right edges", need: 1, icon: <><path d="M13 2v12" /><rect x="3" y="4" width="8" height="3" /><rect x="6" y="9" width="5" height="3" /></> },
+  { how: "top", label: "Line up tops", need: 1, icon: <><path d="M2 3h12" /><rect x="4" y="5" width="3" height="8" /><rect x="9" y="5" width="3" height="5" /></> },
+  { how: "middle", label: "Line up middles", need: 1, icon: <><path d="M2 8h12" /><rect x="4" y="3" width="3" height="10" /><rect x="9" y="5" width="3" height="6" /></> },
+  { how: "bottom", label: "Line up bottoms", need: 1, icon: <><path d="M2 13h12" /><rect x="4" y="3" width="3" height="8" /><rect x="9" y="6" width="3" height="5" /></> },
+  { how: "space-across", label: "Space evenly across, three or more", need: 3, icon: <><path d="M2 2v12M14 2v12" /><rect x="6" y="4" width="4" height="8" /></> },
+  { how: "space-down", label: "Space evenly down, three or more", need: 3, icon: <><path d="M2 2h12M2 14h12" /><rect x="4" y="6" width="8" height="4" /></> },
+  { how: "tidy", label: "Tidy up into neat rows, two or more", need: 2, icon: <><rect x="2.5" y="2.5" width="5" height="5" /><rect x="9" y="2.5" width="4.5" height="5" /><rect x="2.5" y="9" width="5" height="4.5" /><rect x="9" y="9" width="4.5" height="4.5" /></> },
+];
+
+/** Line things up with each other, space them evenly, or tidy them into rows. One thing lines up with the frame that holds it. */
+function AlignSection({ ids }: { ids: string[] }) {
+  return (
+    <div className="sec">
+      <h4>Line up</h4>
+      <div className="align-row">
+        {ALIGNS.map((a) => (
+          <button
+            key={a.how}
+            type="button"
+            className="align-btn"
+            data-name={`align-${a.how}`}
+            title={a.label}
+            disabled={ids.length < a.need}
+            onClick={() => dispatch("align_elements", { ids, how: a.how })}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {a.icon}
+            </svg>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Clips and sounds: how fast the file plays, in percent. 200 is twice as fast. The bar in the timeline gets shorter or longer to match. */
 function PlaySpeedSection({ els }: { els: El[] }) {
   const same = els.every((e) => (e.speed || 1) === (els[0].speed || 1));
@@ -621,6 +660,8 @@ export default function PropertiesPanel() {
   return (
     <aside className="right">
       <div className="panel-title">{one ? one.name : `${els.length} selected`}</div>
+
+      {els.length > 0 && !els.every((e) => e.type === "frame" && !e.parentId) && <AlignSection ids={els.map((e) => e.id)} />}
 
       {mode === "motion" && one && scene && one.id === scene.id && <LengthSection el={one} />}
       {mode === "motion" && els.length > 0 && els.every(playsFile) && <PlaySpeedSection els={els} />}
