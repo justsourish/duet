@@ -694,6 +694,11 @@ body.eyedropping * {
 .pt.future {
   opacity: 0.45;
 }
+.pt.other,
+.req-dot.other,
+.ver-text.other {
+  opacity: 0.2;
+}
 .pt.ver {
   border-radius: 2px;
   transform: rotate(45deg);
@@ -5393,6 +5398,23 @@ button.agent-perm {
 .hl-changes.later,
 .hl-change.later,
 .hl-version.later {
+  opacity: 0.4;
+}
+/* what was done in another direction */
+.hl-changes.other,
+.hl-change.other,
+.hl-version.other {
+  opacity: 0.4;
+}
+.hl-changes.other .hl-chip {
+  border-style: dashed;
+}
+.hl-fork {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 0 2px;
+}
+.hl-fork.other {
   opacity: 0.4;
 }
 .hl-who {

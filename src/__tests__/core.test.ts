@@ -223,13 +223,24 @@ describe("store and history", () => {
     expect(currentDoc().rootIds).toEqual([]);
   });
 
-  it("drops the redo branch when you change something after undo", () => {
+  it("keeps the later steps as another direction when you change something after undo", () => {
     dispatch("create_element", { id: "a", type: "rect", x: 0, y: 0, width: 10, height: 10 });
     dispatch("move_elements", { ids: ["a"], dx: 5, dy: 5 });
     undo();
     dispatch("move_elements", { ids: ["a"], dx: 1, dy: 1 });
-    expect(getState().timeline.length).toBe(3);
+    expect(getState().timeline.length).toBe(4);
+    expect(getState().timeline[3].from).toBe(getState().timeline[1].step);
     expect(currentDoc().elements.a.x).toBe(1);
+    // undo follows this direction, back to where it started, and redo comes back to it
+    undo();
+    expect(getState().cursor).toBe(1);
+    redo();
+    expect(getState().cursor).toBe(3);
+    // the old direction is still there
+    goTo(2);
+    expect(currentDoc().elements.a.x).toBe(5);
+    undo();
+    expect(getState().cursor).toBe(1);
   });
 
   it("a whole drag is a single history step", () => {
@@ -2255,6 +2266,7 @@ describe("words tied to steps", () => {
     expect(stepMessage({ label: "Move logo", actor: "ai" }, false, ["aaaaaa", "bbbbbb"])).toBe("Move logo\n\nActor: ai\nSteps: aaaaaa bbbbbb");
     // a step with no name is saved the way it always was
     expect(stepMessage({ label: "Move logo", actor: "you" }, true)).toBe("Went back to: Move logo\n\nActor: you");
+    expect(stepMessage({ label: "Move logo", actor: "you", from: "aaaaaa" }, false, ["bbbbbb"])).toBe("Move logo\n\nActor: you\nSteps: bbbbbb\nFrom: aaaaaa");
     // nothing but a plain name ever gets into the line
     expect(stepsLine(["aaaaaa", "Actor: ai", "bb\nbb", "aaaaaa"])).toBe("Steps: aaaaaa");
   });

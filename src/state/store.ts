@@ -1,4 +1,5 @@
 import { newStepId } from "../memory/steps";
+import { childOf, parentOf } from "./directions";
 import type { AbsNode } from "../document/path";
 import { useSyncExternalStore } from "react";
 import { commandLabel, runCommand } from "../commands";
@@ -23,6 +24,8 @@ export interface HistoryEntry {
   step?: string;
   /** Names of quick steps that were saved together with this one. */
   covers?: string[];
+  /** The step this one was made on, when it starts a new direction. */
+  from?: string;
 }
 
 export interface Viewport {
@@ -246,7 +249,14 @@ function commit(doc: Doc, label: string, actor: Actor, by?: string, box: Box = l
     box.set({ transientDoc: null });
     return;
   }
-  const timeline = s.timeline.slice(0, s.cursor + 1).concat({ doc, label, actor, ...(by ? { by } : {}), time: Date.now(), step: newStepId() });
+  // made on an earlier step, it starts a new direction; the steps after that one stay
+  let before = s.timeline;
+  let from: string | undefined;
+  if (s.cursor < s.timeline.length - 1) {
+    from = s.timeline[s.cursor].step ?? newStepId();
+    if (!s.timeline[s.cursor].step) before = before.map((e, i) => (i === s.cursor ? { ...e, step: from } : e));
+  }
+  const timeline = before.concat({ doc, label, actor, ...(by ? { by } : {}), time: Date.now(), step: newStepId(), ...(from ? { from } : {}) });
   box.set({
     timeline,
     cursor: timeline.length - 1,
@@ -366,8 +376,10 @@ export function goTo(index: number, box: Box = liveBox) {
   box.set({ cursor: i, transientDoc: null, selection: cleanSelection(s.selection, doc), focus: cleanSelection(s.focus, doc), editingId: null });
 }
 
-export const undo = () => goTo(state.cursor - 1);
-export const redo = () => goTo(state.cursor + 1);
+/** Undo and redo follow the direction you are on. */
+export const undo = () => state.cursor > 0 && goTo(parentOf(state.timeline, state.cursor));
+export const canRedo = (s: State = state) => childOf(s.timeline, s.cursor) >= 0;
+export const redo = () => canRedo() && goTo(childOf(state.timeline, state.cursor));
 
 // ---- ui state ----
 

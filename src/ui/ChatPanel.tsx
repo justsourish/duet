@@ -12,6 +12,7 @@ import { attachFiles } from "../ai/pictures";
 import type { ModelChoice, Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
 import { goTo, setFocus, useStore } from "../state/store";
+import { directionOf, parentOf, startsDirection } from "../state/directions";
 import ConnectAi from "./ConnectAi";
 import Rich from "./rich";
 import Icon from "./Icons";
@@ -452,8 +453,13 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
     void (task ? sendToTask(task.key, t) : sendToAgent(t));
   };
 
-  const later = (at: number) => at > cursor;
+  // the direction you are on; what was done in another one is shown quieter
+  const line = directionOf(timeline, cursor);
+  const other = (at: number) => at >= 0 && !line.has(at);
+  const later = (at: number) => at > cursor && !other(at);
   const laterTitle = "This comes after the moment you are looking at";
+  const otherTitle = "This was done in another direction. Click a change to go back to it";
+  const fork = (at: number) => (at >= 0 && startsDirection(timeline, at) ? timeline[parentOf(timeline, at)]?.label : undefined);
 
   /** An AI's name in its colour, then the tool it is. Click the name to rename it. */
   const authorLine = (tool: string) => {
@@ -497,9 +503,17 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
     const who = item.actor === "you" ? "You" : isOutside(item.by) ? `${nm(item.by)}, from its own window` : "";
     const shown = count === 1 ? "all" : openGroups[item.key];
     const allLater = item.changes.every((c) => later(c.at));
+    const allOther = item.changes.every((c) => other(c.at));
+    const forkedFrom = item.changes.map((c) => fork(c.at)).find((f) => f !== undefined);
+    const forkLine = forkedFrom !== undefined && (
+      <div key={`${item.key}-fork`} className={`hl-fork ${allOther ? "other" : ""}`}>
+        New direction, from “{forkedFrom}”
+      </div>
+    );
     if (!shown)
-      return (
-        <div key={item.key} data-key={item.key} className={`hl-changes ${allLater ? "later" : ""}`} style={{ ["--who" as string]: colour }} title={allLater ? laterTitle : undefined}>
+      return [
+        forkLine,
+        <div key={item.key} data-key={item.key} className={`hl-changes ${allLater ? "later" : ""} ${allOther ? "other" : ""}`} style={{ ["--who" as string]: colour }} title={allOther ? otherTitle : allLater ? laterTitle : undefined}>
           <span className="hl-dots" aria-hidden="true">
             <i />
             <i />
@@ -507,19 +521,20 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
           </span>
           <button type="button" className="hl-chip" onClick={() => setOpenGroups((g) => ({ ...g, [item.key]: "open" }))}>
             <span>
-              {who ? `${who} · ` : ""}
+              {allOther ? "Another direction · " : who ? `${who} · ` : ""}
               {count} changes
             </span>
             <svg width={9} height={9} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M2 3.5l3 3 3-3" />
             </svg>
           </button>
-        </div>
-      );
+        </div>,
+      ];
     const list = shown === "all" ? item.changes : item.changes.slice(0, FIRST_CHANGES);
     const rest = count - list.length;
-    return (
-      <div key={item.key} data-key={item.key} className="hl-changes open" style={{ ["--who" as string]: colour }}>
+    return [
+      forkLine,
+      <div key={item.key} data-key={item.key} className={`hl-changes open ${allOther ? "other" : ""}`} style={{ ["--who" as string]: colour }}>
         {who && <div className="hl-who">{who}</div>}
         {list.map((c) => {
           const m = c.msg;
@@ -529,8 +544,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               key={c.key}
               data-key={c.key}
               data-step={c.step}
-              className={`hl-change ${c.at === cursor ? "now" : ""} ${later(c.at) ? "later" : ""} ${gone ? "gone" : ""} ${c.step && litStep === c.step ? "lit" : ""}`}
-              title={gone ? undefined : c.at === cursor ? "The design is at this moment" : "See the design at this moment"}
+              className={`hl-change ${c.at === cursor ? "now" : ""} ${later(c.at) ? "later" : ""} ${other(c.at) ? "other" : ""} ${gone ? "gone" : ""} ${c.step && litStep === c.step ? "lit" : ""}`}
+              title={gone ? undefined : c.at === cursor ? "The design is at this moment" : other(c.at) ? "Go back to this direction, at this moment" : "See the design at this moment"}
               onClick={() => !gone && goTo(c.at)}
             >
               <i className="hl-dot" aria-hidden="true" />
@@ -571,8 +586,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
             </span>
           </div>
         )}
-      </div>
-    );
+      </div>,
+    ];
   };
 
   const hits = findOpen ? findInHistory(items, query, nm) : [];
@@ -846,7 +861,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                   <div
                     key={item.key}
                     data-key={item.key}
-                    className={`hl-version ${later(item.at) ? "later" : ""} ${item.at === cursor ? "now" : ""}`}
+                    className={`hl-version ${later(item.at) ? "later" : ""} ${other(item.at) ? "other" : ""} ${item.at === cursor ? "now" : ""}`}
                     title="See the design at this version"
                     onClick={() => goTo(item.at)}
                   >
@@ -855,9 +870,10 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                   </div>
                 );
               const m = item.msg;
-              const isLater = m.undoStep !== undefined && m.undoStep > cursor;
+              const isOther = m.undoStep !== undefined && m.undoStep < timeline.length && other(m.undoStep);
+              const isLater = isOther || (m.undoStep !== undefined && later(m.undoStep));
               const isLit = litStep === m.step;
-              const title = isLater ? laterTitle : undefined;
+              const title = isOther ? otherTitle : isLater ? laterTitle : undefined;
 
               if (m.role === "you")
                 return (

@@ -5,6 +5,7 @@ import { useChat } from "../ai/chat";
 import { nameOf } from "../ai/names";
 import { wordsBehind } from "../memory/steps";
 import { goTo, redo, undo, useStore } from "../state/store";
+import { childOf, directionOf } from "../state/directions";
 import type { Actor } from "../commands";
 
 const STEP = 30;
@@ -66,6 +67,7 @@ export default function HistoryStrip() {
   }
 
   const cutoff = Math.max(0, timeline.length - 40);
+  const line = directionOf(timeline, cursor);
 
   return (
     <footer className="hist">
@@ -110,13 +112,13 @@ export default function HistoryStrip() {
             return (
               <Fragment key={i}>
                 {e.version && (
-                  <span className={`ver-text ${i > cursor ? "future" : ""}`} style={{ left: ringX, top: verTop }}>
+                  <span className={`ver-text ${i > cursor && line.has(i) ? "future" : ""} ${!line.has(i) ? "other" : ""}`} style={{ left: ringX, top: verTop }}>
                     {e.version}
                   </span>
                 )}
                 {words && (
                   <span
-                    className={`req-dot ${i > cursor ? "future" : ""}`}
+                    className={`req-dot ${i > cursor && line.has(i) ? "future" : ""} ${!line.has(i) ? "other" : ""}`}
                     style={{ left: ringX, top: dotTop }}
                     title="A request started here"
                     onClick={() => {
@@ -126,7 +128,7 @@ export default function HistoryStrip() {
                   />
                 )}
                 <button
-                  className={`pt ${isOld && !e.version ? "old" : ""} ${e.version ? "ver" : ""} ${i === cursor ? "now" : ""} ${i > cursor ? "future" : ""}`}
+                  className={`pt ${isOld && !e.version ? "old" : ""} ${e.version ? "ver" : ""} ${i === cursor ? "now" : ""} ${i > cursor && line.has(i) ? "future" : ""} ${!line.has(i) ? "other" : ""}`}
                   style={{
                     left: ringX,
                     top: Y,
@@ -154,7 +156,7 @@ export default function HistoryStrip() {
         <button className="mini" disabled={cursor === 0} onClick={undo} title="Undo (Ctrl or Cmd Z)">
           Undo
         </button>
-        <button className="mini" disabled={cursor >= timeline.length - 1} onClick={redo} title="Redo (Shift Ctrl or Cmd Z)">
+        <button className="mini" disabled={childOf(timeline, cursor) < 0} onClick={redo} title="Redo (Shift Ctrl or Cmd Z)">
           Redo
         </button>
         <button data-toggle="versions" className="mini" onClick={() => window.dispatchEvent(new CustomEvent("duet:versions", { detail: "toggle" }))}>

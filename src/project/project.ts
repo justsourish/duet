@@ -11,6 +11,7 @@ import { AGENTS, conversationProject, forgetSteps, forgetTasks, getChat, moveCon
 import type { AgentId } from "../ai/chat";
 import { loadThread, saveThread } from "../memory/files";
 import { stepsLine } from "../memory/steps";
+import { lineTo } from "../state/directions";
 import { keepable, packThread, readThread } from "../memory/thread";
 import { dropParked, getState, isParked, loadDoc, loadTimeline, onParkedChange, parkLive, parkedState, setEntryVersion, setProject, subscribe, unpark } from "../state/store";
 import type { HistoryEntry } from "../state/store";
@@ -427,7 +428,7 @@ function saveParked(file: string): Promise<void> {
       await flushPictures(path, doc);
       await invoke("write_text_file", { path: join(path, FILE), contents: serializeDoc(doc) });
       const names = stepsToKeep(s.timeline, s.cursor, kept.stepsKept);
-      if (await recordStep(path, stepMessage(s.timeline[s.cursor], s.cursor < s.timeline.length - 1, names))) for (const n of names) kept.stepsKept.add(n);
+      if (await recordStep(path, stepMessage(wentBackTo(s.timeline[s.cursor], s.cursor < s.timeline.length - 1), s.cursor < s.timeline.length - 1, names))) for (const n of names) kept.stepsKept.add(n);
       await invoke("pack_project", { dir: path, file });
     } catch (e) {
       kept.lastSaved = previous;
@@ -518,20 +519,27 @@ async function forgetParked(file: string) {
 }
 
 /** The text stored with each saved step. The first line is what the history strip shows. */
-export function stepMessage(entry: Pick<HistoryEntry, "label" | "actor" | "by">, wentBack: boolean, names: string[] = []) {
+export function stepMessage(entry: Pick<HistoryEntry, "label" | "actor" | "by" | "from">, wentBack: boolean, names: string[] = []) {
   const label = wentBack ? `Went back to: ${entry.label}` : entry.label;
   const steps = stepsLine(names);
   // one line, so a name can never start a line of its own meaning
   const by = entry.actor === "ai" && entry.by ? `\nBy: ${entry.by.replace(/\s+/g, " ").trim()}` : "";
-  return `${label}\n\nActor: ${entry.actor}${by}${steps ? `\n${steps}` : ""}`;
+  const from = entry.from && stepsLine([entry.from]) ? `\nFrom: ${entry.from}` : "";
+  return `${label}\n\nActor: ${entry.actor}${by}${steps ? `\n${steps}` : ""}${from}`;
 }
+
+/** Saved while looking at an earlier step, the saved step comes from that step, not from the newest one. */
+const wentBackTo = (entry: HistoryEntry, wentBack: boolean): HistoryEntry => (wentBack && entry.step ? { ...entry, from: entry.step } : entry);
 
 /** Names of steps that are already kept in a saved step of the open project. */
 let stepsKept = new Set<string>();
 
-/** The names of the steps up to here that no saved step holds yet, oldest first, so this one's own name comes last. */
-export function stepsToKeep(timeline: Pick<HistoryEntry, "step">[], cursor: number, kept: Set<string>): string[] {
-  return timeline.slice(0, cursor + 1).flatMap((e) => (e.step && !kept.has(e.step) ? [e.step] : []));
+/** The names of the steps on the way to here that no saved step holds yet, oldest first, so this one's own name comes last. */
+export function stepsToKeep(timeline: Pick<HistoryEntry, "step" | "covers" | "from">[], cursor: number, kept: Set<string>): string[] {
+  return lineTo(timeline, cursor).flatMap((i) => {
+    const e = timeline[i];
+    return e.step && !kept.has(e.step) ? [e.step] : [];
+  });
 }
 
 /** Record the current design as a saved step. Never blocks or fails the save itself. Says whether a step was made. */
@@ -568,7 +576,7 @@ export function saveNow(): Promise<void> {
     try {
       await writeDesign(path, doc);
       const names = stepsToKeep(s.timeline, s.cursor, stepsKept);
-      if (await recordStep(path, stepMessage(entry, wentBack, names))) for (const n of names) stepsKept.add(n);
+      if (await recordStep(path, stepMessage(wentBackTo(entry, wentBack), wentBack, names))) for (const n of names) stepsKept.add(n);
       schedulePack();
       setProject({ status: committed() === doc ? "saved" : "unsaved" });
     } catch (e) {
@@ -784,6 +792,8 @@ interface HistoryItem {
   doc: string;
   versions: string[];
   steps?: string[];
+  /** The step it was made on, when it started a new direction. */
+  from?: string | null;
 }
 
 /** The saved steps of this project, oldest first. Empty if there is no history yet. */
@@ -804,6 +814,7 @@ async function readHistory(path: string): Promise<HistoryEntry[]> {
           // a step saved before steps had names is known by what its saved step is called
           step: names.length ? names[names.length - 1] : i.hash,
           covers: names.length > 1 ? names.slice(0, -1) : undefined,
+          ...(i.from ? { from: i.from } : {}),
         });
       } catch {
         /* skip a step whose file we cannot read */

@@ -15,6 +15,8 @@ export interface Moment {
   time: number;
   version?: string;
   step?: string;
+  /** Set when a new direction starts here. */
+  from?: string;
 }
 
 /** One change on the line. `at` is its place in the history, or -1 when that is gone. */
@@ -57,7 +59,9 @@ export function chatHistory(messages: Msg[], timeline: Moment[], main: boolean):
     const change: Change = { key: `m${m.id}`, text: m.text, at: i, step: m.step ?? (i >= 0 ? timeline[i].step : undefined), msg: m };
     const last = said[said.length - 1];
     // a change that points nowhere stays with the ones it was made beside
-    if (last?.kind === "changes" && (i < 0 || (last.by === by && last.actor === actor))) last.changes.push(change);
+    // a new direction starts a group of its own, so the chat can say where it began
+    const forks = i >= 0 && !!timeline[i].from;
+    if (last?.kind === "changes" && !forks && (i < 0 || (last.by === by && last.actor === actor))) last.changes.push(change);
     else said.push({ kind: "changes", key: `g${m.id}`, actor, by, changes: [change], time: m.time ?? 0 });
   }
 
@@ -73,7 +77,7 @@ export function chatHistory(messages: Msg[], timeline: Moment[], main: boolean):
       // the chat already says what its own AI did; only the canvas and outside windows are added
       if (saidAbout.has(i) || !(e.actor === "you" || isOutside(e.by))) continue;
       const change: Change = { key: `s${i}`, text: e.label, at: i, step: e.step };
-      if (run && lastAt === i - 1 && run.actor === e.actor && run.by === e.by) run.changes.push(change);
+      if (run && !e.from && lastAt === i - 1 && run.actor === e.actor && run.by === e.by) run.changes.push(change);
       else {
         run = { kind: "changes", key: `r${i}`, actor: e.actor, by: e.by, changes: [change], time: e.time };
         between.push(run);

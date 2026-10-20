@@ -24,6 +24,7 @@ import { saveNow, tabName } from "../project/project";
 import { tracePicture } from "../project/trace";
 import { getState, goTo, keepAiWorkWhile, liveRoom, roomFor } from "../state/store";
 import type { Room } from "../state/store";
+import { parentOf } from "../state/directions";
 import { addMsg, askDesigner, conversationProject, getChat, messagesOf, setMinimized, taskOf, updateMsg } from "./chat";
 import { outsideRules, skillsText } from "./rules";
 import { isOutside } from "./who";
@@ -1193,7 +1194,7 @@ export function undoAiStep(msgId: number) {
   if (msg?.undoStep === undefined) return;
   const s = getState();
   if (s.cursor !== msg.undoStep) return;
-  goTo(msg.undoStep - 1);
+  goTo(parentOf(s.timeline, msg.undoStep));
   updateMsg(msgId, { undone: true }, where);
 }
 

@@ -397,6 +397,8 @@ struct HistoryItem {
     versions: Vec<String>,
     /// The names of the steps saved here, its own name last. Empty for steps saved before they had names.
     steps: Vec<String>,
+    /// The step it was made on, when it started a new direction.
+    from: Option<String>,
 }
 
 /// The saved steps of a project, oldest first, each with the design as it was then.
@@ -467,6 +469,7 @@ fn git_history(path: String, limit: usize) -> Result<Vec<HistoryItem>, String> {
             doc,
             versions: named.get(&oid).cloned().unwrap_or_default(),
             steps: message.lines().find_map(|l| l.trim().strip_prefix("Steps:")).map(|s| s.split_whitespace().map(String::from).collect()).unwrap_or_default(),
+            from: message.lines().find_map(|l| l.trim().strip_prefix("From:")).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         });
     }
     items.reverse();

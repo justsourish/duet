@@ -71,4 +71,10 @@ describe("the chat is the history", () => {
     expect(findInHistory(items, "junip", nameOf)).toEqual([{ key: "m2", kind: "name", text: "Juniper" }]);
     expect(findInHistory(items, "  ", nameOf)).toEqual([]);
   });
+
+  it("a new direction starts its own group", () => {
+    const line: Moment[] = [step("New file", 0), step("Draw", 10), step("Move", 20), step("Green", 30, { from: "s-Draw" })];
+    const items = chatHistory([], line, true);
+    expect(items.map((i) => i.kind === "changes" && i.changes.map((c) => c.at))).toEqual([[1, 2], [3]]);
+  });
 });
