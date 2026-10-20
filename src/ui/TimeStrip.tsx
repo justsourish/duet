@@ -147,7 +147,8 @@ export default function TimeStrip() {
       if (e.metaKey || e.ctrlKey || e.shiftKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
       if (e.code !== "BracketLeft" && e.code !== "BracketRight") return;
       const s = getState();
-      const d = currentDoc();
+      // as it looks at the playhead, so no animated layer is read as edited there
+      const d = dragBase();
       const scene = d.elements[sceneId];
       const ids = s.selection.filter((id) => d.elements[id] && d.elements[id].parentId === sceneId);
       if (!scene || !ids.length) return;

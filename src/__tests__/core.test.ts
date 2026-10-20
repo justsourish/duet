@@ -2779,3 +2779,19 @@ describe("ruler guides", () => {
     expect(serializeDoc(d)).not.toContain("guides");
   });
 });
+
+describe("moving a layer's timing at a moment", () => {
+  it("adds no keys to the other animated layers", () => {
+    let d = runCommand(frame("f"), "set_props", { ids: ["f"], props: { duration: 10 } });
+    d = runCommand(d, "create_element", { id: "a", type: "rect", parentId: "f", x: 0, y: 0, width: 10, height: 10 });
+    d = runCommand(d, "create_element", { id: "w", type: "rect", parentId: "f", x: 0, y: 0, width: 10, height: 10 });
+    d = runCommand(d, "set_timing", { ids: ["w"], start: 6 });
+    d = runCommand(d, "set_key", { ids: ["w"], prop: "opacity", t: 6, v: 0 });
+    d = runCommand(d, "set_key", { ids: ["w"], prop: "opacity", t: 7, v: 1 });
+    const posed = docAt(d, "f", 6.5);
+    const out = runCommand(posed, "set_timing", { ids: ["a"], start: 2 });
+    const done = settle(d, posed, out, "f", 6.5);
+    expect(done.elements.w.keys.opacity!.map((k) => k.t)).toEqual([6, 7]);
+    expect(done.elements.a.start).toBe(2);
+  });
+});
