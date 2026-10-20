@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { dispatch, dragCancel, dragPreview } from "../state/store";
+import { currentDoc, dispatch, dragCancel, dragPreview } from "../state/store";
 import type { El } from "../document/types";
 import { GRADE_CONTROLS, canGrade, isNeutral, neutralGrade } from "../document/grade";
 import type { Grade, GradeNumber } from "../document/grade";
@@ -18,7 +18,9 @@ function Slider({ ids, grade, k }: { ids: string[]; grade: Grade; k: (typeof GRA
   const live = (n: number) => dragPreview("set_grade", { ids, grade: { [k.key]: n } });
   const done = (n: number) => {
     dragCancel();
-    if (n !== value) dispatch("set_grade", { ids, grade: { [k.key]: n }, label: `Change ${k.label.toLowerCase()}` });
+    // while dragging, the panel already shows the new number, so compare with what is kept, not with what is shown
+    const kept = currentDoc().elements;
+    if (ids.some((id) => (kept[id]?.grade?.[k.key] ?? neutralGrade()[k.key]) !== n)) dispatch("set_grade", { ids, grade: { [k.key]: n }, label: `Change ${k.label.toLowerCase()}` });
   };
   const typed = () => {
     const n = parseFloat(text) / (k.key === "lookAmount" ? 100 : 1);
