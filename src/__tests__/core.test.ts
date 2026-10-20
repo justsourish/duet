@@ -1753,6 +1753,7 @@ describe("what the AI can ask for", () => {
 });
 
 import { canMask, maskOf } from "../document/geometry";
+import { docAt } from "../document/time";
 import { maskChoice } from "../ui/actions";
 
 describe("masks", () => {
@@ -1785,6 +1786,15 @@ describe("masks", () => {
     expect(hitTest(d, 163, 113)).toBe("f"); // a corner of the circle's box, outside the circle
     expect(hitTest(d, 130, 80)).toBe("f"); // on the photo, but outside the shape, so it is not shown
     expect(hitTest(d, 210, 160, new Set(), true)).toBe("photo");
+  });
+
+  it("is not shown at a moment when its picture has not come or has gone", () => {
+    let d = runCommand(masked(), "set_props", { ids: ["f"], props: { duration: 9 } });
+    d = runCommand(d, "set_props", { ids: ["photo"], props: { start: 3, end: 6 } });
+    const early = docAt(d, "f", 1);
+    expect(early.elements.m.hidden).toBe(true);
+    expect(docAt(d, "f", 4).elements.m.hidden).toBeFalsy();
+    expect(docAt(d, "f", 7).elements.m.hidden).toBe(true);
   });
 
   it("needs a plain shape, and something to show through it", () => {

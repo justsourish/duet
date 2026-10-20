@@ -124,7 +124,11 @@ export function docAt(doc: Doc, sceneId: string, t: number): Doc {
       // the last moment still shows what was there at the end
       return t >= span.start && (t < span.end || (t >= scene.duration && span.end >= scene.duration));
     });
-    if (kept.length !== el.childIds.length) elements[id] = { ...el, childIds: kept };
+    if (kept.length !== el.childIds.length) {
+      // a mask whose pictures have all left has only its shape left, which would show as a plain solid
+      const emptied = el.mask && el.childIds.length > 1 && kept.length < 2;
+      elements[id] = { ...el, childIds: kept, ...(emptied ? { hidden: true } : {}) };
+    }
     for (const c of kept) {
       elements[c] = elAt(doc.elements[c], t);
       walk(c);
