@@ -8,7 +8,7 @@ import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../do
 import { CURVES, ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } from "../document/time";
 import type { CurveName, Entrance } from "../document/time";
 import { canGrade, mergeGrade } from "../document/grade";
-import type { Grade } from "../document/grade";
+import type { GradeChange } from "../document/grade";
 import type { CreatePresetFrameArgs } from "./presets";
 
 /**
@@ -295,7 +295,7 @@ const setProps: CommandDef<SetPropsArgs> = {
 export interface SetGradeArgs {
   ids: string[];
   /** Only the controls to change. null puts the colour back as it was. */
-  grade: Partial<Grade> | null;
+  grade: GradeChange | null;
   label?: string;
 }
 

@@ -128,6 +128,8 @@ function drawLine(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
 let plain = false;
 export const setPlainPictures = (on: boolean) => void (plain = on);
 const gradeOf = (el: El) => (plain ? null : el.grade);
+/** A picture or clip as it is drawn: with its colour, or as it came in the Before window. */
+const coloured = (pic: HTMLImageElement | HTMLVideoElement, el: El, still: string | null) => (plain ? pic : graded(pic, el.grade, still));
 
 /** Pictures with rounded corners and a shadow, already cut to shape. Kept so they are not cut again on every repaint. */
 const cutSheets = new Map<string, HTMLCanvasElement>();
@@ -141,7 +143,7 @@ function layPicture(ctx: CanvasRenderingContext2D, pic: HTMLImageElement, el: El
     const scale = Math.max(el.width / pic.naturalWidth, el.height / pic.naturalHeight);
     const w = pic.naturalWidth * scale;
     const h = pic.naturalHeight * scale;
-    ctx.drawImage(graded(pic, gradeOf(el), el.src), x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+    ctx.drawImage(coloured(pic, el, el.src), x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
   } finally {
     ctx.restore();
   }
@@ -215,7 +217,7 @@ function drawClip(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
       const k = Math.max(el.width / pic.videoWidth, el.height / pic.videoHeight);
       const w = pic.videoWidth * k;
       const h = pic.videoHeight * k;
-      ctx.drawImage(graded(pic, gradeOf(el), null), x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+      ctx.drawImage(coloured(pic, el, null), x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
     } catch (e) {
       logError("draw clip", e);
     }

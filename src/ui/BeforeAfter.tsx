@@ -4,6 +4,8 @@ import { canGrade } from "../document/grade";
 import { worldRect } from "../document/geometry";
 import type { Doc, El } from "../document/types";
 import { getState, seenDoc, select, subscribe, useStore } from "../state/store";
+import { pickedColour, pickingColour } from "./colourPick";
+import { hexToHsva } from "./color";
 
 /** The thing on the board that holds this one: a frame, a group, or a picture on its own. */
 export function rootOf(doc: Doc, id: string | undefined): El | null {
@@ -120,6 +122,14 @@ export default function BeforeAfter() {
 
   const pick = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.stopPropagation();
+    // picking one colour: read it from the picture as it came, where it was clicked
+    if (pickingColour()) {
+      const r = e.currentTarget.getBoundingClientRect();
+      const c = before.current;
+      const px = c?.getContext("2d")?.getImageData(Math.round(((e.clientX - r.left) / r.width) * c.width), Math.round(((e.clientY - r.top) / r.height) * c.height), 1, 1).data;
+      if (px) pickedColour(hexToHsva(`#${[px[0], px[1], px[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`).h / 360);
+      return;
+    }
     const doc = seenDoc(getState());
     const root = doc.elements[rootId];
     if (!root) return;

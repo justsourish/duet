@@ -9,7 +9,10 @@
 //! 4. Highlights, shadows, whites and blacks move the brightness of their own range, measured in
 //!    stops from middle grey. Each pixel looks only at itself, so there are never halos.
 //! 5. Back to display light, then the look (a .cube file), mixed by its strength.
-//! 6. Saturation and vibrance, around Rec.709 brightness.
+//! 6. Curves (light, then red, green and blue), hue, and the colour curves read along the wheel.
+//! 7. Saturation and vibrance, around Rec.709 brightness.
+//! 8. Skin, found by its colour in the picture as it came: kept natural, turned, brightened.
+//! 9. The vignette, by where the pixel is in the picture.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -29,6 +32,140 @@ pub struct Grade {
     pub vibrance: f32,
     pub look: String,
     pub look_amount: f32,
+    pub hue: f32,
+    pub vignette: f32,
+    pub curves: Curves,
+    pub skin_keep: f32,
+    pub skin_tone: f32,
+    pub skin_light: f32,
+}
+
+/// Each curve is a list of points, x in and y out, 0 to 1. See src/document/grade.ts.
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Curves {
+    pub light: Vec<[f32; 2]>,
+    pub red: Vec<[f32; 2]>,
+    pub green: Vec<[f32; 2]>,
+    pub blue: Vec<[f32; 2]>,
+    pub hue_hue: Vec<[f32; 2]>,
+    pub hue_sat: Vec<[f32; 2]>,
+    pub hue_light: Vec<[f32; 2]>,
+    pub light_sat: Vec<[f32; 2]>,
+}
+
+/// How many steps a curve is worked out at. The same as CURVE_STEPS in grade.ts.
+pub const CURVE_STEPS: usize = 256;
+
+/// A curve as a table, worked out exactly as curveTable in grade.ts.
+pub fn curve_table(pts: &[[f32; 2]], round: bool, middle: bool) -> Vec<f32> {
+    (0..CURVE_STEPS)
+        .map(|i| {
+            let x = i as f32 / (CURVE_STEPS - 1) as f32;
+            if pts.is_empty() {
+                if middle { 0.5 } else { x }
+            } else if round {
+                round_at(pts, x)
+            } else {
+                tone_at(pts, x)
+            }
+        })
+        .collect()
+}
+
+fn round_at(pts: &[[f32; 2]], x: f32) -> f32 {
+    if pts.len() == 1 {
+        return pts[0][1];
+    }
+    let j = pts.iter().position(|p| p[0] >= x).unwrap_or(0);
+    let i = (j + pts.len() - 1) % pts.len();
+    let ([x0, y0], [x1, y1]) = (pts[i], pts[j]);
+    let span = (x1 - x0 + 1.0).rem_euclid(1.0);
+    let span = if span == 0.0 { 1.0 } else { span };
+    let t = (((x - x0 + 1.0).rem_euclid(1.0)) / span).clamp(0.0, 1.0);
+    let e = (1.0 - (std::f32::consts::PI * t).cos()) / 2.0;
+    y0 + (y1 - y0) * e
+}
+
+fn slope_at(pts: &[[f32; 2]], i: usize) -> f32 {
+    let k = pts.len();
+    let d = |a: usize| (pts[a + 1][1] - pts[a][1]) / (pts[a + 1][0] - pts[a][0]);
+    if i == 0 {
+        return d(0);
+    }
+    if i == k - 1 {
+        return d(k - 2);
+    }
+    let (a, b) = (d(i - 1), d(i));
+    if a * b <= 0.0 { 0.0 } else { 2.0 * a * b / (a + b) }
+}
+
+fn tone_at(pts: &[[f32; 2]], x: f32) -> f32 {
+    let k = pts.len();
+    // one point alone does not make a curve
+    if k == 1 {
+        return x;
+    }
+    if x <= pts[0][0] {
+        return (pts[0][1] - (pts[0][0] - x) * slope_at(pts, 0)).clamp(0.0, 1.0);
+    }
+    if x >= pts[k - 1][0] {
+        return (pts[k - 1][1] + (x - pts[k - 1][0]) * slope_at(pts, k - 1)).clamp(0.0, 1.0);
+    }
+    let mut i = 0;
+    while pts[i + 1][0] < x {
+        i += 1;
+    }
+    let ([x0, y0], [x1, y1]) = (pts[i], pts[i + 1]);
+    let h = x1 - x0;
+    let t = (x - x0) / h;
+    let (m0, m1) = (slope_at(pts, i), slope_at(pts, i + 1));
+    let (t2, t3) = (t * t, t * t * t);
+    let y = (2.0 * t3 - 3.0 * t2 + 1.0) * y0 + (t3 - 2.0 * t2 + t) * h * m0 + (-2.0 * t3 + 3.0 * t2) * y1 + (t3 - t2) * h * m1;
+    y.clamp(0.0, 1.0)
+}
+
+/// Read a curve table between its steps, as the shader's table() does.
+fn table(t: &[f32], x: f32) -> f32 {
+    let p = x.clamp(0.0, 1.0) * (CURVE_STEPS - 1) as f32;
+    let i = p.floor().min((CURVE_STEPS - 2) as f32);
+    let f = p - i;
+    let i = i as usize;
+    t[i] + (t[i + 1] - t[i]) * f
+}
+
+/// Colours turned round the wheel by some degrees, around the grey line, as turn() in the shader.
+pub fn turn(v: [f32; 3], deg: f32) -> [f32; 3] {
+    let (s, c) = deg.to_radians().sin_cos();
+    let u = 0.577_350_27f32;
+    let d = u * (v[0] + v[1] + v[2]);
+    let cross = [u * (v[2] - v[1]), u * (v[0] - v[2]), u * (v[1] - v[0])];
+    [0, 1, 2].map(|i| v[i] * c + cross[i] * s + u * d * (1.0 - c))
+}
+
+/// Hue 0 to 1 and how colourful, as in HSV, as hueSat() in the shader.
+fn hue_sat(v: [f32; 3]) -> (f32, f32) {
+    let hi = v[0].max(v[1]).max(v[2]);
+    let d = hi - v[0].min(v[1]).min(v[2]);
+    if d <= 1e-6 {
+        return (0.0, 0.0);
+    }
+    let h = if hi == v[0] {
+        ((v[1] - v[2]) / d).rem_euclid(6.0)
+    } else if hi == v[1] {
+        (v[2] - v[0]) / d + 2.0
+    } else {
+        (v[0] - v[1]) / d + 4.0
+    };
+    (h / 6.0, d / hi.max(1e-6))
+}
+
+/// How much a colour looks like skin, 0 to 1, as skin() in the shader.
+pub fn skin(v: [f32; 3]) -> f32 {
+    let (h, s) = hue_sat(v);
+    let h = if h > 0.5 { h - 1.0 } else { h };
+    let hi = v[0].max(v[1]).max(v[2]);
+    smoothstep(-0.03, 0.0, h) * (1.0 - smoothstep(0.06, 0.09, h)) * smoothstep(0.2, 0.3, s) * (1.0 - smoothstep(0.65, 0.8, s)) * smoothstep(0.2, 0.35, hi)
 }
 
 const LUMA: [f32; 3] = [0.2126, 0.7152, 0.0722];
@@ -227,6 +364,8 @@ pub struct Ready {
     gain: f32,
     contrast: f32,
     look: Option<Lut>,
+    /// light, red, green, blue, hue to hue, hue to colourfulness, hue to light, light to colourfulness
+    tables: Vec<Vec<f32>>,
 }
 
 impl Ready {
@@ -234,11 +373,18 @@ impl Ready {
         let balance = white_balance(grade.temperature, grade.tint);
         let gain = 2f32.powf(grade.exposure);
         let contrast = contrast_power(grade.contrast);
-        Ready { grade, balance, gain, contrast, look }
+        let c = &grade.curves;
+        let tables = [(&c.light, false, false), (&c.red, false, false), (&c.green, false, false), (&c.blue, false, false), (&c.hue_hue, true, true), (&c.hue_sat, true, true), (&c.hue_light, true, true), (&c.light_sat, false, true)]
+            .iter()
+            .map(|(pts, round, middle)| curve_table(pts, *round, *middle))
+            .collect();
+        Ready { grade, balance, gain, contrast, look, tables }
     }
 
-    /// One pixel, display light in and display light out, 0 to 1.
-    pub fn pixel(&self, v: [f32; 3]) -> [f32; 3] {
+    /// One pixel, display light in and display light out, 0 to 1. x and y say where it is in the
+    /// picture, 0 to 1, measured at the middle of the pixel.
+    pub fn pixel(&self, v: [f32; 3], x: f32, y: f32) -> [f32; 3] {
+        let (px, py) = (x, y);
         let g = &self.grade;
         let lin = v.map(to_linear);
         let m = &self.balance;
@@ -260,10 +406,45 @@ impl Ready {
             let looked = lut.sample(out);
             out = [0, 1, 2].map(|i| out[i] + (looked[i] - out[i]) * amount);
         }
+        let t = &self.tables;
+        out = out.map(|c| table(&t[0], c));
+        out = [table(&t[1], out[0]), table(&t[2], out[1]), table(&t[3], out[2])];
+        if g.hue != 0.0 {
+            out = turn(out, g.hue);
+        }
+        let (h, _) = hue_sat(out);
+        let chroma = out[0].max(out[1]).max(out[2]) - out[0].min(out[1]).min(out[2]);
+        out = turn(out, (table(&t[4], h) - 0.5) * 120.0);
+        let y = dot(out);
+        let ks = table(&t[5], h) * 2.0 * table(&t[7], y) * 2.0;
+        out = out.map(|c| y + (c - y) * ks);
+        let kl = 2f32.powf((table(&t[6], h) - 0.5) * 2.0 * (chroma * 4.0).clamp(0.0, 1.0));
+        out = out.map(|c| c * kl);
         let y = dot(out);
         let sat = out.iter().cloned().fold(f32::MIN, f32::max) - out.iter().cloned().fold(f32::MAX, f32::min);
         let k = (1.0 + g.saturation / 100.0) * (1.0 + g.vibrance / 100.0 * (1.0 - sat.clamp(0.0, 1.0)));
-        out.map(|c| (y + (c - y) * k).clamp(0.0, 1.0))
+        out = out.map(|c| (y + (c - y) * k).clamp(0.0, 1.0));
+        let m = skin(v);
+        if m > 0.0 {
+            if g.skin_keep > 0.0 {
+                let r = dot(out) / dot(v).max(1e-4);
+                let a = m * g.skin_keep / 100.0;
+                out = [0, 1, 2].map(|i| out[i] + (v[i] * r - out[i]) * a);
+            }
+            if g.skin_tone != 0.0 {
+                out = turn(out, g.skin_tone / 100.0 * 12.0 * m);
+            }
+            if g.skin_light != 0.0 {
+                let k = 2f32.powf(g.skin_light / 100.0 * 0.5 * m);
+                out = out.map(|c| c * k);
+            }
+        }
+        if g.vignette != 0.0 {
+            let d = (((px - 0.5) * 2.0).powi(2) + ((py - 0.5) * 2.0).powi(2)).sqrt() / std::f32::consts::SQRT_2;
+            let k = 1.0 + g.vignette / 100.0 * 0.8 * smoothstep(0.35, 1.0, d);
+            out = out.map(|c| c * k);
+        }
+        out.map(|c| c.clamp(0.0, 1.0))
     }
 }
 
@@ -280,15 +461,20 @@ pub fn contrast_power(contrast: f32) -> f32 {
     }
 }
 
-/// Grade a whole frame of 16-bit RGB, in place, on every core of the processor.
-pub fn frame_rgb48(ready: &Ready, pixels: &mut [u16]) {
+/// Grade a whole frame of 16-bit RGB, `width` pixels across, in place, on every core of the processor.
+pub fn frame_rgb48(ready: &Ready, pixels: &mut [u16], width: usize) {
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-    let chunk = (pixels.len() / 3).div_ceil(threads) * 3;
+    let width = width.max(1);
+    let height = (pixels.len() / 3).div_ceil(width).max(1);
+    // whole rows to each core, so every pixel knows where it is
+    let rows = height.div_ceil(threads);
     std::thread::scope(|s| {
-        for part in pixels.chunks_mut(chunk.max(3)) {
+        for (part_i, part) in pixels.chunks_mut(rows * width * 3).enumerate() {
             s.spawn(move || {
-                for px in part.chunks_exact_mut(3) {
-                    let out = ready.pixel([px[0], px[1], px[2]].map(|c| c as f32 / 65535.0));
+                for (n, px) in part.chunks_exact_mut(3).enumerate() {
+                    let at = part_i * rows * width + n;
+                    let (x, y) = (((at % width) as f32 + 0.5) / width as f32, ((at / width) as f32 + 0.5) / height as f32);
+                    let out = ready.pixel([px[0], px[1], px[2]].map(|c| c as f32 / 65535.0), x, y);
                     for i in 0..3 {
                         px[i] = (out[i] * 65535.0).round() as u16;
                     }
@@ -378,8 +564,16 @@ mod tests {
             let ready = Ready::new(Grade { look_amount: 1.0, ..grade }, None);
             let input: [f32; 3] = serde_json::from_value(case["in"].clone()).unwrap();
             let want: [f32; 3] = serde_json::from_value(case["out"].clone()).unwrap();
-            let got = ready.pixel(input);
+            let at: [f32; 2] = case.get("at").map(|a| serde_json::from_value(a.clone()).unwrap()).unwrap_or([0.5, 0.5]);
+            let got = ready.pixel(input, at[0], at[1]);
             assert!(close(got, want, 0.002), "{}: got {got:?}, want {want:?}", case["name"]);
+        }
+        for case in fixtures["tables"].as_array().unwrap() {
+            let pts: Vec<[f32; 2]> = serde_json::from_value(case["points"].clone()).unwrap();
+            let t = curve_table(&pts, case["round"].as_bool().unwrap(), case["middle"].as_bool().unwrap());
+            for (i, want) in case["at"].as_array().unwrap().iter().zip(case["values"].as_array().unwrap()) {
+                assert!((t[i.as_u64().unwrap() as usize] - want.as_f64().unwrap() as f32).abs() < 1e-5, "curve {pts:?} at {i}");
+            }
         }
         for case in fixtures["balance"].as_array().unwrap() {
             let m = white_balance(case["temperature"].as_f64().unwrap() as f32, case["tint"].as_f64().unwrap() as f32);
@@ -394,38 +588,38 @@ mod tests {
     fn a_neutral_grade_leaves_every_colour_alone() {
         let ready = Ready::new(Grade { look_amount: 1.0, ..Default::default() }, None);
         for v in [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0], [0.2, 0.5, 0.8], [0.9, 0.1, 0.3]] {
-            assert!(close(ready.pixel(v), v, 0.0005), "{v:?} became {:?}", ready.pixel(v));
+            assert!(close(ready.pixel(v, 0.5, 0.5), v, 0.0005), "{v:?} became {:?}", ready.pixel(v, 0.5, 0.5));
         }
     }
 
     #[test]
     fn warmer_adds_red_and_takes_blue_and_keeps_grey_grey_in_brightness() {
         let warm = Ready::new(Grade { temperature: 60.0, ..Default::default() }, None);
-        let out = warm.pixel([0.5, 0.5, 0.5]);
+        let out = warm.pixel([0.5, 0.5, 0.5], 0.5, 0.5);
         assert!(out[0] > 0.5 && out[2] < 0.5, "{out:?}");
         let magenta = Ready::new(Grade { tint: 60.0, ..Default::default() }, None);
-        let out = magenta.pixel([0.5, 0.5, 0.5]);
+        let out = magenta.pixel([0.5, 0.5, 0.5], 0.5, 0.5);
         assert!(out[1] < out[0] && out[1] < out[2], "{out:?}");
     }
 
     #[test]
     fn one_stop_down_halves_the_light() {
         let ready = Ready::new(Grade { exposure: -1.0, ..Default::default() }, None);
-        let out = ready.pixel([0.8, 0.8, 0.8]);
+        let out = ready.pixel([0.8, 0.8, 0.8], 0.5, 0.5);
         assert!((to_linear(out[0]) - to_linear(0.8) / 2.0).abs() < 1e-4);
     }
 
     #[test]
     fn shadows_lift_the_darks_and_leave_the_brights() {
         let ready = Ready::new(Grade { shadows: 80.0, ..Default::default() }, None);
-        assert!(ready.pixel([0.1, 0.1, 0.1])[0] > 0.15);
-        assert!((ready.pixel([0.95, 0.95, 0.95])[0] - 0.95).abs() < 0.01);
+        assert!(ready.pixel([0.1, 0.1, 0.1], 0.5, 0.5)[0] > 0.15);
+        assert!((ready.pixel([0.95, 0.95, 0.95], 0.5, 0.5)[0] - 0.95).abs() < 0.01);
     }
 
     #[test]
     fn minus_100_saturation_is_black_and_white() {
         let ready = Ready::new(Grade { saturation: -100.0, ..Default::default() }, None);
-        let out = ready.pixel([0.9, 0.2, 0.1]);
+        let out = ready.pixel([0.9, 0.2, 0.1], 0.5, 0.5);
         assert!(close([out[0]; 3], out, 1e-5), "{out:?}");
     }
 
@@ -462,8 +656,8 @@ mod tests {
     fn grades_a_16_bit_frame_on_every_core() {
         let ready = Ready::new(Grade { exposure: 1.0, ..Default::default() }, None);
         let mut px = vec![16384u16; 3 * 1000];
-        frame_rgb48(&ready, &mut px);
-        let want = (ready.pixel([16384.0 / 65535.0; 3])[0] * 65535.0).round() as u16;
+        frame_rgb48(&ready, &mut px, 1000);
+        let want = (ready.pixel([16384.0 / 65535.0; 3], 0.5, 0.5)[0] * 65535.0).round() as u16;
         assert!(px.iter().all(|&p| p == want));
     }
 }
@@ -486,20 +680,55 @@ mod make_fixtures {
             ("whites and blacks", serde_json::json!({"whites": -50, "blacks": 40}), [0.02, 0.98, 0.5]),
             ("saturation and vibrance", serde_json::json!({"saturation": 30, "vibrance": -40}), [0.8, 0.3, 0.2]),
             ("everything", serde_json::json!({"exposure": -0.7, "contrast": -20, "highlights": -40, "shadows": 20, "whites": -10, "blacks": 5, "temperature": -15, "tint": 8, "saturation": -10, "vibrance": 20}), [0.9, 0.85, 0.7]),
+            ("hue", serde_json::json!({"hue": 60}), [0.8, 0.3, 0.2]),
+            ("light curve", serde_json::json!({"curves": {"light": [[0, 0.05], [0.5, 0.6], [1, 0.95]]}}), [0.3, 0.5, 0.7]),
+            ("red and blue curves", serde_json::json!({"curves": {"red": [[0, 0], [0.5, 0.4], [1, 1]], "blue": [[0, 0.1], [1, 1]]}}), [0.5, 0.5, 0.5]),
+            ("one colour", serde_json::json!({"curves": {"hueHue": [[0.5, 0.5], [0.6, 0.7], [0.7, 0.5]], "hueSat": [[0.5, 0.5], [0.6, 0.8], [0.7, 0.5]], "hueLight": [[0.5, 0.5], [0.6, 0.3], [0.7, 0.5]]}}), [0.2, 0.5, 0.8]),
+            ("light to colourfulness", serde_json::json!({"curves": {"lightSat": [[0, 0.2], [0.5, 0.5], [1, 0.5]]}}), [0.3, 0.1, 0.05]),
+            ("skin kept", serde_json::json!({"temperature": -60, "saturation": 40, "skinKeep": 100}), [0.85, 0.62, 0.5]),
+            ("skin turned and brighter", serde_json::json!({"skinTone": 80, "skinLight": 50}), [0.8, 0.55, 0.45]),
+            ("sky is not skin", serde_json::json!({"skinTone": 80, "skinLight": 50, "skinKeep": 100}), [0.3, 0.5, 0.9]),
         ];
         let pixels: Vec<serde_json::Value> = cases
             .into_iter()
             .map(|(name, g, v)| {
                 let grade: Grade = serde_json::from_value(g.clone()).unwrap();
-                let out = Ready::new(Grade { look_amount: 1.0, ..grade }, None).pixel(v);
+                let out = Ready::new(Grade { look_amount: 1.0, ..grade }, None).pixel(v, 0.5, 0.5);
                 serde_json::json!({"name": name, "grade": g, "in": v, "out": out.map(|c| (c * 100000.0).round() / 100000.0)})
             })
+            .collect();
+        let corners: Vec<serde_json::Value> = [(-80.0, [0.05, 0.05]), (60.0, [0.95, 0.5]), (-100.0, [0.5, 0.5])]
+            .into_iter()
+            .map(|(v, at): (f32, [f32; 2])| {
+                let out = Ready::new(Grade { vignette: v, look_amount: 1.0, ..Default::default() }, None).pixel([0.6, 0.5, 0.4], at[0], at[1]);
+                serde_json::json!({"name": format!("vignette {v}"), "grade": {"vignette": v}, "in": [0.6, 0.5, 0.4], "at": at, "out": out.map(|c| (c * 100000.0).round() / 100000.0)})
+            })
+            .collect();
+        let pixels: Vec<serde_json::Value> = pixels.into_iter().chain(corners).collect();
+        let pick = [0usize, 37, 64, 128, 170, 200, 255];
+        let tables: Vec<serde_json::Value> = [
+            (serde_json::json!([[0, 0.05], [0.5, 0.6], [1, 0.95]]), false, false),
+            (serde_json::json!([[0.2, 0.1], [0.4, 0.8], [0.9, 0.85]]), false, false),
+            (serde_json::json!([[0.5, 0.5], [0.6, 0.7], [0.7, 0.5]]), true, true),
+            (serde_json::json!([[0.9, 0.2], [0.1, 0.8]]), true, true),
+            (serde_json::json!([]), false, true),
+        ]
+        .into_iter()
+        .map(|(pts, round, middle)| {
+            let p: Vec<[f32; 2]> = serde_json::from_value(pts.clone()).unwrap();
+            let t = curve_table(&p, round, middle);
+            serde_json::json!({"points": pts, "round": round, "middle": middle, "at": pick, "values": pick.map(|i| (t[i] * 1000000.0).round() / 1000000.0)})
+        })
+        .collect();
+        let turns: Vec<serde_json::Value> = [([0.8f32, 0.3, 0.2], 40.0f32), ([0.1, 0.6, 0.9], -120.0)]
+            .into_iter()
+            .map(|(v, d)| serde_json::json!({"in": v, "deg": d, "out": turn(v, d).map(|c| (c * 1000000.0).round() / 1000000.0)}))
             .collect();
         let balance: Vec<serde_json::Value> = [(40.0, 25.0), (-70.0, -40.0), (100.0, 0.0), (0.0, -100.0)]
             .into_iter()
             .map(|(t, n)| serde_json::json!({"temperature": t, "tint": n, "matrix": white_balance(t, n).map(|r| r.map(|c| (c * 1000000.0).round() / 1000000.0))}))
             .collect();
-        println!("FIXTURES{}", serde_json::to_string_pretty(&serde_json::json!({"pixels": pixels, "balance": balance})).unwrap());
+        println!("FIXTURES{}", serde_json::to_string_pretty(&serde_json::json!({"pixels": pixels, "balance": balance, "tables": tables, "turns": turns})).unwrap());
     }
 }
 
@@ -507,7 +736,7 @@ mod make_fixtures {
 mod check_export {
     use super::*;
     /// Run by hand: compares a frame of an exported video with the source frame graded here.
-    /// GRADE_SRC, GRADE_OUT: raw rgb48le frames of the same size. GRADE_JSON: the grade.
+    /// GRADE_SRC, GRADE_OUT: raw rgb48le frames of the same size, GRADE_WIDTH pixels across. GRADE_JSON: the grade.
     #[test]
     #[ignore]
     fn compare() {
@@ -516,13 +745,14 @@ mod check_export {
         let g: Grade = serde_json::from_str(&std::env::var("GRADE_JSON").unwrap()).unwrap();
         let look = (!g.look.is_empty()).then(|| Lut::parse(&std::fs::read_to_string(&g.look).unwrap()).unwrap());
         let ready = Ready::new(g, look);
+        let width: usize = std::env::var("GRADE_WIDTH").unwrap().parse().unwrap();
         let mut spare = src.clone();
         let t = std::time::Instant::now();
         for _ in 0..10 {
-            frame_rgb48(&ready, &mut spare);
+            frame_rgb48(&ready, &mut spare, width);
         }
         println!("RESULT one frame takes {:.1} ms", t.elapsed().as_secs_f64() * 100.0);
-        frame_rgb48(&ready, &mut src);
+        frame_rgb48(&ready, &mut src, width);
         let n = src.len() as f64;
         let mean = src.iter().zip(&out).map(|(a, b)| (*a as f64 - *b as f64).abs()).sum::<f64>() / n / 65535.0 * 255.0;
         let ungraded = read("GRADE_SRC").iter().zip(&out).map(|(a, b)| (*a as f64 - *b as f64).abs()).sum::<f64>() / n / 65535.0 * 255.0;

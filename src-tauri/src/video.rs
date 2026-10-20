@@ -497,7 +497,7 @@ pub fn scene_export_frame(request: tauri::ipc::Request<'_>) -> Result<(), String
             let mut px = m.base_picture(b)?;
             if let Some(g) = &b.grade {
                 let ready = m.ready_for(g);
-                crate::grade::frame_rgb48(&ready, &mut px);
+                crate::grade::frame_rgb48(&ready, &mut px, m.width as usize);
             }
             if info.drawn {
                 lay_over(&mut px, bytes);

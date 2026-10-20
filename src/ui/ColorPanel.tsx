@@ -6,6 +6,7 @@ import type { El } from "../document/types";
 import { GRADE_CONTROLS, canGrade, isNeutral, neutralGrade } from "../document/grade";
 import type { Grade, GradeNumber } from "../document/grade";
 import { lookFailed } from "../canvas/grade";
+import { CurvesBox, OneColour, SkinBox } from "./ColorTools";
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 const shown = (key: GradeNumber, v: number) => (key === "exposure" ? v.toFixed(2) : key === "lookAmount" ? `${Math.round(v * 100)}%` : String(Math.round(v)));
@@ -62,6 +63,8 @@ const FEW: { key: GradeNumber; label: string }[] = [
   { key: "contrast", label: "Contrast" },
   { key: "saturation", label: "Saturation" },
   { key: "temperature", label: "Warmth" },
+  { key: "hue", label: "Hue" },
+  { key: "vignette", label: "Vignette" },
 ];
 /** The rest stay out of the way, and show only on a picture that already uses them, so that work can still be changed. */
 const REST: GradeNumber[] = ["tint", "shadows", "whites", "blacks", "vibrance"];
@@ -110,6 +113,9 @@ export default function ColorPanel({ els, every }: { els: El[]; every?: string }
           <Slider key={key} ids={ids} grade={grade} k={control(key)} />
         ))}
       </div>
+      <CurvesBox ids={ids} grade={grade} />
+      <OneColour ids={ids} grade={grade} />
+      <SkinBox grade={grade} Slider={({ k }) => <Slider ids={ids} grade={grade} k={control(k)} />} />
       <div className="sec">
         <h4>Look</h4>
         {grade.look ? (

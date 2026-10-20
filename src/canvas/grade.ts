@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { isNeutral } from "../document/grade";
+import { CURVE_KEYS, CURVE_STEPS, MIDDLE_CURVES, ROUND_CURVES, curveTable, isNeutral, neutralGrade, noCurves } from "../document/grade";
 import type { Grade } from "../document/grade";
 import { logError } from "../errorLog";
 
@@ -90,6 +90,13 @@ uniform float whites;
 uniform float blacks;
 uniform float saturation;
 uniform float vibrance;
+uniform sampler2D tables;
+uniform float hue;
+uniform float vignette;
+uniform float skinKeep;
+uniform float skinTone;
+uniform float skinLight;
+uniform int showSkin;
 in vec2 uv;
 out vec4 color;
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -108,6 +115,33 @@ float toneShift(float s) {
   float wh = smoothstep(1.5, 3.5, s);
   float bl = 1.0 - smoothstep(-6.0, -2.5, s);
   return (shadows * sh + highlights * hi) / 100.0 * 1.5 + (whites * wh + blacks * bl) / 100.0;
+}
+// one of the curve tables (light, red, green, blue, hue to hue, hue to colourfulness, hue to light, light to colourfulness)
+float table(int row, float x) {
+  float p = clamp(x, 0.0, 1.0) * 255.0;
+  float i = min(floor(p), 254.0);
+  return mix(texelFetch(tables, ivec2(int(i), row), 0).r, texelFetch(tables, ivec2(int(i) + 1, row), 0).r, p - i);
+}
+// colours turned round the wheel by some degrees, around the grey line
+vec3 turn(vec3 v, float deg) {
+  float a = radians(deg);
+  vec3 u = vec3(0.57735027);
+  return v * cos(a) + cross(u, v) * sin(a) + u * dot(u, v) * (1.0 - cos(a));
+}
+// hue 0 to 1 (red, yellow, green, cyan, blue, magenta), and how colourful, as in HSV
+vec2 hueSat(vec3 v) {
+  float hi = max(v.r, max(v.g, v.b));
+  float d = hi - min(v.r, min(v.g, v.b));
+  if (d <= 1e-6) return vec2(0.0, 0.0);
+  float h = hi == v.r ? mod((v.g - v.b) / d, 6.0) : hi == v.g ? (v.b - v.r) / d + 2.0 : (v.r - v.g) / d + 4.0;
+  return vec2(h / 6.0, d / max(hi, 1e-6));
+}
+// how much a colour looks like skin, 0 to 1
+float skin(vec3 v) {
+  vec2 hs = hueSat(v);
+  float h = hs.x > 0.5 ? hs.x - 1.0 : hs.x;
+  float hi = max(v.r, max(v.g, v.b));
+  return smoothstep(-0.03, 0.0, h) * (1.0 - smoothstep(0.06, 0.09, h)) * smoothstep(0.2, 0.3, hs.y) * (1.0 - smoothstep(0.65, 0.8, hs.y)) * smoothstep(0.2, 0.35, hi);
 }
 vec3 at3(ivec3 i) {
   return texelFetch(cube, i, 0).rgb;
@@ -149,10 +183,31 @@ void main() {
   if (y > 1e-6) lin *= exp2(toneShift(log2(y / GREY)));
   vec3 o = toDisplay(lin);
   if (lookDim > 0) o = mix(o, look(o), clamp(lookAmount, 0.0, 1.0));
+  o = vec3(table(0, o.r), table(0, o.g), table(0, o.b));
+  o = vec3(table(1, o.r), table(2, o.g), table(3, o.b));
+  if (hue != 0.0) o = turn(o, hue);
+  vec2 hs = hueSat(o);
+  float chroma = max(o.r, max(o.g, o.b)) - min(o.r, min(o.g, o.b));
+  o = turn(o, (table(4, hs.x) - 0.5) * 120.0);
+  y = dot(o, LUMA);
+  o = vec3(y) + (o - vec3(y)) * (table(5, hs.x) * 2.0) * (table(7, y) * 2.0);
+  o *= exp2((table(6, hs.x) - 0.5) * 2.0 * clamp(chroma * 4.0, 0.0, 1.0));
   y = dot(o, LUMA);
   float sat = clamp(max(o.r, max(o.g, o.b)) - min(o.r, min(o.g, o.b)), 0.0, 1.0);
   float k = (1.0 + saturation / 100.0) * (1.0 + vibrance / 100.0 * (1.0 - sat));
   o = clamp(vec3(y) + (o - vec3(y)) * k, 0.0, 1.0);
+  float m = skin(px.rgb);
+  if (m > 0.0) {
+    if (skinKeep > 0.0) o = mix(o, px.rgb * (dot(o, LUMA) / max(dot(px.rgb, LUMA), 1e-4)), m * skinKeep / 100.0);
+    if (skinTone != 0.0) o = turn(o, skinTone / 100.0 * 12.0 * m);
+    if (skinLight != 0.0) o *= exp2(skinLight / 100.0 * 0.5 * m);
+  }
+  if (vignette != 0.0) {
+    float w = smoothstep(0.35, 1.0, length((uv - 0.5) * 2.0) / 1.41421356);
+    o *= 1.0 + vignette / 100.0 * 0.8 * w;
+  }
+  if (showSkin == 1) o = mix(o, vec3(1.0, 0.3, 0.75), skin(px.rgb) * 0.65);
+  o = clamp(o, 0.0, 1.0);
   // a little noise, less than one step of 8-bit colour, so smooth skies do not band
   float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
   color = vec4(o + (n - 0.5) / 255.0, px.a);
@@ -170,6 +225,18 @@ let gl: WebGL2RenderingContext | null | undefined;
 let sheet: HTMLCanvasElement;
 let program: WebGLProgram;
 let srcTexture: WebGLTexture;
+let tablesTexture: WebGLTexture;
+/** While the Skin section asks, what counts as skin is marked in pink. Only on screen, never in an export. */
+let skinShown = false;
+export const showingSkin = () => skinShown;
+export function setShowSkin(on: boolean) {
+  if (skinShown === on) return;
+  skinShown = on;
+  stills.clear();
+  window.dispatchEvent(new Event("duet:repaint"));
+}
+/** The curve tables last sent to the graphics card, so they are sent again only when the curves change. */
+let tablesFor = "";
 const where: Record<string, WebGLUniformLocation | null> = {};
 const looks = new Map<string, Look | "loading" | "failed">();
 
@@ -200,12 +267,21 @@ function context(): WebGL2RenderingContext | null {
     const at = g.getAttribLocation(program, "at");
     g.enableVertexAttribArray(at);
     g.vertexAttribPointer(at, 2, g.FLOAT, false, 0, 0);
-    for (const name of ["src", "cube", "curve", "lookDim", "lookSize", "lookMin", "lookMax", "lookAmount", "balance", "gain", "contrast", "shadows", "highlights", "whites", "blacks", "saturation", "vibrance"]) {
+    for (const name of ["src", "cube", "curve", "lookDim", "lookSize", "lookMin", "lookMax", "lookAmount", "balance", "gain", "contrast", "shadows", "highlights", "whites", "blacks", "saturation", "vibrance", "tables", "hue", "vignette", "skinKeep", "skinTone", "skinLight", "showSkin"]) {
       where[name] = g.getUniformLocation(program, name);
     }
     g.uniform1i(where.src, 0);
     g.uniform1i(where.cube, 1);
     g.uniform1i(where.curve, 2);
+    g.uniform1i(where.tables, 3);
+    tablesTexture = g.createTexture()!;
+    g.activeTexture(g.TEXTURE3);
+    g.bindTexture(g.TEXTURE_2D, tablesTexture);
+    for (const [k, v] of [
+      [g.TEXTURE_MIN_FILTER, g.NEAREST],
+      [g.TEXTURE_MAG_FILTER, g.NEAREST],
+    ])
+      g.texParameteri(g.TEXTURE_2D, k, v);
     srcTexture = g.createTexture()!;
     g.activeTexture(g.TEXTURE0);
     g.bindTexture(g.TEXTURE_2D, srcTexture);
@@ -269,9 +345,11 @@ function lookFor(g: WebGL2RenderingContext, path: string): Look | null {
 export const lookFailed = (path: string) => looks.get(path) === "failed";
 
 /** Run the grade on one picture, at the given size, onto the WebGL surface. False when it cannot be done. */
-function run(pic: TexImageSource, w: number, h: number, g: Grade): boolean {
+function run(pic: TexImageSource, w: number, h: number, given: Grade): boolean {
   const c = context();
   if (!c) return false;
+  // grades saved before a control existed do not have it
+  const g = { ...neutralGrade(), ...given, curves: { ...noCurves(), ...(given.curves ?? {}) } };
   if (sheet.width !== w || sheet.height !== h) {
     sheet.width = w;
     sheet.height = h;
@@ -288,7 +366,17 @@ function run(pic: TexImageSource, w: number, h: number, g: Grade): boolean {
   c.uniformMatrix3fv(where.balance, false, [0, 1, 2].flatMap((col) => [m[0][col], m[1][col], m[2][col]]));
   c.uniform1f(where.gain, 2 ** g.exposure);
   c.uniform1f(where.contrast, contrastPower(g.contrast));
-  for (const k of ["shadows", "highlights", "whites", "blacks", "saturation", "vibrance"] as const) c.uniform1f(where[k], g[k]);
+  for (const k of ["shadows", "highlights", "whites", "blacks", "saturation", "vibrance", "hue", "vignette", "skinKeep", "skinTone", "skinLight"] as const) c.uniform1f(where[k], g[k]);
+  c.uniform1i(where.showSkin, skinShown ? 1 : 0);
+  const curvesKey = JSON.stringify(g.curves);
+  if (curvesKey !== tablesFor) {
+    const data = new Float32Array(CURVE_STEPS * CURVE_KEYS.length);
+    CURVE_KEYS.forEach((k, row) => data.set(curveTable(g.curves[k], ROUND_CURVES.includes(k), MIDDLE_CURVES.includes(k)), row * CURVE_STEPS));
+    c.activeTexture(c.TEXTURE3);
+    c.bindTexture(c.TEXTURE_2D, tablesTexture);
+    c.texImage2D(c.TEXTURE_2D, 0, c.R32F, CURVE_STEPS, CURVE_KEYS.length, 0, c.RED, c.FLOAT, data);
+    tablesFor = curvesKey;
+  }
   const look = g.look && g.lookAmount > 0 ? lookFor(c, g.look) : null;
   c.uniform1i(where.lookDim, look ? look.dim : 0);
   if (look) {
@@ -318,7 +406,8 @@ function fit(w: number, h: number): [number, number] {
  * leaves it alone or cannot run. A still is kept; a clip's picture changes, so it is graded every time.
  */
 export function graded(pic: HTMLImageElement | HTMLVideoElement, grade: Grade | null, still: string | null): CanvasImageSource {
-  if (!grade || isNeutral(grade)) return pic;
+  if ((!grade || isNeutral(grade)) && !skinShown) return pic;
+  grade = grade ?? neutralGrade();
   const nw = pic instanceof HTMLVideoElement ? pic.videoWidth : pic.naturalWidth;
   const nh = pic instanceof HTMLVideoElement ? pic.videoHeight : pic.naturalHeight;
   if (!nw || !nh) return pic;
@@ -368,7 +457,7 @@ export function readings(pic: HTMLImageElement | HTMLVideoElement, grade: Grade 
   const c = context();
   if (!c) return null;
   const S = 64;
-  const g = grade ?? { exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0, temperature: 0, tint: 0, saturation: 0, vibrance: 0, look: "", lookAmount: 1 };
+  const g = grade ?? neutralGrade();
   if (!run(pic, S, S, g)) return null;
   const px = new Uint8Array(S * S * 4);
   c.readPixels(0, 0, S, S, c.RGBA, c.UNSIGNED_BYTE, px);
