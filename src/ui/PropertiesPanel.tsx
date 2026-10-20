@@ -741,6 +741,18 @@ export default function PropertiesPanel() {
         <NumField label="%" mark={mark("opacity")} value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} onDrag={(n) => preview({ opacity: Math.min(100, n) / 100 })} />
       </div>
 
+      {one?.mask && (
+        <div className="sec">
+          <h4>Mask</h4>
+          <div className="field">
+            <NumField label="Soft edge" value={one.maskFeather} min={0} onCommit={(n) => set({ maskFeather: n }, "Change soft edge")} onDrag={(n) => preview({ maskFeather: n })} />
+            <NumField label="Grow" value={one.maskGrow} onCommit={(n) => set({ maskGrow: n }, "Change mask size")} onDrag={(n) => preview({ maskGrow: n })} />
+          </div>
+          <div className="gap" />
+          <Seg value={one.maskInvert ? "out" : "in"} options={[["in", "Show inside"], ["out", "Show outside"]]} onPick={(v) => set({ maskInvert: v === "out" }, "Turn the mask inside out")} />
+        </div>
+      )}
+
       {!allText && !allGroups && (
         <div className="sec">
           <h4>Shadow</h4>
