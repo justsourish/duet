@@ -55,6 +55,16 @@ export interface Key {
   curve?: [number, number, number, number];
 }
 
+/** One moment in the changing outline of a drawn shape: where every point and its handles are, in pixels inside the parent. */
+export interface ShapeKey {
+  /** Seconds from the start of the frame it plays in. */
+  t: number;
+  points: { x: number; y: number; ix: number; iy: number; ox: number; oy: number }[];
+  /** How the outline arrives here from the key before, the same words as for any other key. */
+  ease: Key["ease"];
+  curve?: [number, number, number, number];
+}
+
 /** A thing that plays a file: a video clip, or a sound with nothing to see. */
 export const playsFile = (el: { type: ElementType }) => el.type === "video" || el.type === "sound";
 
@@ -144,6 +154,8 @@ export interface El {
   end: number;
   /** Changes over time, by property. Each list is in order of time. Empty for something that stays as it is. */
   keys: Partial<Record<Moving, Key[]>>;
+  /** A drawn shape only: its outline at moments in time. Between two with the same number of points it blends; empty when the outline stays as it is. */
+  shapeKeys: ShapeKey[];
   /** A video clip or a sound only: the second in its file where playing starts, and how loud it is from 0 to 1. For these, src is where the file is on the computer. A sound has no place on the canvas: it is only heard. */
   clipFrom: number;
   volume: number;

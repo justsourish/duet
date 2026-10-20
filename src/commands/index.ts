@@ -4,8 +4,8 @@ import { ancestors, canMask, canTurn, descendants, tidyAngle, topLevelOnly, turn
 import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstances } from "../document/components";
 import { orderByPosition, relayout } from "../document/layout";
 import { MOVING, playsFile } from "../document/types";
-import type { Doc, El, ElementType, Key, Layout, Moving, TextStyle } from "../document/types";
-import { CURVES, ENTRANCES, entranceKeys, sceneOf, spanOf, valueAt, withKey } from "../document/time";
+import type { Doc, El, ElementType, Key, Layout, Moving, ShapeKey, TextStyle } from "../document/types";
+import { CURVES, ENTRANCES, entranceKeys, outlineOf, sceneOf, spanOf, valueAt, withKey, withShapeKey } from "../document/time";
 import type { CurveName, Entrance } from "../document/time";
 import { canGrade, mergeGrade } from "../document/grade";
 import type { GradeChange } from "../document/grade";
@@ -134,6 +134,7 @@ const createElement: CommandDef<CreateArgs> = {
       start: 0,
       end: 0,
       keys: {},
+      shapeKeys: [],
       clipFrom: 0,
       volume: 1,
       childIds: [],
@@ -749,6 +750,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       start: 0,
       end: 0,
       keys: {},
+      shapeKeys: [],
       clipFrom: 0,
       volume: 1,
       childIds: [],
@@ -849,6 +851,7 @@ const groupElements: CommandDef<GroupArgs> = {
       start: 0,
       end: 0,
       keys: {},
+      shapeKeys: [],
       clipFrom: 0,
       volume: 1,
       childIds: [],
@@ -1012,6 +1015,7 @@ const setTiming: CommandDef<SetTimingArgs> = {
       // what it does over time moves along with it
       const by = el.start - was;
       if (by) for (const prop of MOVING) if (el.keys[prop]) el.keys[prop] = el.keys[prop]!.map((k) => ({ ...k, t: round(k.t + by) }));
+      if (by) el.shapeKeys = el.shapeKeys.map((k) => ({ ...k, t: round(k.t + by) }));
       changed = true;
     }
     return changed ? next : doc;
@@ -1336,6 +1340,58 @@ const createPresetFrameDef: CommandDef<CreatePresetFrameArgs> = {
   },
 };
 
+// ---- set_shape_key ----
+export interface SetShapeKeyArgs {
+  id: string;
+  /** Seconds from the start of the frame it plays in. */
+  t: number;
+  /** The outline at that moment, in pixels inside the parent. Left out: the outline as it is now. */
+  points?: ShapeKey["points"];
+  ease?: Key["ease"];
+}
+
+/**
+ * Make a drawn shape's outline be this at one moment. The first key on a shape also keeps the outline it
+ * had until now, at the first moment of its time, so there is something to blend from.
+ */
+const setShapeKey: CommandDef<SetShapeKeyArgs> = {
+  label: () => "Change the shape at this moment",
+  run: (doc, a) => {
+    const el = doc.elements[a.id];
+    const scene = sceneOf(doc, a.id);
+    if (!el || el.type !== "path" || !scene || scene.id === a.id) return doc;
+    const at = Math.max(0, Math.min(scene.duration, round(Number(a.t) || 0)));
+    const next = clone(doc);
+    const me = next.elements[a.id];
+    const now = a.points ?? outlineOf(el);
+    if (!me.shapeKeys.length) {
+      const first = spanOf(el, scene).start;
+      if (Math.abs(first - at) > 0.004) me.shapeKeys = withShapeKey(me.shapeKeys, { t: first, points: outlineOf(el), ease: "in-out" });
+    }
+    me.shapeKeys = withShapeKey(me.shapeKeys, { t: at, points: now, ease: a.ease ?? "in-out" });
+    return next;
+  },
+};
+
+// ---- remove_shape_key ----
+export interface RemoveShapeKeyArgs {
+  id: string;
+  t: number;
+}
+
+/** Take away the outline kept at one moment. With none left, the shape stays as it was last drawn. */
+const removeShapeKey: CommandDef<RemoveShapeKeyArgs> = {
+  label: () => "Remove a shape key",
+  run: (doc, a) => {
+    const el = doc.elements[a.id];
+    if (!el || !el.shapeKeys.some((k) => Math.abs(k.t - a.t) <= 0.004)) return doc;
+    const next = clone(doc);
+    const me = next.elements[a.id];
+    me.shapeKeys = me.shapeKeys.filter((k) => Math.abs(k.t - a.t) > 0.004);
+    return next;
+  },
+};
+
 // ---- registry ----
 export const commands = {
   create_element: createElement,
@@ -1365,6 +1421,8 @@ export const commands = {
   reset_overrides: resetOverrides,
   set_duration: setDuration,
   set_timing: setTiming,
+  set_shape_key: setShapeKey,
+  remove_shape_key: removeShapeKey,
   set_key: setKey,
   set_keys: setKeys,
   key_now: keyNow,

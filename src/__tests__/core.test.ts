@@ -1753,7 +1753,7 @@ describe("what the AI can ask for", () => {
 });
 
 import { canMask, maskOf } from "../document/geometry";
-import { docAt } from "../document/time";
+import { docAt, settle } from "../document/time";
 import { maskChoice } from "../ui/actions";
 
 describe("masks", () => {
@@ -2608,5 +2608,63 @@ describe("tasks in the project file", () => {
     expect(readThread(packThread(thread))).toEqual(thread);
     expect(readThread(packThread({ now: [], earlier: [] }))).toEqual({ now: [], earlier: [] });
     expect(readThread(JSON.stringify({ now: [], earlier: [], tasks: [{ title: "no agent" }, 3] }))).toEqual({ now: [], earlier: [] });
+  });
+});
+
+describe("shape keys: an outline that changes over time", () => {
+  const pt = (x: number, y: number) => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0 });
+  const square = (x0: number, y0: number, s: number) => [pt(x0, y0), pt(x0 + s, y0), pt(x0 + s, y0 + s), pt(x0, y0 + s)];
+  const shape = () => {
+    const box = fromAbs(square(10, 10, 40));
+    let d = runCommand(frame("f"), "set_props", { ids: ["f"], props: { duration: 4 } });
+    d = runCommand(d, "create_element", { id: "p", type: "path", parentId: "f", x: box.x, y: box.y, width: box.width, height: box.height, props: { nodes: box.nodes, closed: true } });
+    return d;
+  };
+  const keyed = () => {
+    let d = runCommand(shape(), "set_shape_key", { id: "p", t: 0 });
+    return runCommand(d, "set_shape_key", { id: "p", t: 2, points: square(30, 10, 40), ease: "linear" });
+  };
+
+  it("is halfway between two keys at the middle", () => {
+    const at = docAt(keyed(), "f", 1).elements.p;
+    expect([at.x, at.y, at.width, at.height]).toEqual([20, 10, 40, 40]);
+    const start = docAt(keyed(), "f", 0).elements.p;
+    expect(start.x).toBe(10);
+    expect(docAt(keyed(), "f", 3).elements.p.x).toBe(30);
+  });
+
+  it("makes two keys the first time, one for what was and one for now", () => {
+    const d = runCommand(shape(), "set_shape_key", { id: "p", t: 2, points: square(30, 10, 40) });
+    expect(d.elements.p.shapeKeys.map((k) => k.t)).toEqual([0, 2]);
+    expect(shape().elements.p.shapeKeys).toEqual([]);
+  });
+
+  it("holds the earlier outline when the point counts differ", () => {
+    const d = runCommand(shape(), "set_shape_key", { id: "p", t: 0 });
+    const more = runCommand(d, "set_shape_key", { id: "p", t: 2, points: [...square(30, 10, 40), pt(50, 30)] });
+    expect(docAt(more, "f", 1).elements.p.nodes).toHaveLength(4);
+    expect(docAt(more, "f", 2).elements.p.nodes).toHaveLength(5);
+  });
+
+  it("removes a key, and opens from an old file without any", () => {
+    const d = runCommand(keyed(), "remove_shape_key", { id: "p", t: 2 });
+    expect(d.elements.p.shapeKeys.map((k) => k.t)).toEqual([0]);
+    const back = parseDoc(serializeDoc(keyed()));
+    expect(back.elements.p.shapeKeys).toHaveLength(2);
+    const old = JSON.parse(serializeDoc(shape()));
+    expect(old.elements.p.shapeKeys).toBeUndefined();
+    expect(parseDoc(JSON.stringify(old)).elements.p.shapeKeys).toEqual([]);
+  });
+
+  it("settles an edit made at a moment into a key there, and keeps the resting outline", () => {
+    const real = keyed();
+    const posed = docAt(real, "f", 1);
+    const out = runCommand(posed, "set_shape_key", { id: "p", t: 1, points: square(20, 30, 40) });
+    expect(out.elements.p.shapeKeys.map((k) => k.t)).toEqual([0, 1, 2]);
+    // settle takes what was changed on the posed picture and writes it back to the real one
+    const edited = { ...posed, elements: { ...posed.elements, p: { ...posed.elements.p, ...fromAbs(square(20, 30, 40)) } } };
+    const done = settle(real, posed, edited, "f", 1);
+    expect(done.elements.p.shapeKeys.map((k) => k.t)).toEqual([0, 1, 2]);
+    expect(done.elements.p.x).toBe(real.elements.p.x);
   });
 });

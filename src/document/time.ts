@@ -1,4 +1,5 @@
-import type { Doc, El, Key, Moving } from "./types";
+import { fromAbs, toAbs } from "./path";
+import type { Doc, El, Key, Moving, ShapeKey } from "./types";
 import { MOVING } from "./types";
 
 /**
@@ -90,12 +91,43 @@ export function spanOf(el: El, scene: El): { start: number; end: number } {
 }
 
 /** Whether anything at all changes over time on this thing. */
-export const moves = (el: El) => MOVING.some((p) => el.keys[p]?.length);
+export const moves = (el: El) => MOVING.some((p) => el.keys[p]?.length) || !!el.shapeKeys?.length;
+
+/** The shape keys with one added, in order of time. A key at the same moment is replaced. */
+export function withShapeKey(keys: ShapeKey[], key: ShapeKey): ShapeKey[] {
+  return keys
+    .filter((k) => Math.abs(k.t - key.t) > 0.004)
+    .concat(key)
+    .sort((a, b) => a.t - b.t);
+}
+
+/** The outline at one moment: blended point by point between the two keys around it. It holds the earlier shape when the point counts differ. */
+export function outlineAt(keys: ShapeKey[], t: number): ShapeKey["points"] {
+  if (t <= keys[0].t) return keys[0].points;
+  for (let i = 1; i < keys.length; i++) {
+    const b = keys[i];
+    if (t > b.t) continue;
+    const a = keys[i - 1];
+    if (a.points.length !== b.points.length) return t >= b.t ? b.points : a.points;
+    const p = b.t === a.t ? 1 : (t - a.t) / (b.t - a.t);
+    const k = b.curve ? curveAt(b.curve, p) : (EASE[b.ease] ?? EASE.linear)(p);
+    const mix = (u: number, v: number) => u + (v - u) * k;
+    return a.points.map((n, j) => {
+      const m = b.points[j];
+      return { x: mix(n.x, m.x), y: mix(n.y, m.y), ix: mix(n.ix, m.ix), iy: mix(n.iy, m.iy), ox: mix(n.ox, m.ox), oy: mix(n.oy, m.oy) };
+    });
+  }
+  return keys[keys.length - 1].points;
+}
+
+/** The outline of a drawn shape as shape keys record it, in pixels inside its parent. */
+export const outlineOf = (el: El): ShapeKey["points"] => toAbs(el, el.x, el.y);
 
 /** One thing as it is at one moment. The same object comes back when nothing on it changes over time. */
 export function elAt(el: El, t: number): El {
   if (!moves(el)) return el;
   const out = { ...el };
+  if (el.type === "path" && el.shapeKeys?.length) Object.assign(out, fromAbs(outlineAt(el.shapeKeys, t)));
   for (const p of MOVING) {
     const keys = el.keys[p];
     if (keys?.length) {
@@ -252,7 +284,18 @@ export function settle(real: Doc, posed: Doc, out: Doc, sceneId: string, t: numb
       if (now[p] !== shown[p] && el.keys[p]?.length) el.keys[p] = withKey(el.keys[p]!, { t: at, v: now[p], ease: "in-out" }, true);
       el[p] = was[p];
     }
+    if (was.shapeKeys?.length) {
+      // a drawn shape whose outline was changed gets a key at this moment, and keeps its resting outline
+      const moved = JSON.stringify(outlineOf(now)) !== JSON.stringify(outlineOf(shown));
+      if (moved) {
+        el.shapeKeys = withShapeKey(now.shapeKeys, { t: at, points: outlineOf(now).map(roundNode), ease: "in-out" });
+        Object.assign(el, { x: was.x, y: was.y, width: was.width, height: was.height, nodes: was.nodes });
+      }
+    }
     elements[id] = el;
   }
   return { ...out, elements };
 }
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const roundNode = (n: ShapeKey["points"][number]) => ({ x: r2(n.x), y: r2(n.y), ix: r2(n.ix), iy: r2(n.iy), ox: r2(n.ox), oy: r2(n.oy) });
