@@ -204,8 +204,8 @@ export default function App() {
     <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""} ${full ? "fs" : ""} ${dock.historyLine ? "" : "no-hist"}`} style={appStyle}>
       {/* the top row: the name, how it is saved, the kind of work, and Export; on a Mac it shares the row with the window buttons */}
       <header className="top" data-tauri-drag-region>
-        <div className="top-side">
-          <span className="logo">
+        <div className="top-side" data-tauri-drag-region>
+          <span className="logo" data-tauri-drag-region>
             Du<b>et</b>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
             <i className="early-tag" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
@@ -213,7 +213,7 @@ export default function App() {
               Feedback
             </button>
           </span>
-          <span className={`status ${project.status}`} title={project.error ?? undefined}>
+          <span data-tauri-drag-region className={`status ${project.status}`} title={project.error ?? undefined}>
             {project.path ? STATUS[project.status] : "Not saved yet"}
           </span>
           <div className="pill mode-switch space-switch">
@@ -226,7 +226,7 @@ export default function App() {
           </div>
         </div>
         <div />
-        <div className="top-side end">
+        <div className="top-side end" data-tauri-drag-region>
           {!chatting && (
           <div className="pill mode-switch kind-switch">
           <button

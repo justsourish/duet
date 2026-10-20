@@ -5588,15 +5588,18 @@ button.agent-perm {
   vertical-align: middle;
   white-space: nowrap;
 }
+/* easy to find when wanted, without calling out: the warm orange of early work, as a line, not a fill */
 .feedback-tag {
   margin-left: 6px;
   background: none;
+  border-color: rgba(255, 159, 28, 0.55);
+  color: #ff9f1c;
   font-family: inherit;
   cursor: pointer;
 }
 .feedback-tag:hover {
-  color: var(--text);
-  border-color: var(--muted);
+  background: rgba(255, 159, 28, 0.12);
+  border-color: #ff9f1c;
 }
 .popover.versions-pop {
   position: fixed;
