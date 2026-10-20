@@ -154,11 +154,6 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const [permOpen, setPermOpen] = useState(false);
   const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
 
-  const [cardAgent, setCardAgent] = useState<
-    | { type: "member"; agent: (typeof AGENTS)[number] }
-    | { type: "outside"; name: string }
-    | null
-  >(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mentionHidden, setMentionHidden] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -200,29 +195,26 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const litTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useDismiss(popOpen, () => setPopOpen(false), ".agent-pop, [data-name='agent-button']");
+  useDismiss(popOpen, () => setPopOpen(false), ".agent-pop, [data-name='agent-button'], [data-name='members']");
   useDismiss(permOpen, () => setPermOpen(false), ".perm-pop, [data-name='perm-button']");
-  useDismiss(Boolean(cardAgent), () => setCardAgent(null), ".agent-card, [data-name='members']");
   useDismiss(settingsOpen, () => setSettingsOpen(false), ".chat-settings, [data-name='chat-settings']");
 
   useEffect(() => {
     if (minimized) {
       setPopOpen(false);
       setPermOpen(false);
-      setCardAgent(null);
       setSettingsOpen(false);
     }
   }, [minimized]);
 
   useEffect(() => {
-    const needAgy = agent === "agy" || (cardAgent?.type === "member" && cardAgent.agent.id === "agy");
-    if (!needAgy || agyModels.length || !inTauri()) return;
+    if (agent !== "agy" || agyModels.length || !inTauri()) return;
     let alive = true;
     agyModelList().then((list) => alive && setAgyModels(list));
     return () => {
       alive = false;
     };
-  }, [agent, cardAgent, agyModels.length]);
+  }, [agent, agyModels.length]);
 
   // the list of installed AI tools is looked for again if it is ever empty, so nobody is left with no one to ask
   const nobody = Object.keys(installed).length === 0;
@@ -412,6 +404,17 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   }
 
   const members = AGENTS.filter((a) => a.runnable && Boolean(installed[a.id]));
+  const modelChoices = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
+  const modelName = models[agent] ? modelChoices.find((m) => m.id === models[agent])?.name : undefined;
+
+  // every badge opens the one place to pick who answers
+  const openPicker = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (minimized) setMinimized(false);
+    setPopOpen(true);
+    setPermOpen(false);
+    setSettingsOpen(false);
+  };
 
   const joinedLines = outsideAgents.map((name) => {
     const firstStep = timeline.find(
@@ -604,12 +607,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 className={`member-badge ${isAnswers ? "answers-ring" : ""} ${isAnswers && running ? "answering" : ""}`}
                 style={{ backgroundColor: agentColour(m.name), ["--who" as string]: agentColour(m.name) }}
                 title={m.name}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (minimized) setMinimized(false);
-                  setCardAgent({ type: "member", agent: m });
-                  setSettingsOpen(false);
-                }}
+                onClick={openPicker}
               >
                 {m.name.charAt(0)}
               </div>
@@ -621,67 +619,12 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               className={`member-badge outside ${busyName === name ? "answering" : ""}`}
               style={{ backgroundColor: agentColour(name), ["--who" as string]: agentColour(name) }}
               title={name}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (minimized) setMinimized(false);
-                setCardAgent({ type: "outside", name });
-                setSettingsOpen(false);
-              }}
+              onClick={openPicker}
             >
               {name.charAt(0)}
             </div>
           ))}
 
-          {!cardAgent && !settingsOpen && (
-            <div className="members-list">
-              {members.map((m) => {
-                const isAnswers = m.id === agent;
-                return (
-                  <div
-                    key={m.id}
-                    className="members-list-item"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (minimized) setMinimized(false);
-                      setCardAgent({ type: "member", agent: m });
-                    }}
-                  >
-                    <span
-                      className={`member-badge ${isAnswers ? "answers-ring" : ""}`}
-                      style={{ backgroundColor: agentColour(m.name) }}
-                    >
-                      {m.name.charAt(0)}
-                    </span>
-                    <span className="members-list-name">{m.name}</span>
-                    <span className="members-list-status">{isAnswers ? "answers" : "here"}</span>
-                  </div>
-                );
-              })}
-              {outsideAgents.map((name) => {
-                const isWorking = busyName === name;
-                return (
-                  <div
-                    key={name}
-                    className="members-list-item"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (minimized) setMinimized(false);
-                      setCardAgent({ type: "outside", name });
-                    }}
-                  >
-                    <span
-                      className="member-badge outside"
-                      style={{ backgroundColor: agentColour(name) }}
-                    >
-                      {name.charAt(0)}
-                    </span>
-                    <span className="members-list-name">{name}</span>
-                    <span className="members-list-status">{isWorking ? "working" : "outside"}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         <button
@@ -694,107 +637,12 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
             e.stopPropagation();
             if (minimized) setMinimized(false);
             setSettingsOpen((o) => !o);
-            setCardAgent(null);
+            setPopOpen(false);
           }}
         >
           <Icon name="dots" size={14} />
         </button>
 
-
-        {cardAgent && (
-          <div
-            className="agent-card"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {cardAgent.type === "member" ? (
-              <>
-                <div className="agent-card-head">
-                  <span
-                    className="agent-card-badge"
-                    style={{ backgroundColor: agentColour(cardAgent.agent.name) }}
-                  >
-                    {cardAgent.agent.name.charAt(0)}
-                  </span>
-                  <div className="agent-card-info">
-                    <div className="agent-card-name">{cardAgent.agent.name}</div>
-                    <div className="agent-card-status">
-                      {cardAgent.agent.id === agent ? "answers" : "here"}
-                    </div>
-                  </div>
-                </div>
-                <div className="agent-pop-row">
-                  <div>
-                    <div className="agent-pop-label">Model</div>
-                    <select
-                      value={models[cardAgent.agent.id] ?? ""}
-                      disabled={running}
-                      onChange={(e) => setModel(cardAgent.agent.id, e.target.value)}
-                    >
-                      {(cardAgent.agent.id === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS).map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {cardAgent.agent.id === "claude" && (
-                    <div>
-                      <div className="agent-pop-label">Effort</div>
-                      <select
-                        title="How hard it thinks. More effort takes longer and costs more."
-                        value={effort}
-                        disabled={running}
-                        onChange={(e) => setEffort(e.target.value)}
-                      >
-                        {EFFORTS.map((x) => (
-                          <option key={x} value={x}>
-                            {x === "" ? "Effort" : x}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-                {cardAgent.agent.id !== agent && (
-                  <button
-                    type="button"
-                    className="make-answer-btn"
-                    disabled={running}
-                    onClick={() => {
-                      setAgent(cardAgent.agent.id);
-                    }}
-                  >
-                    Make this one answer
-                  </button>
-                )}
-                <div className="agent-card-quiet">
-                  {"Or write @" + cardAgent.agent.name + " in a message."}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="agent-card-head">
-                  <span
-                    className="agent-card-badge outside"
-                    style={{ backgroundColor: agentColour(cardAgent.name) }}
-                  >
-                    {cardAgent.name.charAt(0)}
-                  </span>
-                  <div className="agent-card-info">
-                    <div className="agent-card-name">{cardAgent.name}</div>
-                    <div className="agent-card-status">
-                      {busyName === cardAgent.name ? "working" : "outside"}
-                    </div>
-                  </div>
-                </div>
-                <div className="agent-card-quiet">
-                  Works from its own window. It cannot be asked from here.
-                </div>
-              </>
-            )}
-          </div>
-        )}
 
         {settingsOpen && (
           <div
@@ -822,46 +670,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
             </div>
 
             <div className="chat-settings-section">
-              <div className="agent-pop-label">Members</div>
-              <div className="chat-settings-members-list">
-                {members.map((m) => {
-                  const isAnswers = m.id === agent;
-                  return (
-                    <div key={m.id} className="members-list-item">
-                      <span
-                        className={`member-badge ${isAnswers ? "answers-ring" : ""}`}
-                        style={{ backgroundColor: agentColour(m.name) }}
-                      >
-                        {m.name.charAt(0)}
-                      </span>
-                      <span className="members-list-name">{m.name}</span>
-                      <span className="members-list-status">
-                        {isAnswers ? "answers" : "here"}
-                      </span>
-                    </div>
-                  );
-                })}
-                {outsideAgents.map((name) => {
-                  const isWorking = busyName === name;
-                  return (
-                    <div key={name} className="members-list-item">
-                      <span
-                        className="member-badge outside"
-                        style={{ backgroundColor: agentColour(name) }}
-                      >
-                        {name.charAt(0)}
-                      </span>
-                      <span className="members-list-name">{name}</span>
-                      <span className="members-list-status">
-                        {isWorking ? "working" : "outside"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
               <div
                 className="agent-pop-link connect-link"
-                style={{ marginTop: 6 }}
                 onClick={() => {
                   setConnecting((c) => !c);
                   setSettingsOpen(false);
@@ -1108,29 +918,18 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 onClick={() => {
                   setPopOpen((o) => !o);
                   setPermOpen(false);
+                  setSettingsOpen(false);
                 }}
               >
                 <span className="agent-btn-badge" style={{ backgroundColor: agentColour(toolName) }}>{chatToolLetter}</span>
                 <span className="agent-btn-name">{toolName}</span>
+                {modelName && <span className="agent-btn-model">{modelName}</span>}
                 <span className="agent-btn-v">
                   <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M2 3.5l3 3 3-3" />
                   </svg>
                 </span>
               </button>
-              <select
-                className="agent-model"
-                title="Model"
-                value={models[agent] ?? ""}
-                disabled={running}
-                onChange={(e) => setModel(agent, e.target.value)}
-              >
-                {(agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
               <button
                 type="button"
                 data-name="perm-button"
@@ -1198,18 +997,49 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                       )}
                     </div>
                   </div>
-                  {members.some((m) => m.id === agent) && agent === "claude" && (
-                    <div>
-                      <div className="agent-pop-label">Effort</div>
-                      <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
-                        {EFFORTS.map((x) => (
-                          <option key={x} value={x}>
-                            {x === "" ? "Default" : x}
-                          </option>
-                        ))}
-                      </select>
+                  {members.some((m) => m.id === agent) && (
+                    <div className="agent-pop-row">
+                      <div>
+                        <div className="agent-pop-label">Model</div>
+                        <select title="Model" value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
+                          {modelChoices.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {agent === "claude" && (
+                        <div>
+                          <div className="agent-pop-label">Effort</div>
+                          <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
+                            {EFFORTS.map((x) => (
+                              <option key={x} value={x}>
+                                {x === "" ? "Default" : x}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   )}
+                  {outsideAgents.length > 0 && (
+                    <div>
+                      <div className="agent-pop-label">In their own window</div>
+                      <div className="who-answers-list">
+                        {outsideAgents.map((name) => (
+                          <div key={name} className="who-answer-row outside">
+                            <span className="member-badge outside" style={{ backgroundColor: agentColour(name) }}>
+                              {name.charAt(0)}
+                            </span>
+                            <span className="who-answer-name">{name}</span>
+                            <span className="who-answer-status">{busyName === name ? "working" : "can't be asked from here"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {members.length > 1 && <div className="agent-pop-empty">Or write @ and a name to ask another one once.</div>}
                 </div>
               )}
             </div>
