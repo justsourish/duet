@@ -540,7 +540,8 @@ export default function ChatHome() {
       </section>
       <main className="canvas chathome-canvas">
         <CanvasView />
-        <ChatToolbar />
+        {/* the tools belong to the canvas, not to the list of all projects laid over it */}
+        {!all && <ChatToolbar />}
       </main>
     </div>
   );
