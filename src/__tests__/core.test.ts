@@ -1797,6 +1797,19 @@ describe("masks", () => {
     expect(docAt(d, "f", 7).elements.m.hidden).toBe(true);
   });
 
+  it("keeps its soft edge, invert and grow in the file, and old files open with them off", () => {
+    let d = runCommand(masked(), "set_props", { ids: ["m"], props: { maskFeather: 8, maskInvert: true, maskGrow: -4 } });
+    const back = parseDoc(serializeDoc(d));
+    expect([back.elements.m.maskFeather, back.elements.m.maskInvert, back.elements.m.maskGrow]).toEqual([8, true, -4]);
+    expect(d.elements.photo.maskFeather).toBe(0);
+    const old = JSON.parse(serializeDoc(masked()));
+    for (const id of Object.keys(old.elements)) for (const k of ["maskFeather", "maskInvert", "maskGrow"]) delete old.elements[id][k];
+    const opened = parseDoc(JSON.stringify(old));
+    expect([opened.elements.m.maskFeather, opened.elements.m.maskInvert, opened.elements.m.maskGrow]).toEqual([0, false, 0]);
+    expect(JSON.stringify(old)).not.toContain("maskFeather");
+    expect(serializeDoc(masked())).not.toContain("maskFeather");
+  });
+
   it("needs a plain shape, and something to show through it", () => {
     expect(canMask(scene().elements.photo)).toBe(false);
     expect(runCommand(scene(), "make_mask", { maskId: "photo", ids: ["ring"], groupId: "m" }).elements.m).toBeUndefined();

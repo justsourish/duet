@@ -250,6 +250,95 @@ function clipTo(ctx: CanvasRenderingContext2D, shape: El, ox: number, oy: number
   ctx.clip();
 }
 
+/** Scratch canvases for soft masks, one set per level of masks inside masks, so they are not made again for every picture. */
+const scratch: { layer: HTMLCanvasElement; shape: HTMLCanvasElement }[] = [];
+let maskDepth = 0;
+
+function scratchAt(depth: number, w: number, h: number) {
+  const made = scratch[depth] ?? (scratch[depth] = { layer: document.createElement("canvas"), shape: document.createElement("canvas") });
+  for (const c of [made.layer, made.shape]) {
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
+    }
+  }
+  return made;
+}
+
+/** Lay down a shape's outline, turned the way the shape is turned, then give it to paint. The drawing carries on upright. */
+function withOutline(ctx: CanvasRenderingContext2D, shape: El, ox: number, oy: number, paint: () => void) {
+  const x = ox + shape.x;
+  const y = oy + shape.y;
+  ctx.save();
+  const turn = turnOf(shape);
+  if (turn) {
+    ctx.translate(x + shape.width / 2, y + shape.height / 2);
+    ctx.rotate((turn * Math.PI) / 180);
+    ctx.translate(-(x + shape.width / 2), -(y + shape.height / 2));
+  }
+  ctx.beginPath();
+  if (shape.type === "ellipse") ctx.ellipse(x + shape.width / 2, y + shape.height / 2, shape.width / 2, shape.height / 2, 0, 0, Math.PI * 2);
+  else if (shape.type === "path") trace(ctx, toAbs(shape, x, y), true);
+  else roundedPath(ctx, x, y, shape.width, shape.height, shape.radius);
+  paint();
+  ctx.restore();
+}
+
+/** What a mask with a soft edge, a grown or shrunk shape, or turned inside out shows: the group's contents seen through it. */
+function drawSoftMask(ctx: CanvasRenderingContext2D, doc: Doc, group: El, mask: El, x: number, y: number) {
+  const t = ctx.getTransform();
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const { layer, shape } = scratchAt(maskDepth, w, h);
+  const lctx = layer.getContext("2d")!;
+  const sctx = shape.getContext("2d")!;
+  const depth = maskDepth++;
+  try {
+    // the contents first: masks inside them use the next level of scratch canvases
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.clearRect(0, 0, w, h);
+    lctx.setTransform(t);
+    for (const id of group.childIds) {
+      const child = doc.elements[id];
+      if (child && child !== mask) drawElement(lctx, doc, child, x, y);
+    }
+    // the shape alone, grown or shrunk
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.clearRect(0, 0, w, h);
+    sctx.setTransform(t);
+    sctx.fillStyle = "#000";
+    sctx.strokeStyle = "#000";
+    sctx.lineJoin = "round";
+    const grow = group.maskGrow;
+    withOutline(sctx, mask, x, y, () => {
+      sctx.fill();
+      if (grow > 0) {
+        sctx.lineWidth = grow * 2;
+        sctx.stroke();
+      } else if (grow < 0) {
+        sctx.globalCompositeOperation = "destination-out";
+        sctx.lineWidth = -grow * 2;
+        sctx.stroke();
+        sctx.globalCompositeOperation = "source-over";
+      }
+    });
+    // keep (or throw away) what is under the shape, softened at its edge
+    const soft = group.maskFeather * Math.hypot(t.a, t.b);
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.globalCompositeOperation = group.maskInvert ? "destination-out" : "destination-in";
+    lctx.filter = soft > 0.01 ? `blur(${soft}px)` : "none";
+    lctx.drawImage(shape, 0, 0);
+    lctx.filter = "none";
+    lctx.globalCompositeOperation = "source-over";
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(layer, 0, 0);
+    ctx.restore();
+  } finally {
+    maskDepth = depth;
+  }
+}
+
 /** The text being typed into right now on the canvas, if any. Set only while the editor's canvas is painted. */
 let typingId: string | null = null;
 
@@ -300,6 +389,11 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
   // a mask shows what is in the group only inside its shape, and the shape itself is not drawn
   const mask = maskOf(doc, el);
   if (el.type === "group" || mask || isLooseCopy(doc, el)) {
+    if (mask && (el.maskFeather || el.maskInvert || el.maskGrow)) {
+      drawSoftMask(ctx, doc, el, mask, x, y);
+      ctx.restore();
+      return;
+    }
     if (mask) clipTo(ctx, mask, x, y);
     for (const id of el.childIds) {
       const child = doc.elements[id];

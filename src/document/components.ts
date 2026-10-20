@@ -141,7 +141,7 @@ export function syncInstances(doc: Doc): Doc {
       if (!holdsThings(main)) {
         // A copy of a single thing, such as a picture: the copy is a clear box holding that one thing,
         // which fills it. So the look belongs to the thing inside, and sizing the copy sizes the thing.
-        Object.assign(inst, { fill: "#00000000", stroke: null, shadow: null, gradient: null, radius: 0, layout: null, mask: false });
+        Object.assign(inst, { fill: "#00000000", stroke: null, shadow: null, gradient: null, radius: 0, layout: null, mask: false, maskFeather: 0, maskInvert: false, maskGrow: 0 });
         const e: El = copy(main);
         e.id = `${inst.id}${SEP}${main.id}`;
         e.parentId = inst.id;

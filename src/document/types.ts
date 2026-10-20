@@ -110,6 +110,12 @@ export interface El {
   overrides: Record<string, Record<string, unknown>>;
   /** A group only: its bottom thing is a shape, and everything else in the group shows only inside that shape. The shape itself is not drawn. */
   mask: boolean;
+  /** A mask only: how many pixels its edge is softened over. 0 is a hard edge. */
+  maskFeather: number;
+  /** A mask only: show what is outside the shape instead of what is inside. */
+  maskInvert: boolean;
+  /** A mask only: pixels the shape is made bigger by, or smaller when below 0. */
+  maskGrow: number;
   /** Locked things cannot be picked on the canvas, so you can select what is behind or inside them. */
   locked: boolean;
   /** Hidden things are not drawn, not picked on the canvas and not exported. */
