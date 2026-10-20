@@ -30,9 +30,15 @@ pub struct McpState {
     ready: AtomicBool,
 }
 
+/// The AI tools Duet's chat is running, by run: "chat" for the main conversation, and one for each task.
 #[derive(Default)]
 pub struct AgentState {
-    child: Mutex<Option<Child>>,
+    children: Mutex<HashMap<String, Child>>,
+}
+
+/// A run's name goes into file names, so only plain letters, digits, dashes and colons stay.
+fn run_tag(run: &str) -> String {
+    run.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).take(48).collect()
 }
 
 fn json_header() -> tiny_http::Header {
@@ -420,7 +426,7 @@ pub fn agent_available(program: String) -> bool {
 /// squeezed through a command line (quotes and line breaks break differently on every system).
 /// The connection file holds the secret token, so only this user may read it.
 #[tauri::command(async)]
-pub fn write_agent_files(system: String, mcp: String) -> Result<Value, String> {
+pub fn write_agent_files(system: String, mcp: String, run: Option<String>) -> Result<Value, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| "Could not find your home folder.".to_string())?;
@@ -436,7 +442,9 @@ pub fn write_agent_files(system: String, mcp: String) -> Result<Value, String> {
         }
         Ok(file.to_string_lossy().to_string())
     };
-    Ok(json!({"system": write("system.md", &system)?, "mcp": write("mcp.json", &mcp)?}))
+    // each run has its own pair, so two AIs at work at once never read each other's connection
+    let tag = run.as_deref().filter(|r| *r != "chat").map(|r| format!("-{}", run_tag(r))).unwrap_or_default();
+    Ok(json!({"system": write(&format!("system{tag}.md"), &system)?, "mcp": write(&format!("mcp{tag}.json"), &mcp)?}))
 }
 
 /// Write one file inside Duet's agent workspace (for tools that read their settings from the
@@ -466,7 +474,8 @@ pub fn write_agent_file(name: String, body: String) -> Result<String, String> {
     Ok(file.to_string_lossy().to_string())
 }
 
-/// Start the agent. Its output arrives as `agent-line` events, and `agent-exit` ends the run.
+/// Start the agent. Its output arrives as `agent-line` events, and `agent-exit` ends the run. Each
+/// event carries the run it belongs to, so several can be at work at once.
 #[tauri::command]
 pub fn agent_run(
     app: AppHandle,
@@ -475,11 +484,13 @@ pub fn agent_run(
     args: Vec<String>,
     input: String,
     cwd: Option<String>,
+    run: Option<String>,
 ) -> Result<(), String> {
     if !supported(&program) {
         return Err(format!("{program} is not supported yet."));
     }
-    if state.child.lock().unwrap().is_some() {
+    let run = run.unwrap_or_else(|| "chat".to_string());
+    if state.children.lock().unwrap().contains_key(&run) {
         return Err("Duet is already working on something.".to_string());
     }
     let mut cmd = shell_command(&program, &args);
@@ -497,25 +508,26 @@ pub fn agent_run(
     }
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    *state.child.lock().unwrap() = Some(child);
+    state.children.lock().unwrap().insert(run.clone(), child);
 
     if let Some(err) = stderr {
         let app = app.clone();
+        let run = run.clone();
         std::thread::spawn(move || {
             for line in BufReader::new(err).lines().map_while(Result::ok) {
-                let _ = app.emit("agent-stderr", line);
+                let _ = app.emit("agent-stderr", json!({"run": run, "line": line}));
             }
         });
     }
     std::thread::spawn(move || {
         if let Some(out) = stdout {
             for line in BufReader::new(out).lines().map_while(Result::ok) {
-                let _ = app.emit("agent-line", line);
+                let _ = app.emit("agent-line", json!({"run": run, "line": line}));
             }
         }
         let code = {
             let state = app.state::<AgentState>();
-            let child = state.child.lock().unwrap().take();
+            let child = state.children.lock().unwrap().remove(&run);
             match child {
                 Some(mut c) => {
                     let code = c.wait().ok().and_then(|s| s.code());
@@ -527,16 +539,16 @@ pub fn agent_run(
                 None => None,
             }
         };
-        let _ = app.emit("agent-exit", code);
+        let _ = app.emit("agent-exit", json!({"run": run, "code": code}));
     });
     Ok(())
 }
 
 /// Stop the agent mid-task.
 #[tauri::command]
-pub fn agent_cancel(state: State<AgentState>) {
+pub fn agent_cancel(state: State<AgentState>, run: Option<String>) {
     // the slot is emptied now, so a tool that was stopped never leaves "already working" behind
-    let child = state.child.lock().unwrap().take();
+    let child = state.children.lock().unwrap().remove(run.as_deref().unwrap_or("chat"));
     if let Some(mut child) = child {
         #[cfg(unix)]
         stop_session(child.id(), libc::SIGKILL);
@@ -554,14 +566,14 @@ pub fn request_waiting(app: &AppHandle) -> bool {
 
 /// Duet's own chat has an AI tool running.
 pub fn chat_agent_running(app: &AppHandle) -> bool {
-    app.try_state::<AgentState>().is_some_and(|s| s.child.lock().unwrap().is_some())
+    app.try_state::<AgentState>().is_some_and(|s| !s.children.lock().unwrap().is_empty())
 }
 
 /// Called when Duet quits: an AI it started must not be left running behind it.
 pub fn stop_agent(app: &AppHandle) {
     use tauri::Manager;
     if let Some(state) = app.try_state::<AgentState>() {
-        if let Some(child) = state.child.lock().unwrap().as_mut() {
+        for child in state.children.lock().unwrap().values_mut() {
             #[cfg(unix)]
             stop_session(child.id(), libc::SIGKILL);
             let _ = child.kill();

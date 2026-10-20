@@ -1,9 +1,10 @@
 import { isOutside, plainName } from "../ai/who";
 import { useEffect, useLayoutEffect, useRef, useState, Fragment } from "react";
-import { detectAgent, sendToAgent, stopAgent } from "../ai/agent";
+import { detectAgent, sendToAgent, sendToTask, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
-import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, tookLine, setEffort, setModel, newConversation, setAgent, setMinimized, setMode, updateMsg, useChat } from "../ai/chat";
+import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, tookLine, setEffort, setModel, newTask, setAgent, setMinimized, setMode, showThread, updateMsg, useChat } from "../ai/chat";
+import type { AgentId } from "../ai/chat";
 import { attachFiles } from "../ai/pictures";
 import type { ModelChoice, Mode, Msg } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
@@ -118,14 +119,19 @@ function agyModelList(): Promise<ModelChoice[]> {
 
 /** `docked` fills the space it is given, as the middle of Chat; otherwise it floats on the canvas. */
 export default function ChatPanel({ docked = false }: { docked?: boolean }) {
-  const messages = useChat((s) => s.messages);
+  // the main chat, or the task on show
+  const task = useChat((s) => (s.thread ? s.tasks.find((t) => t.key === s.thread) : undefined));
+  const mainMessages = useChat((s) => s.messages);
+  const messages = task ? task.messages : mainMessages;
   const mode = useChat((s) => s.mode);
-  const running = useChat((s) => s.running);
+  const mainRunning = useChat((s) => s.running);
+  const running = task ? task.running : mainRunning;
   const folded = useChat((s) => s.minimized);
   const minimized = folded && !docked;
   const isEmpty = docked && messages.length === 0;
   const found = useChat((s) => s.agentFound);
-  const agent = useChat((s) => s.agent);
+  const mainAgent = useChat((s) => s.agent);
+  const agent = task ? task.agent : mainAgent;
   const installed = useChat((s) => s.installed);
   const models = useChat((s) => s.models);
   const effort = useChat((s) => s.effort);
@@ -155,6 +161,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The New task menu, and the AI picked in it. */
+  const [taskPick, setTaskPick] = useState<AgentId | null>(null);
   const [mentionHidden, setMentionHidden] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
 
@@ -198,6 +206,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   useDismiss(popOpen, () => setPopOpen(false), ".agent-pop, [data-name='agent-button'], [data-name='members']");
   useDismiss(permOpen, () => setPermOpen(false), ".perm-pop, [data-name='perm-button']");
   useDismiss(settingsOpen, () => setSettingsOpen(false), ".chat-settings, [data-name='chat-settings']");
+  useDismiss(taskPick !== null, () => setTaskPick(null), ".task-pop, [data-name='new-task']");
 
   useEffect(() => {
     if (minimized) {
@@ -480,7 +489,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
     if ((!t.trim() && !waiting.length) || running) return;
     setText("");
     setPictureNote(null);
-    void sendToAgent(t);
+    void (task ? sendToTask(task.key, t) : sendToAgent(t));
   };
 
   const renderNote = (m: ChatMessage) => {
@@ -577,23 +586,72 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
         onClick={() => !justMoved.current && setMinimized(!minimized)}
       >
         <div className="ctitle">
-          <b>Chat</b>
+          {task ? (
+            <>
+              <button
+                type="button"
+                className="task-back"
+                title="Back to the main chat"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showThread(null);
+                }}
+              >
+                Chat
+              </button>
+              <span className="task-sep">/</span>
+              <b className="task-title">{task.title || "New task"}</b>
+            </>
+          ) : (
+            <b>Chat</b>
+          )}
         </div>
         <button
           type="button"
           className="chat-new-btn"
-          disabled={messages.length === 0 || running}
-          title="New chat"
+          data-name="new-task"
+          disabled={members.length === 0}
+          title="Start a side task with one AI. It works by itself, beside this chat."
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            if (messages.length === 0 || running) return;
-            newConversation();
+            if (minimized) setMinimized(false);
+            setTaskPick(taskPick === null ? (members.find((m) => m.id === mainAgent)?.id ?? members[0]?.id ?? null) : null);
+            setPopOpen(false);
+            setSettingsOpen(false);
           }}
         >
           <Icon name="new-chat" size={13} />
-          <span>New chat</span>
+          <span>New task</span>
         </button>
+        {taskPick !== null && (
+          <div className="agent-pop task-pop" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+            <div className="agent-pop-label">Who works on it?</div>
+            <div className="who-answers-list">
+              {members.map((m) => (
+                <div key={m.id} className={`who-answer-row ${m.id === taskPick ? "active" : ""}`} onClick={() => setTaskPick(m.id)}>
+                  <span className="member-badge" style={{ backgroundColor: agentColour(m.name) }}>
+                    {m.name.charAt(0)}
+                  </span>
+                  <span className="who-answer-name">{m.name}</span>
+                </div>
+              ))}
+            </div>
+            <div className="agent-pop-empty">It works on its own beside this chat. You can start more than one at a time.</div>
+            <button
+              type="button"
+              className="mini primary task-start"
+              onClick={() => {
+                newTask(taskPick);
+                setTaskPick(null);
+                setTimeout(() => textareaRef.current?.focus(), 0);
+              }}
+            >
+              Start
+            </button>
+          </div>
+        )}
         <div
           className="members-cluster"
           data-name="members"
@@ -799,7 +857,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                       {m.proposal.status === "open" ? (
                         <>
                           <span onClick={() => applyProposal(m.id)}>Apply</span>
-                          <span onClick={() => updateMsg(m.id, { proposal: { ...m.proposal!, status: "dismissed" } })}>Not now</span>
+                          <span onClick={() => updateMsg(m.id, { proposal: { ...m.proposal!, status: "dismissed" } }, task?.key)}>Not now</span>
                         </>
                       ) : (
                         <em>{m.proposal.status === "applied" ? "Applied" : "Dismissed"}</em>
@@ -873,7 +931,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
 
           {docked && found !== false && (
             <div className="chat-start-title" aria-hidden={!isEmpty}>
-              What shall we make?
+              {task ? `What should ${toolName} do?` : "What shall we make?"}
             </div>
           )}
 
@@ -914,7 +972,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 type="button"
                 className="agent-btn"
                 data-name="agent-button"
-                title="Who answers"
+                title={task ? "This task's AI" : "Who answers"}
+                disabled={!!task}
                 onClick={() => {
                   setPopOpen((o) => !o);
                   setPermOpen(false);
@@ -1072,7 +1131,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               ref={textareaRef}
               value={text}
               rows={1}
-              placeholder={found === false ? "Install an AI tool to start" : `Ask ${toolName}`}
+              placeholder={found === false ? "Install an AI tool to start" : task ? `Ask ${toolName} about this task` : `Ask ${toolName}`}
               disabled={found === false}
               onChange={(e) => {
                 setText(e.target.value);
@@ -1119,7 +1178,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               }}
             />
             {running ? (
-              <button className="mini" onClick={stopAgent}>
+              <button className="mini" onClick={() => void stopAgent(task?.key)}>
                 Stop
               </button>
             ) : (

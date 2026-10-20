@@ -29,7 +29,21 @@ export interface Thread {
   now: Said[];
   /** Conversations the designer closed with "Start a fresh conversation", oldest first. */
   earlier: Said[];
+  /** Side conversations, each with one AI. Left out when there are none. */
+  tasks?: KeptTask[];
 }
+
+/** A task as it is kept: which AI does it, its name, and what was said in it. */
+export interface KeptTask {
+  agent: string;
+  title: string;
+  said: Said[];
+}
+
+/** How many things one task remembers. */
+const TASK_LIMIT = 200;
+/** How many tasks a project remembers, the latest ones. */
+const TASKS_KEPT = 30;
 
 /** Anything the chat shows. Looser than Said, because the chat also holds passing things. */
 export interface Speaking {
@@ -81,7 +95,15 @@ export function packThread(thread: Thread): string {
   const now = thread.now.slice(-THREAD_LIMIT);
   const room = THREAD_LIMIT - now.length;
   const earlier = room > 0 ? thread.earlier.slice(-room) : [];
-  return JSON.stringify({ version: 1, now, earlier });
+  const tasks = (thread.tasks ?? []).slice(-TASKS_KEPT).map((t) => ({ agent: t.agent, title: t.title, said: t.said.slice(-TASK_LIMIT) }));
+  return JSON.stringify(tasks.length ? { version: 1, now, earlier, tasks } : { version: 1, now, earlier });
+}
+
+function taskList(value: unknown): KeptTask[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((t): t is { agent: string; title?: unknown; said?: unknown } => !!t && typeof t === "object" && typeof (t as { agent?: unknown }).agent === "string")
+    .map((t) => ({ agent: t.agent, title: typeof t.title === "string" ? t.title : "", said: list(t.said) }));
 }
 
 function list(value: unknown): Said[] {
@@ -96,8 +118,9 @@ function list(value: unknown): Said[] {
 export function readThread(text: string | null | undefined): Thread {
   if (!text) return { now: [], earlier: [] };
   try {
-    const raw = JSON.parse(text) as { now?: unknown; earlier?: unknown };
-    return { now: list(raw.now), earlier: list(raw.earlier) };
+    const raw = JSON.parse(text) as { now?: unknown; earlier?: unknown; tasks?: unknown };
+    const tasks = taskList(raw.tasks);
+    return tasks.length ? { now: list(raw.now), earlier: list(raw.earlier), tasks } : { now: list(raw.now), earlier: list(raw.earlier) };
   } catch {
     return { now: [], earlier: [] };
   }

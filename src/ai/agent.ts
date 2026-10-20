@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { saveNow, tabName } from "../project/project";
+import { getState } from "../state/store";
 import {
   AGENTS,
   addMsg,
@@ -10,16 +11,20 @@ import {
   conversationProject,
   getChat,
   messagesOf,
+  nameTask,
+  removeTask,
   removeWorking,
   sendPictures,
   sessionUsed,
   setInstalled,
   setRunning,
   setSessionId,
+  setTaskRunning,
+  taskOf,
   updateMsg,
 } from "./chat";
 import { brief, carryOn, keepable } from "../memory/thread";
-import type { AgentId } from "./chat";
+import type { AgentId, Msg } from "./chat";
 import { mentioned, setAgent } from "./chat";
 import { FROM_CHAT, OUTSIDE } from "./who";
 import { chatRules } from "./rules";
@@ -51,18 +56,39 @@ const WORKING: Record<string, string> = {
   save_skill: "Saving your rules as a skill",
 };
 
-let sawText = false;
-/** When this turn began, and the last message before it, to tell afterwards how the turn went. */
-let turn: { at: number; after: number; tool: string; model?: string } | null = null;
-let stderrLines: string[] = [];
-let workingId: number | null = null;
-/** False once the designer has stopped the AI. What it says after that is not shown. */
-let live = false;
-/** The project whose conversation this turn belongs to. It keeps working there while another project is on screen. */
-let runFor = "";
+/**
+ * One AI at work: the main chat's, or a task's. Each keeps its own place in its own conversation, so
+ * several can talk at once without their words getting mixed.
+ */
+interface Run {
+  /** "chat", or the task's key. */
+  id: string;
+  agent: AgentId;
+  /** The conversation it talks in: the project file for the main chat, the task's key for a task. */
+  where: string;
+  sawText: boolean;
+  /** When this turn began, and the last message before it, to tell afterwards how the turn went. */
+  turn: { at: number; after: number; tool: string; model?: string } | null;
+  stderrLines: string[];
+  workingId: number | null;
+  /** False once the designer has stopped the AI. What it says after that is not shown. */
+  live: boolean;
+  streamId: number | null;
+  lastStreamId: number | null;
+}
+const runs = new Map<string, Run>();
+const CHAT = "chat";
 
-/** The name of the agent that is answering in the chat right now. */
-const speaker = () => AGENTS.find((a) => a.id === getChat().agent)?.name;
+/** Save what the AI did, but only to a project that has a file: work never saved is not interrupted with a Save window. */
+const keepIt = () => {
+  if (getState().project.path) void saveNow();
+};
+
+/** The main chat's run, the one the rest of Duet asks about. */
+const chatRun = () => runs.get(CHAT);
+
+/** The name of the agent that is answering in a run. */
+const speaker = (r: Run) => AGENTS.find((a) => a.id === r.agent)?.name;
 
 /** Look for every AI tool this computer has. */
 export async function detectAgent() {
@@ -79,7 +105,7 @@ export async function detectAgent() {
   setInstalled(found);
 }
 
-function onClaudeLine(line: string) {
+function onClaudeLine(r: Run, line: string) {
   let ev: Record<string, unknown>;
   try {
     ev = JSON.parse(line) as Record<string, unknown>;
@@ -88,12 +114,12 @@ function onClaudeLine(line: string) {
   }
 
   if (ev.type === "system" && ev.subtype === "init") {
-    if (typeof ev.session_id === "string") setSessionId(ev.session_id, runFor);
+    if (typeof ev.session_id === "string") setSessionId(ev.session_id, r.where);
     const servers = (ev.mcp_servers as { name: string; status: string }[] | undefined) ?? [];
     const duet = servers.find((s) => s.name === "duet");
     if (duet && duet.status !== "connected") {
-      removeWorking(runFor);
-      addMsg({ role: "error", text: "The AI could not connect to your canvas. Try again in a moment." }, runFor);
+      removeWorking(r.where);
+      addMsg({ role: "error", text: "The AI could not connect to your canvas. Try again in a moment." }, r.where);
     }
     return;
   }
@@ -102,37 +128,35 @@ function onClaudeLine(line: string) {
     const content = ((ev.message as { content?: unknown[] } | undefined)?.content ?? []) as Record<string, unknown>[];
     for (const block of content) {
       if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-        removeWorking(runFor);
-        workingId = null;
-        sawText = true;
-        addMsg({ role: "duet", text: block.text.trim(), by: speaker() }, runFor);
+        removeWorking(r.where);
+        r.workingId = null;
+        r.sawText = true;
+        addMsg({ role: "duet", text: block.text.trim(), by: speaker(r) }, r.where);
       } else if (block.type === "tool_use") {
         const tool = String(block.name ?? "").replace(/^mcp__duet__/, "");
-        const text = `${WORKING[tool] ?? "Working"}...`;
-        if (workingId !== null && messagesOf(runFor).some((m) => m.id === workingId)) updateMsg(workingId, { text }, runFor);
-        else workingId = addMsg({ role: "working", text }, runFor);
+        showWorking(r, `${WORKING[tool] ?? "Working"}...`);
       }
     }
     return;
   }
 
   // a tool's answer coming back means that tool has finished
-  if (ev.type === "user" && workingId !== null) {
-    showWorking("Thinking...");
+  if (ev.type === "user" && r.workingId !== null) {
+    showWorking(r, "Thinking...");
     return;
   }
 
   if (ev.type === "result") {
-    if (typeof ev.session_id === "string") setSessionId(ev.session_id, runFor);
+    if (typeof ev.session_id === "string") setSessionId(ev.session_id, r.where);
     const text = typeof ev.result === "string" ? ev.result.trim() : "";
     if (ev.is_error) {
-      removeWorking(runFor);
-      addMsg({ role: "error", text: friendly(text || stderrLines.join(" ")) }, runFor);
-      sawText = true;
-    } else if (!sawText && text) {
-      removeWorking(runFor);
-      addMsg({ role: "duet", text, by: speaker() }, runFor);
-      sawText = true;
+      removeWorking(r.where);
+      addMsg({ role: "error", text: friendly(text || r.stderrLines.join(" ")) }, r.where);
+      r.sawText = true;
+    } else if (!r.sawText && text) {
+      removeWorking(r.where);
+      addMsg({ role: "duet", text, by: speaker(r) }, r.where);
+      r.sawText = true;
     }
   }
 }
@@ -140,28 +164,25 @@ function onClaudeLine(line: string) {
 
 // ---- Antigravity: streams small pieces of text, tool steps, then a result ----
 
-let streamId: number | null = null;
-let lastStreamId: number | null = null;
-
-function streamText(piece: string) {
-  removeWorking(runFor);
-  workingId = null;
-  sawText = true;
-  if (streamId !== null && messagesOf(runFor).some((m) => m.id === streamId)) {
-    const cur = messagesOf(runFor).find((m) => m.id === streamId);
-    updateMsg(streamId, { text: (cur?.text ?? "") + piece }, runFor);
+function streamText(r: Run, piece: string) {
+  removeWorking(r.where);
+  r.workingId = null;
+  r.sawText = true;
+  const cur = r.streamId !== null ? messagesOf(r.where).find((m) => m.id === r.streamId) : undefined;
+  if (cur && r.streamId !== null) {
+    updateMsg(r.streamId, { text: cur.text + piece }, r.where);
   } else {
-    streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, ""), by: speaker() }, runFor);
+    r.streamId = addMsg({ role: "duet", text: piece.replace(/^\s+/, ""), by: speaker(r) }, r.where);
   }
-  lastStreamId = streamId;
+  r.lastStreamId = r.streamId;
 }
 
-function showWorking(text: string) {
-  if (workingId !== null && messagesOf(runFor).some((m) => m.id === workingId)) updateMsg(workingId, { text }, runFor);
-  else workingId = addMsg({ role: "working", text }, runFor);
+function showWorking(r: Run, text: string) {
+  if (r.workingId !== null && messagesOf(r.where).some((m) => m.id === r.workingId)) updateMsg(r.workingId, { text }, r.where);
+  else r.workingId = addMsg({ role: "working", text }, r.where);
 }
 
-function onAgyLine(line: string) {
+function onAgyLine(r: Run, line: string) {
   let ev: Record<string, unknown>;
   try {
     ev = JSON.parse(line) as Record<string, unknown>;
@@ -169,67 +190,67 @@ function onAgyLine(line: string) {
     return;
   }
   if (ev.event === "init" && typeof ev.conversation_id === "string") {
-    setSessionId(ev.conversation_id, runFor);
+    setSessionId(ev.conversation_id, r.where);
   } else if (ev.event === "step_update") {
     const step = ev.step_update as Record<string, unknown> | undefined;
     if (!step) return;
     if (step.step_type === "agent_response") {
-      if (step.state === "ACTIVE" && typeof step.text_delta === "string") streamText(step.text_delta);
-      else if (step.state === "DONE") streamId = null;
+      if (step.state === "ACTIVE" && typeof step.text_delta === "string") streamText(r, step.text_delta);
+      else if (step.state === "DONE") r.streamId = null;
     } else if (step.step_type === "tool" && step.state === "ACTIVE") {
-      streamId = null;
+      r.streamId = null;
       const info = step.tool_info as { parameters?: { ToolName?: string } } | undefined;
       if (step.tool_name === "call_mcp_tool") {
-        showWorking(`${WORKING[String(info?.parameters?.ToolName ?? "")] ?? "Working"}...`);
+        showWorking(r, `${WORKING[String(info?.parameters?.ToolName ?? "")] ?? "Working"}...`);
       } else {
         // Antigravity can reach for its own tools too. Say so, so nothing happens out of sight.
-        showWorking(`Antigravity is using its own tool (${String(step.tool_name ?? "unknown")})...`);
+        showWorking(r, `Antigravity is using its own tool (${String(step.tool_name ?? "unknown")})...`);
       }
     } else if (step.step_type === "tool" && step.state === "DONE") {
       // the tool has finished: do not leave its message up as if it were still running
-      if (workingId !== null) showWorking("Thinking...");
+      if (r.workingId !== null) showWorking(r, "Thinking...");
     }
   } else if (ev.event === "result") {
-    streamId = null;
-    const r = (ev.result ?? {}) as Record<string, unknown>;
-    if (typeof r.conversation_id === "string") setSessionId(r.conversation_id, runFor);
-    if (r.status !== "SUCCESS") {
-      removeWorking(runFor);
-      const err = typeof r.error === "string" ? r.error : typeof r.response === "string" ? r.response : "";
-      addMsg({ role: "error", text: friendly(err || stderrLines.join(" ")) }, runFor);
-      sawText = true;
-    } else if (!sawText && typeof r.response === "string" && r.response.trim()) {
-      removeWorking(runFor);
-      addMsg({ role: "duet", text: r.response.trim(), by: speaker() }, runFor);
-      sawText = true;
-    } else if (typeof r.response === "string" && r.response.trim() && lastStreamId !== null) {
+    r.streamId = null;
+    const res = (ev.result ?? {}) as Record<string, unknown>;
+    if (typeof res.conversation_id === "string") setSessionId(res.conversation_id, r.where);
+    if (res.status !== "SUCCESS") {
+      removeWorking(r.where);
+      const err = typeof res.error === "string" ? res.error : typeof res.response === "string" ? res.response : "";
+      addMsg({ role: "error", text: friendly(err || r.stderrLines.join(" ")) }, r.where);
+      r.sawText = true;
+    } else if (!r.sawText && typeof res.response === "string" && res.response.trim()) {
+      removeWorking(r.where);
+      addMsg({ role: "duet", text: res.response.trim(), by: speaker(r) }, r.where);
+      r.sawText = true;
+    } else if (typeof res.response === "string" && res.response.trim() && r.lastStreamId !== null) {
       // Streamed pieces can get lost on the way in. The final result holds the whole reply, so
       // if the last message on screen is a shorter start of it, show the full text instead.
-      const full = r.response.trim();
-      const cur = messagesOf(runFor).find((m) => m.id === lastStreamId);
+      const full = res.response.trim();
+      const cur = messagesOf(r.where).find((m) => m.id === r.lastStreamId);
       const shown = (cur?.text ?? "").trim();
       if (cur && shown.length < full.length && full.startsWith(shown.slice(0, Math.min(20, shown.length)))) {
-        updateMsg(lastStreamId, { text: full }, runFor);
+        updateMsg(r.lastStreamId, { text: full }, r.where);
       }
     }
   }
 }
 
 /** The turn is over: put on the AI's last reply how long it took and how many changes it made. */
-function noteTook() {
-  const t = turn;
-  turn = null;
+function noteTook(r: Run) {
+  const t = r.turn;
+  r.turn = null;
   if (!t) return;
-  const since = messagesOf(runFor).filter((m) => m.id > t.after);
+  const since = messagesOf(r.where).filter((m) => m.id > t.after);
   const changes = since.filter((m) => m.role === "note" && !!m.step).length;
   const reply = [...since].reverse().find((m) => m.role === "duet");
-  if (reply) updateMsg(reply.id, { took: { tool: t.tool, ...(t.model ? { model: t.model } : {}), ms: Date.now() - t.at, changes } }, runFor);
+  if (reply) updateMsg(reply.id, { took: { tool: t.tool, ...(t.model ? { model: t.model } : {}), ms: Date.now() - t.at, changes } }, r.where);
 }
 
-function onLine(line: string) {
-  if (!live) return;
-  if (getChat().agent === "agy") onAgyLine(line);
-  else onClaudeLine(line);
+function onLine(r: Run, line: string) {
+  if (!r.live) return;
+  if (r.agent === "agy") onAgyLine(r, line);
+  else onClaudeLine(r, line);
 }
 
 /** Turn technical failures into something a designer can act on. */
@@ -255,33 +276,75 @@ function friendly(raw: string): string {
   return raw ? `Something went wrong: ${raw.slice(0, 240)}` : "Something went wrong and the AI stopped.";
 }
 
-export async function startAgentListeners(): Promise<() => void> {
-  const offLine = await listen<string>("agent-line", (e) => onLine(e.payload));
-  const offErr = await listen<string>("agent-stderr", (e) => {
-    stderrLines = [...stderrLines.slice(-5), e.payload];
-  });
-  const offExit = await listen<number | null>("agent-exit", (e) => {
-    workingId = null;
-    // the designer has moved to another project, and that chat was already tidied
-    if (!live) return;
-    live = false;
-    removeWorking(runFor);
+/** A run has ended, by itself or because it was stopped: tidy its conversation and say it is free. */
+function ended(r: Run) {
+  r.live = false;
+  r.workingId = null;
+  runs.delete(r.id);
+  removeWorking(r.where);
+  if (r.id === CHAT) {
     declineAllWaiting();
     setRunning(false);
-    sessionUsed(false, runFor);
-    noteTook();
-    if (!sawText) {
-      const detail = stderrLines.filter((l) => !/job control|no tty/i.test(l)).join(" ");
-      addMsg({ role: "error", text: friendly(detail) }, runFor);
+  } else {
+    setTaskRunning(r.id, false);
+  }
+}
+
+export async function startAgentListeners(): Promise<() => void> {
+  type Said = { run?: string; line: string };
+  const offLine = await listen<Said>("agent-line", (e) => {
+    const r = runs.get(e.payload.run ?? CHAT);
+    if (r) onLine(r, e.payload.line);
+  });
+  const offErr = await listen<Said>("agent-stderr", (e) => {
+    const r = runs.get(e.payload.run ?? CHAT);
+    if (r) r.stderrLines = [...r.stderrLines.slice(-5), e.payload.line];
+  });
+  const offExit = await listen<{ run?: string; code: number | null }>("agent-exit", (e) => {
+    const r = runs.get(e.payload.run ?? CHAT);
+    // the designer has moved to another project, and that chat was already tidied
+    if (!r || !r.live) return;
+    ended(r);
+    sessionUsed(false, r.where);
+    noteTook(r);
+    if (!r.sawText) {
+      const detail = r.stderrLines.filter((l) => !/job control|no tty/i.test(l)).join(" ");
+      addMsg({ role: "error", text: friendly(detail) }, r.where);
     }
-    void saveNow();
-    void e;
+    keepIt();
   });
   return () => {
     offLine();
     offErr();
     offExit();
   };
+}
+
+/** Antigravity reaches Duet through one shared bridge, so it can only be at work in one place at a time. */
+function agyBusy(): boolean {
+  return [...runs.values()].some((r) => r.agent === "agy");
+}
+
+/**
+ * What goes to the AI with a message: the message, and if its own session has gone cold, a short note
+ * from Duet of what was said and done before. Pictures waiting in the box go too.
+ */
+function shape(said: string, where: string | undefined, conv: { sessionId: string | null; sessionUsed: number; sessionMessages: number; messages: Msg[] }) {
+  // Duet holds the conversation, not the AI tool. A quick back and forth carries the tool's own session on.
+  // Otherwise it starts fresh and light, with a short note from Duet of what was said and done.
+  const resume = carryOn({ sessionId: conv.sessionId, used: conv.sessionUsed, messages: conv.sessionMessages });
+  if (!resume) dropSession(where);
+  const note = resume ? "" : brief(keepable(conv.messages));
+  const past = note ? `${note}\n\nThe designer now says:\n` : "";
+  const pictures = sendPictures();
+  addMsg({ role: "you", text: said, pictures: pictures.length ? pictures.map((p) => p.n) : undefined }, where);
+  // The pictures do not travel inside the message. The AI is told they are there and asks to see each one,
+  // the same way it looks at the canvas, so every AI tool gets them the same way.
+  const what = pictures.every((p) => p.text === undefined) ? "picture" : pictures.every((p) => p.text !== undefined) ? "text file" : "file";
+  const attached = pictures.length
+    ? `\n\n(The designer attached ${pictures.length === 1 ? `a ${what}` : `${pictures.length} ${what}s`} to this message: ${pictures.map((p) => `number ${p.n}`).join(", ")}. Look at ${pictures.length === 1 ? "it" : "each one"} with look_at_attachment before you do anything else.)`
+    : "";
+  return { past, prompt: `${said || "Look at what I attached."}${attached}`, session: resume ? conv.sessionId : null };
 }
 
 export async function sendToAgent(text: string) {
@@ -297,45 +360,54 @@ export async function sendToAgent(text: string) {
   const asked = mentioned(said, getChat().installed);
   if (asked && asked !== getChat().agent) setAgent(asked);
   const agent = getChat().agent;
-  // Duet holds the conversation, not the AI tool. A quick back and forth carries the tool's own session on.
-  // Otherwise it starts fresh and light, with a short note from Duet of what was said and done.
-  const before = getChat();
-  const resume = carryOn({ sessionId: before.sessionId, used: before.sessionUsed, messages: before.sessionMessages });
-  if (!resume) dropSession();
-  const note = resume ? "" : brief(keepable(before.messages));
-  const past = note ? `${note}\n\nThe designer now says:\n` : "";
-  const pictures = sendPictures();
-  addMsg({ role: "you", text: said, pictures: pictures.length ? pictures.map((p) => p.n) : undefined });
-  // The pictures do not travel inside the message. The AI is told they are there and asks to see each one,
-  // the same way it looks at the canvas, so every AI tool gets them the same way.
-  const what = pictures.every((p) => p.text === undefined) ? "picture" : pictures.every((p) => p.text !== undefined) ? "text file" : "file";
-  const attached = pictures.length
-    ? `\n\n(The designer attached ${pictures.length === 1 ? `a ${what}` : `${pictures.length} ${what}s`} to this message: ${pictures.map((p) => `number ${p.n}`).join(", ")}. Look at ${pictures.length === 1 ? "it" : "each one"} with look_at_attachment before you do anything else.)`
-    : "";
-  const prompt = `${said || "Look at what I attached."}${attached}`;
+  if (agent === "agy" && agyBusy()) {
+    addMsg({ role: "note", text: "Antigravity is at work on a task. It can answer here once that is done." });
+    return;
+  }
+  const { past, prompt, session } = shape(said, undefined, getChat());
   sessionUsed(true);
-  runFor = conversationProject();
+  const project = conversationProject();
   setRunning(true);
+  await launch({ id: CHAT, agent, where: project }, project, past, prompt, session);
+}
+
+/** Send a message in a task. Its AI answers there, beside the main chat and the other tasks. */
+export async function sendToTask(key: string, text: string) {
+  const said = text.trim();
+  const task = taskOf(key);
+  if (!task || task.running) return;
+  if (!said && !getChat().pictures.some((p) => !p.sent)) return;
+  if (task.agent === "agy" && agyBusy()) {
+    addMsg({ role: "note", text: "Antigravity is at work somewhere else. It can do this once that is done." }, key);
+    return;
+  }
+  nameTask(key, said);
+  const { past, prompt, session } = shape(said, key, task);
+  sessionUsed(true, key);
+  setTaskRunning(key, true);
+  await launch({ id: key, agent: task.agent, where: key }, task.project, past, prompt, session);
+}
+
+/** Start the AI tool for a run, with the message and Duet's instructions. */
+async function launch(base: Pick<Run, "id" | "agent" | "where">, project: string, past: string, prompt: string, session: string | null) {
+  const r: Run = { ...base, sawText: false, turn: null, stderrLines: [], workingId: null, live: true, streamId: null, lastStreamId: null };
+  runs.set(r.id, r);
+  const agent = r.agent;
+  const name = speaker(r) ?? agent;
+  const task = r.id === CHAT ? undefined : r.id;
   // some tools reach Duet through its bridge and look like they work from outside: tie both to this project
-  const name = speaker() ?? agent;
-  bindAi(name, runFor || null);
-  bindAi(name + OUTSIDE, runFor || null);
-  turn = { at: Date.now(), after: getChat().messages.reduce((n, m) => Math.max(n, m.id), 0), tool: speaker() ?? agent, model: getChat().models[agent] ?? undefined };
+  if (!task) bindAi(name, project || null);
+  bindAi(name + OUTSIDE, project || null, task);
+  r.turn = { at: Date.now(), after: messagesOf(r.where).reduce((n, m) => Math.max(n, m.id), 0), tool: name, model: getChat().models[agent] ?? undefined };
   // keeps an area it already has up; the area only appears once the AI claims one or changes the design
-  aiStarted(speaker());
-  live = true;
-  sawText = false;
-  streamId = null;
-  lastStreamId = null;
-  stderrLines = [];
-  workingId = addMsg({ role: "working", text: "Thinking..." });
+  aiStarted(speaker(r));
+  r.workingId = addMsg({ role: "working", text: "Thinking..." }, r.where);
   try {
     const info = await invoke<{ port: number; token: string }>("mcp_info");
     const home = await invoke<string>("duet_home");
     const url = `http://127.0.0.1:${info.port}/mcp`;
-    // the name goes with every request, so each step can say which AI tool made it
-    const headers = { Authorization: `Bearer ${info.token}`, "X-Duet-Client": `${FROM_CHAT}${AGENTS.find((x) => x.id === agent)?.name ?? agent}` };
-    const session = getChat().sessionId;
+    // the name goes with every request, so each step can say which AI tool made it, and for which task
+    const headers = { Authorization: `Bearer ${info.token}`, "X-Duet-Client": `${FROM_CHAT}${name}${task ? `/${task}` : ""}` };
     let args: string[];
     let agyInput = "";
 
@@ -361,6 +433,7 @@ export async function sendToAgent(text: string) {
       const files = await invoke<{ system: string; mcp: string }>("write_agent_files", {
         system: chatRules(),
         mcp: JSON.stringify({ mcpServers: { duet: { type: "http", url, headers } } }),
+        run: r.id,
       });
       args = [
         "-p",
@@ -381,33 +454,35 @@ export async function sendToAgent(text: string) {
       if (getChat().effort) args.push("--effort", getChat().effort);
       if (session) args.push("--resume", session);
     }
-    await invoke("agent_run", { program: agent, args, input: agent === "agy" ? agyInput : `${past}${prompt}`, cwd: `${home}/agent-workspace` });
+    await invoke("agent_run", { program: agent, args, input: agent === "agy" ? agyInput : `${past}${prompt}`, cwd: `${home}/agent-workspace`, run: r.id });
   } catch (e) {
-    live = false;
-    removeWorking(runFor);
-    setRunning(false);
-    addMsg({ role: "error", text: friendly(String(e)) }, runFor);
+    ended(r);
+    addMsg({ role: "error", text: friendly(String(e)) }, r.where);
   }
 }
 
-export async function stopAgent() {
-  const stopping = runFor;
+/** Stop the main chat's AI, or a task's when its key is given. */
+export async function stopAgent(key?: string) {
+  const id = key ?? CHAT;
+  const r = runs.get(id);
   try {
-    await invoke("agent_cancel");
+    await invoke("agent_cancel", { run: id });
   } catch {
     /* nothing running */
   }
   // The run normally ends when the tool's output closes. A helper the tool left behind can keep it
   // open, and Stop would look dead, so if the end has not come, end it here.
-  await new Promise((r) => setTimeout(r, 1200));
-  if (!live || runFor !== stopping) return;
-  live = false;
-  workingId = null;
-  removeWorking(runFor);
-  declineAllWaiting();
-  setRunning(false);
-  addMsg({ role: "note", text: "Stopped." }, runFor);
-  void saveNow();
+  await new Promise((res) => setTimeout(res, 1200));
+  if (!r || !r.live || runs.get(id) !== r) return;
+  ended(r);
+  addMsg({ role: "note", text: "Stopped." }, r.where);
+  keepIt();
+}
+
+/** A task is closed: its AI stops if it was at work. */
+export async function closeTask(key: string) {
+  if (runs.has(key)) await stopAgent(key);
+  removeTask(key);
 }
 
 /**
@@ -426,12 +501,10 @@ export async function readyToLeave(closing = false, project = conversationProjec
   if (!go) return false;
   // it may have finished while the question was up
   if (getChat().busy !== project) return true;
-  live = false;
+  const r = chatRun();
+  if (r) r.live = false;
   await stopAgent();
-  removeWorking(runFor);
-  workingId = null;
-  declineAllWaiting();
-  setRunning(false);
-  addMsg({ role: "note", text: closing ? "Stopped, because you closed the project." : "Stopped, because you opened another project." }, runFor);
+  if (r) ended(r);
+  addMsg({ role: "note", text: closing ? "Stopped, because you closed the project." : "Stopped, because you opened another project." }, r?.where ?? project);
   return true;
 }

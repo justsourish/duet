@@ -1,13 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import CanvasView from "../canvas/CanvasView";
 import type { Recent } from "../project/project";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import type { Trashed } from "../project/project";
 import { closeProject, closeTab, getRecents, getTabs, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
-import { readyToLeave } from "../ai/agent";
+import { closeTask, readyToLeave } from "../ai/agent";
+import { AGENTS, showThread, useChat } from "../ai/chat";
+import { agentColour } from "../ai/colours";
 import ChatPanel from "./ChatPanel";
 import ChatToolbar from "./ChatToolbar";
 import Icon from "./Icons";
@@ -177,6 +179,42 @@ function TrashView({ onBack }: { onBack: () => void }) {
  * Chat: your projects down the left, the chat of the project you picked in the middle, and its
  * canvas on the right to watch. The canvas here only looks; changing it is for Edit.
  */
+/** The project's main chat and its tasks, under it in the list. Each task shows its AI's colour, and whether it is at work or done. */
+function TaskList({ project }: { project: string }) {
+  const tasks = useChat((s) => s.tasks);
+  const thread = useChat((s) => s.thread);
+  const mine = tasks.filter((t) => t.project === project);
+  if (!mine.length) return null;
+  return (
+    <div className="chathome-tasks">
+      <div className={`chathome-task ${thread === null ? "on" : ""}`} onClick={() => showThread(null)}>
+        <span className="chathome-task-name">Main chat</span>
+      </div>
+      {mine.map((t) => {
+        const name = AGENTS.find((a) => a.id === t.agent)?.name ?? t.agent;
+        return (
+          <div key={t.key} className={`chathome-task ${thread === t.key ? "on" : ""}`} title={name} onClick={() => showThread(t.key)}>
+            <span className="task-dot" style={{ backgroundColor: agentColour(name) }} />
+            <span className="chathome-task-name">{t.title || "New task"}</span>
+            {t.running ? <span className="task-working" title={`${name} is working`} /> : t.done ? <span className="task-done">done</span> : null}
+            <button
+              className="task-close"
+              title="Close this task"
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (t.messages.length && !(await ask(`Close “${t.title || "New task"}”? Its conversation goes with it.${t.running ? ` ${name} stops working on it.` : ""}`, { title: "Duet", kind: "warning", okLabel: "Close task", cancelLabel: "Keep it" }))) return;
+                void closeTask(t.key);
+              }}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ChatHome() {
   const current = useStore((s) => s.project);
   const [typed, setTyped] = useState("");
@@ -296,7 +334,10 @@ export default function ChatHome() {
           <div className="chathome-label">Projects</div>
           <div className="chathome-list">
             {shown.map((r) => (
-              <ProjectRow key={r.path} r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
+              <Fragment key={r.path}>
+                <ProjectRow r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
+                {r.path === current.file && <TaskList project={r.path} />}
+              </Fragment>
             ))}
             {shown.length === 0 && <div className="chathome-none">{recents.length ? "No project has that name." : "Your projects will be listed here."}</div>}
           </div>

@@ -2468,3 +2468,66 @@ describe("projects open in tabs", () => {
     expect(parkLive()).toBe(false);
   });
 });
+
+import { addMsg as addTaskMsg, getChat as chatNow, messagesOf as taskMessages, nameTask, newTask, removeTask, restoreTasks, setTaskRunning, showThread } from "../ai/chat";
+
+describe("tasks: side conversations with one AI", () => {
+  it("keep their own messages, apart from the main chat", () => {
+    showConversationFor("/tasks.duet", true);
+    const key = newTask("claude");
+    expect(chatNow().thread).toBe(key);
+    addTaskMsg({ role: "you", text: "make three logos" }, key);
+    expect(taskMessages(key).map((m) => m.text)).toEqual(["make three logos"]);
+    expect(chatNow().messages).toHaveLength(0);
+    removeTask(key);
+    expect(chatNow().thread).toBe(null);
+  });
+
+  it("are named after the first thing said, and the name stays", () => {
+    showConversationFor("/tasks.duet", true);
+    const key = newTask("agy");
+    nameTask(key, "tidy   the spacing on the home page please");
+    nameTask(key, "something else");
+    expect(chatNow().tasks.find((t) => t.key === key)?.title).toBe("tidy the spacing on the");
+    removeTask(key);
+  });
+
+  it("are marked done when they finish out of sight, and the mark goes once looked at", () => {
+    showConversationFor("/tasks.duet", true);
+    const key = newTask("claude");
+    setTaskRunning(key, true);
+    showThread(null);
+    setTaskRunning(key, false);
+    expect(chatNow().tasks.find((t) => t.key === key)?.done).toBe(true);
+    showThread(key);
+    expect(chatNow().tasks.find((t) => t.key === key)?.done).toBe(false);
+    removeTask(key);
+  });
+
+  it("go away from view when another project opens, and come back with it", () => {
+    showConversationFor("/one.duet", true);
+    const key = newTask("claude");
+    showConversationFor("/two.duet", true);
+    expect(chatNow().thread).toBe(null);
+    expect(chatNow().tasks.find((t) => t.key === key)?.project).toBe("/one.duet");
+    removeTask(key);
+  });
+
+  it("come back from the project file, unless Duet already has its own", () => {
+    restoreTasks("/saved-tasks.duet", [{ agent: "claude", title: "Logo ideas", messages: [{ role: "you", text: "logos", time: 1 }] }]);
+    restoreTasks("/saved-tasks.duet", [{ agent: "agy", title: "Twice", messages: [] }]);
+    const mine = chatNow().tasks.filter((t) => t.project === "/saved-tasks.duet");
+    expect(mine.map((t) => t.title)).toEqual(["Logo ideas"]);
+    for (const t of mine) removeTask(t.key);
+  });
+});
+
+describe("tasks in the project file", () => {
+  it("survive being written and read back, and old files still read", () => {
+    const said = keepable([{ role: "you", text: "logos", time: 1 }]);
+    const thread = { now: [], earlier: [], tasks: [{ agent: "claude", title: "Logo ideas", said }] };
+    expect(readThread(packThread(thread))).toEqual(thread);
+    expect(readThread(packThread({ now: [], earlier: [] }))).toEqual({ now: [], earlier: [] });
+    expect(readThread(JSON.stringify({ now: [], earlier: [], tasks: [{ title: "no agent" }, 3] }))).toEqual({ now: [], earlier: [] });
+  });
+});

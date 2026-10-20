@@ -3901,6 +3901,10 @@ button.agent-perm {
 .chat.docked .ctitle {
   visibility: hidden;
 }
+/* except in a task, where it says which task this is and leads back */
+.chat.docked .ctitle:has(.task-title) {
+  visibility: visible;
+}
 .project-tabs {
   display: flex;
   align-items: flex-end;
@@ -4956,4 +4960,137 @@ button.agent-perm {
 }
 .tile.on .chathome-name {
   color: var(--accent);
+}
+
+/* tasks: side conversations with one AI, beside the main chat */
+.task-pop {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  right: 8px;
+  width: 260px;
+  cursor: default;
+}
+.task-start {
+  align-self: stretch;
+}
+.task-back {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.task-back:hover {
+  color: var(--text);
+}
+.task-sep {
+  color: var(--muted);
+  margin: 0 6px;
+}
+.task-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-btn:disabled {
+  cursor: default;
+}
+.agent-btn:disabled .agent-btn-v {
+  display: none;
+}
+.ctitle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.chathome-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 6px 18px;
+}
+.chathome-task {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chathome-task:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.chathome-task.on {
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 600;
+}
+.chathome-task-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.task-working {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: task-pulse 1.4s ease-in-out infinite;
+}
+@keyframes task-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.task-done {
+  flex: none;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.task-close {
+  flex: none;
+  display: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chathome-task:hover .task-close {
+  display: block;
+}
+.chathome-task:hover .task-done,
+.chathome-task:hover .task-working {
+  display: none;
+}
+.task-close:hover {
+  color: var(--text);
+  background: var(--line);
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-working {
+    animation: none;
+  }
 }
