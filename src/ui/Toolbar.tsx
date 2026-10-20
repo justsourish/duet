@@ -3,6 +3,7 @@ import { currentDoc, dispatch, getState, select, setTool, useStore } from "../st
 import type { Tool } from "../state/store";
 import { pickImages } from "../project/imageImport";
 import { cutNow } from "../video/edit";
+import { deleteSelection } from "./actions";
 import type { CutKind } from "../video/edit";
 import Icon from "./Icons";
 import type { IconName } from "./Icons";
@@ -126,6 +127,7 @@ export default function Toolbar({ row = false }: { row?: boolean }) {
       <button className="tool" title="Image (Shift Cmd K)" onClick={() => void pickImages()}>
         <Icon name="image" />
       </button>
+      <div className="tool-bottom">
       {motion && (
         <>
           <span className="tool-gap" />
@@ -141,8 +143,20 @@ export default function Toolbar({ row = false }: { row?: boolean }) {
               <Icon name={c.icon} />
             </button>
           ))}
+          <button
+            className="tool"
+            data-name="add-marker"
+            disabled={!scene}
+            title={scene ? "Add a marker at the playhead (M)" : "Add a marker. Select a scene first"}
+            onClick={() => scene && dispatch("add_marker", { id: scene, t: getState().clock.t })}
+          >
+            <Icon name="marker" />
+          </button>
         </>
       )}
+      <button className="tool" data-name="tool-delete" title="Delete what is selected (Delete)" onClick={deleteSelection}>
+        <Icon name="trash" />
+      </button>
       {!row && (
         <button
           className="tool tool-settings"
@@ -152,6 +166,7 @@ export default function Toolbar({ row = false }: { row?: boolean }) {
           <Icon name="settings" />
         </button>
       )}
+      </div>
 
       {menuOpen && (
         <div

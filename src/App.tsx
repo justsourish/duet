@@ -207,8 +207,9 @@ export default function App() {
     : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
     gridTemplateAreas: dock.swapped
-      ? '"top top top top" "tools right tabs left" "tools right canvas left" "time time time time" "hist hist hist hist"'
-      : '"top top top top" "tools left tabs right" "tools left canvas right" "time time time time" "hist hist hist hist"',
+      ? '"top top top top" "tools right tabs left" "tools right canvas left" "tools time time time" "hist hist hist hist"'
+      : '"top top top top" "tools left tabs right" "tools left canvas right" "tools time time time" "hist hist hist hist"',
+
   };
 
   return (
