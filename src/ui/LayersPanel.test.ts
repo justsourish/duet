@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
-import { idsToUnfoldForSelection, toggleFold } from "./LayersPanel";
+import { idsToUnfoldForSelection, rowsBetween, rowsInOrder, toggleFold } from "./LayersPanel";
 
 function sampleDoc() {
   let doc = emptyDoc();
@@ -88,5 +88,22 @@ describe("fold layers in the layers panel", () => {
       const next = toggleFold(folded, "f1", true, doc);
       expect(next).toEqual(new Set(["other_unrelated"]));
     });
+  });
+});
+
+describe("picking a range of layers", () => {
+  it("lists rows front first, skipping what is folded", () => {
+    const doc = sampleDoc();
+    const all = rowsInOrder(doc, new Set());
+    expect(all[0]).toBe("root_rect");
+    expect(all).toContain("r_inner");
+    expect(rowsInOrder(doc, new Set(["f1"]))).not.toContain("r1");
+  });
+
+  it("picks every row between two, in either direction", () => {
+    const order = ["a", "b", "c", "d"];
+    expect(rowsBetween(order, "b", "d")).toEqual(["b", "c", "d"]);
+    expect(rowsBetween(order, "d", "b")).toEqual(["b", "c", "d"]);
+    expect(rowsBetween(order, null, "c")).toEqual(["c"]);
   });
 });

@@ -3,7 +3,7 @@ import { runCommand } from "../commands";
 import { KEY_GROUPS, spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, Moving } from "../document/types";
-import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dragPreviewDoc, select, useStore } from "../state/store";
+import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dragPreviewDoc, getState, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
 import { openScene, pause, play, seek, togglePlay } from "../video/play";
@@ -223,7 +223,7 @@ export default function TimeStrip() {
     key: string;
     name: string;
     items: El[];
-    onClick?: () => void;
+    onClick?: (e: React.MouseEvent) => void;
   }
 
   const displayRows: DisplayRow[] =
@@ -232,7 +232,7 @@ export default function TimeStrip() {
           key: el.id,
           name: el.name,
           items: [el],
-          onClick: () => select([el.id]),
+          onClick: (e: React.MouseEvent) => (e.shiftKey || e.metaKey || e.ctrlKey ? toggle(el.id) : select([el.id])),
         }))
       : [
           ...packTracks(nonVideos).map((items, i) => ({
@@ -294,10 +294,21 @@ export default function TimeStrip() {
     return bestTarget !== null ? { time: bestTarget, dist: bestDist } : null;
   };
 
+  const toggle = (id: string) => {
+    const now = getState().selection;
+    select(now.includes(id) ? now.filter((i) => i !== id) : [...now, id]);
+  };
+
   const drag = (e: React.PointerEvent, el: El, part: "all" | "start" | "end") => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    select([el.id]);
+    // Shift or Cmd adds a clip to the picked ones, or takes it away
+    if (part === "all" && (e.shiftKey || e.metaKey || e.ctrlKey)) return toggle(el.id);
+    const now = getState().selection;
+    // a picked clip moves with every other picked clip in this scene
+    const group = part === "all" && now.includes(el.id) ? now.filter((id) => doc.elements[id]?.parentId === frame.id) : [el.id];
+    if (!now.includes(el.id) || part !== "all") select([el.id]);
+    const others = group.filter((id) => id !== el.id).map((id) => ({ id, span: spanOf(doc.elements[id], frame) }));
     const from = e.clientX;
     const span = spanOf(el, frame);
     const long = span.end - span.start;
@@ -334,15 +345,20 @@ export default function TimeStrip() {
             snapTime = snapE.time;
           }
         }
-        start = Math.max(0, start);
+        // none of the clips moving together goes before the start
+        start = Math.max(0, start, ...others.map((o) => span.start - o.span.start));
         if (snapTime !== null) {
           const edgeHolding = Math.abs((start - snapTime) * pps) <= 0.5 || Math.abs((start + long - snapTime) * pps) <= 0.5;
           if (!edgeHolding) snapTime = null;
         }
         setSnap(snapTime);
         // dragged past the end, the frame grows to hold it
-        const base = start + long > length ? runCommand(dragBase(), "set_duration", { id: frame.id, seconds: start + long }) : dragBase();
-        dragPreviewDoc(runCommand(base, "set_timing", { ids: [el.id], start, end: start + long }));
+        const shift = start - span.start;
+        const last = Math.max(start + long, ...others.map((o) => o.span.end + shift));
+        let next = last > length ? runCommand(dragBase(), "set_duration", { id: frame.id, seconds: last }) : dragBase();
+        next = runCommand(next, "set_timing", { ids: [el.id], start, end: start + long });
+        for (const o of others) next = runCommand(next, "set_timing", { ids: [o.id], start: o.span.start + shift, end: o.span.end + shift });
+        dragPreviewDoc(next);
       } else if (part === "start") {
         const least = playsFile(el) ? span.start - el.clipFrom : 0;
         const rawStart = span.start + by;
@@ -381,7 +397,9 @@ export default function TimeStrip() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       setSnap(null);
-      if (moved) dragCommit("Change when it shows");
+      if (moved) dragCommit(others.length ? `Move ${others.length + 1} clips in time` : "Change when it shows");
+      // a click without a drag picks just this one
+      else if (others.length) select([el.id]);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);

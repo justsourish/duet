@@ -47,6 +47,32 @@ export function toggleFold(
   return next;
 }
 
+/** Every row in the order the list shows it, front first, leaving out what sits inside a folded one. */
+export function rowsInOrder(doc: Doc, folded: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  const walk = (ids: string[]) => {
+    for (const id of [...ids].reverse()) {
+      const el = doc.elements[id];
+      if (!el) continue;
+      out.push(id);
+      if (!folded.has(id)) walk(el.childIds);
+    }
+  };
+  walk(doc.rootIds);
+  return out;
+}
+
+/** The rows from the one clicked before to this one, both included. */
+export function rowsBetween(order: string[], from: string | null, to: string): string[] {
+  const a = from ? order.indexOf(from) : -1;
+  const b = order.indexOf(to);
+  if (a < 0 || b < 0) return [to];
+  return order.slice(Math.min(a, b), Math.max(a, b) + 1);
+}
+
+/** The row a Shift click counts from: the last one clicked without Shift. */
+let anchor: string | null = null;
+
 type Zone = "before" | "after" | "inside";
 interface Drop {
   id: string | null; // null means the empty space at the bottom of the list
@@ -123,12 +149,13 @@ function Row({ doc, id, depth, dnd, folded, onToggleFold }: RowProps) {
           dnd.onDropOn({ id, zone: zoneFor(e) });
         }}
         onClick={(e) => {
+          // Cmd adds or takes away one, Shift picks every row from the last one clicked to this one
           if (e.metaKey || e.ctrlKey) {
-            // jump to it, so you can always find where something is
-            select([id]);
-            window.dispatchEvent(new CustomEvent("duet:fit-selection", { detail: [id] }));
-          } else if (e.shiftKey) select(selected ? selection.filter((i) => i !== id) : [...selection, id]);
+            anchor = id;
+            select(selected ? selection.filter((i) => i !== id) : [...selection, id]);
+          } else if (e.shiftKey) select(rowsBetween(rowsInOrder(doc, folded), anchor, id));
           else {
+            anchor = id;
             select([id]);
             window.dispatchEvent(new CustomEvent("duet:reveal", { detail: [id] }));
           }
