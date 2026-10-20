@@ -39,12 +39,14 @@ export interface Dock {
   rulers: boolean;
   /** The timeline takes the whole window below the top bar, for a closer look. Never kept between runs. */
   timeMax: boolean;
+  /** How wide the names beside the timeline's rows are, pulled by their right edge. */
+  namesW: number;
 }
 
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false, homeChatW: 0, gradeEvery: false, rulers: false, timeMax: false });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false, homeChatW: 0, gradeEvery: false, rulers: false, timeMax: false, namesW: 150 });
 export const CHAT_MIN = { w: 280, h: 140 };
 export const TIME_MIN_H = 72;
 

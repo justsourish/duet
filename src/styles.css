@@ -2288,7 +2288,11 @@ body.eyedropping * {
   background: var(--panel);
   z-index: 4;
   flex: none;
-  width: 150px;
+  /* as tall as the row, so nothing shows through between names when the lanes slide under them */
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  width: var(--names, 150px);
   padding: 0 10px 0 16px;
   color: var(--muted);
   overflow: hidden;
@@ -5937,4 +5941,27 @@ input.chathome-name.rename {
   flex: 1;
   height: auto !important;
   min-height: 0;
+}
+
+.time-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.time-name {
+  box-sizing: border-box;
+}
+.names-grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.names-grip:hover {
+  background: var(--accent);
+  opacity: 0.5;
 }

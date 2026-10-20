@@ -18,7 +18,6 @@ import { useDismiss } from "./useDismiss";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
 
-const NAMES = 150;
 const SHORTEST = 0.1;
 
 /** A keyframe picked in the timeline: Delete takes it away. Without props it is every change at that moment. */
@@ -43,6 +42,8 @@ export default function TimeStrip() {
   const keysOpen = useLayout((d) => d.keysOpen);
   const gradeEvery = useLayout((d) => d.gradeEvery);
   const timeH = useLayout((d) => d.timeH ?? 170);
+  // the names beside the rows can be pulled wider, to read long file names
+  const NAMES = useLayout((d) => d.namesW ?? 150);
   const [growing, setGrowing] = useState<number | null>(null);
   const doc = useStore((s) => currentDoc(s));
   const selection = useStore((s) => s.selection);
@@ -116,7 +117,7 @@ export default function TimeStrip() {
     const see = new ResizeObserver(measure);
     see.observe(el);
     return () => see.disconnect();
-  }, [plays, mode, sceneId]);
+  }, [plays, mode, sceneId, NAMES]);
 
   // In Layers, as in After Effects: [ slides the picked layers so they start at the playhead, ] so they end there.
   // With Option, the layer is trimmed instead: its start or end is brought to the playhead and the rest stays where it is.
@@ -759,6 +760,22 @@ export default function TimeStrip() {
     setMenu({ x: e.clientX, y: e.clientY, el, mark: { id: el.id, t, props } });
   };
 
+  /** Pull the right edge of the names to read more of them, or give the lanes more room. */
+  const pullNames = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const from = e.clientX;
+    const start = NAMES;
+    const move = (ev: PointerEvent) => setLayout({ namesW: Math.round(Math.max(110, Math.min(480, start + ev.clientX - from))) });
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   /** Pull the top edge of the timeline to give its rows more room or less. */
   const grow = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -884,7 +901,7 @@ export default function TimeStrip() {
     });
 
   return (
-    <section className={`time ${look === "cut" ? "cut" : ""}`} data-name="time-strip" onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
+    <section className={`time ${look === "cut" ? "cut" : ""}`} style={{ "--names": `${NAMES}px` } as React.CSSProperties} data-name="time-strip" onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
       <div className="time-bar">
         <button className="pill" data-name="play" onClick={togglePlay} title={clock.playing ? "Pause" : "Play"}>
           {clock.playing ? "Pause" : "Play"}
@@ -1145,7 +1162,9 @@ export default function TimeStrip() {
       >
         <div className="time-inner">
         <div className="time-row ruler">
-          <span className="time-name" />
+          <span className="time-name">
+            <i className="names-grip" onPointerDown={pullNames} title="Pull to make the names wider or narrower" />
+          </span>
           <div className="time-lane" onPointerDown={scrub} style={{ width: laneWidth }}>
             {marks.map((t) => (
               <i key={t} style={{ left: t * pps }}>
@@ -1283,8 +1302,9 @@ export default function TimeStrip() {
                     }}
                   />
                 ) : (
-                  row.name
+                  <span className="time-name-text">{row.name}</span>
                 )}
+                <i className="names-grip" onPointerDown={pullNames} title="Pull to make the names wider or narrower" />
               </span>
               <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
                 {row.items.map(renderBar)}
