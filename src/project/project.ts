@@ -11,6 +11,7 @@ import { AGENTS, conversationProject, forgetSteps, forgetTasks, getChat, moveCon
 import type { AgentId } from "../ai/chat";
 import { loadThread, saveThread } from "../memory/files";
 import { stepsLine } from "../memory/steps";
+import { logError } from "../errorLog";
 import { lineTo } from "../state/directions";
 import { keepable, packThread, readThread } from "../memory/thread";
 import { dropParked, getState, isParked, loadDoc, loadTimeline, onParkedChange, parkLive, parkedState, setEntryVersion, setProject, subscribe, unpark } from "../state/store";
@@ -628,6 +629,33 @@ async function saveAsDialog() {
   if (!inTauri()) return;
   const picked = await chooseFile("Save your project");
   if (!picked) return;
+  await saveTo(picked);
+}
+
+/**
+ * Give work that has no file a home of its own, with no window to ask where: the Duet folder in
+ * Documents, under the work's name. Anyone can do this, the designer or an AI, since nobody has to
+ * answer anything. It can be renamed or moved later with Save as. Says whether the work now has a home.
+ */
+export function giveHome(): Promise<boolean> {
+  if (getState().project.path) return Promise.resolve(true);
+  if (!inTauri() || inTest) return Promise.resolve(false);
+  // asked again while it is being done, it is done once
+  homing ??= (async () => {
+    try {
+      await saveTo(await freePath(getState().project.name));
+    } catch (e) {
+      logError("give work a home", e);
+    } finally {
+      homing = null;
+    }
+    return !!getState().project.path;
+  })();
+  return homing;
+}
+let homing: Promise<boolean> | null = null;
+
+async function saveTo(picked: string) {
   const doc = committed();
   try {
     const work = await createProject(picked, doc, "Start of project");
@@ -651,13 +679,19 @@ export async function newProject() {
 }
 
 /** The first free "Untitled", "Untitled 2", … in the projects folder. */
-async function untitledPath(): Promise<string> {
+const untitledPath = () => freePath("Untitled");
+
+/** The first free "<name>", "<name> 2", … in the projects folder. */
+async function freePath(name: string): Promise<string> {
   const dir = await invoke<string>("default_projects_dir");
+  const clean = name.replace(/[\\/:*?"<>|]+/g, " ").trim();
+  // an untitled project takes the next free "Untitled"; any other name is kept as it is
+  const base = !clean || /^Untitled( \d+)?$/.test(clean) ? "Untitled" : clean;
   for (let n = 1; n < 1000; n++) {
-    const file = join(dir, n === 1 ? "Untitled.duet" : `Untitled ${n}.duet`);
+    const file = join(dir, n === 1 ? `${base}.duet` : `${base} ${n}.duet`);
     if (!((await invoke<boolean>("path_exists", { path: file })) === true)) return file;
   }
-  throw new Error("Too many untitled projects.");
+  throw new Error("Too many projects with that name.");
 }
 
 async function newProjectDialog() {
@@ -1004,10 +1038,10 @@ export async function saveVersion(name: string): Promise<string | null> {
   if (!inTauri()) return "Versions work in the desktop app.";
   let path = getState().project.path;
   if (!path) {
-    // A version needs a home, so ask where the project should live, then carry on.
-    await saveAs();
+    // a version needs a home, so the work gets one, with nothing to answer
+    await giveHome();
     path = getState().project.path;
-    if (!path) return "Choose a folder for your project, then save the version again.";
+    if (!path) return "The version could not be saved. Save the project first, then try again.";
   }
   await saveNow();
   const slug = clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "version";
@@ -1026,7 +1060,11 @@ export function startAutosave() {
   const stopThread = subscribeChat(threadChanged);
   const stopDesign = subscribe(() => {
     const s = getState();
-    if (!s.project.path) return;
+    if (!s.project.path) {
+      // an AI's work is never left without a home; the designer's own new work waits until they save it
+      if (s.timeline[s.cursor].actor === "ai" && s.timeline.length > 1) void giveHome();
+      return;
+    }
     const doc = s.timeline[s.cursor].doc;
     if (doc === lastSaved) return;
     if (s.project.status !== "unsaved") setProject({ status: "unsaved" });
