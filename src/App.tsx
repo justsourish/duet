@@ -219,7 +219,7 @@ export default function App() {
           </span>
           <div className="pill mode-switch space-switch">
             <button className={chatting ? "active" : ""} data-name="space-chat" onClick={() => setLayout({ space: "chat" })}>
-              Chat
+              Project
             </button>
             <button className={chatting ? "" : "active"} data-name="space-edit" onClick={() => setLayout({ space: "edit" })}>
               Edit

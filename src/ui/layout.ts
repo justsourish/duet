@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 
 export type Corner = "tl" | "tr" | "bl" | "br";
 export type Mode = "design" | "motion" | "color";
-/** Chat: talk to the AI beside your projects and watch the canvas. Edit: the tools. */
+/** Project (called chat inside): talk to the AI beside your projects and watch the canvas. Edit: the tools. */
 export type Space = "chat" | "edit";
 export type TimeLook = "layers" | "cut";
 
