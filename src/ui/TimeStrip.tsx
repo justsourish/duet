@@ -954,20 +954,18 @@ export default function TimeStrip() {
                 onDoubleClick={() => look === "layers" && setRenaming(row.items[0].id)}
                 title={look === "layers" ? `${row.name}. Double-click to rename, drag up or down to reorder` : row.name}
               >
-                {row.items.length === 1 && (
-                  <button
-                    className={`time-eye ${row.items[0].hidden ? "off" : ""}`}
-                    data-name={`eye-${row.name}`}
-                    title={row.items[0].hidden ? "Show" : "Hide, so it is not drawn or exported"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const el = row.items[0];
-                      dispatch("set_props", { ids: [el.id], props: { hidden: !el.hidden }, label: el.hidden ? "Show" : "Hide" });
-                    }}
-                  >
-                    <Icon name={row.items[0].hidden ? "eye-off" : "eye"} size={12} />
-                  </button>
-                )}
+                <button
+                  className={`time-eye ${row.items.every((el) => el.hidden) ? "off" : ""}`}
+                  data-name={`eye-${row.name}`}
+                  title={row.items.every((el) => el.hidden) ? "Show" : "Hide, so it is not drawn or exported"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const show = row.items.every((el) => el.hidden);
+                    dispatch("set_props", { ids: row.items.map((el) => el.id), props: { hidden: !show }, label: show ? "Show" : "Hide" });
+                  }}
+                >
+                  <Icon name={row.items.every((el) => el.hidden) ? "eye-off" : "eye"} size={12} />
+                </button>
                 {row.items.some(playsFile) && (
                   <button
                     className={`time-eye time-sound ${row.items.filter(playsFile).every((el) => el.volume <= 0) ? "off" : ""}`}
@@ -981,6 +979,11 @@ export default function TimeStrip() {
                     }}
                   >
                     <Icon name={row.items.filter(playsFile).every((el) => el.volume <= 0) ? "sound-off" : "sound"} size={12} />
+                  </button>
+                )}
+                {!row.items.some(playsFile) && (
+                  <button className="time-eye time-sound" disabled title="Nothing here has sound">
+                    <Icon name="sound-off" size={12} />
                   </button>
                 )}
                 {look === "layers" && (
