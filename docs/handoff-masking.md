@@ -1,6 +1,6 @@
 # Handoff: masking and roto for video
 
-Written 20 Oct 2026, for a fresh session (Sonnet is fine for step 1). Read AGENTS.md first.
+Written 20 Oct 2026, for a fresh session (Sonnet is fine for step 1). Read AGENTS.md first. The work is broken into small tasks in `docs/tasks/`: start with its README.
 
 ## Who and why
 
