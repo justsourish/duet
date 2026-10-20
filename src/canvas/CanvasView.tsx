@@ -95,8 +95,8 @@ type Drag =
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number; duplicate?: boolean }
-  | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number } }
-  | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean; spun: number; free: boolean }
+  | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number }; many?: { id: string; r: Rect }[] }
+  | { kind: "turn"; id: string; centre: { x: number; y: number }; from: number; base: number; sx: number; sy: number; moved: boolean; spun: number; free: boolean; many?: { id: string; r: Rect; rot: number }[] }
   | { kind: "zoom"; sx: number; sy: number; startZoom: number; vx: number; vy: number; moved: boolean; priorGlide: { zoom: number; zoomIn?: boolean } | null }
   | { kind: "marquee"; start: { x: number; y: number }; prev: string[]; additive: boolean; scope: string[] };
 
@@ -320,6 +320,12 @@ export function zoomTo(level: number, width: number, height: number) {
 }
 
 /** `viewOnly` shows the design and ignores every click and key, as beside the chat. */
+/** The box around several picked things, when more than one is picked. */
+function manyBox(doc: Doc, ids: string[]): Rect | null {
+  const top = topLevelOnly(doc, ids.filter((i) => doc.elements[i]));
+  return top.length > 1 ? unionRect(top.map((i) => worldBounds(doc, i))) : null;
+}
+
 export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -442,10 +448,11 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
   const handleAt = (sx: number, sy: number): HandleKey | null => {
     const s = getState();
     const doc = workDoc(s);
-    if (editing() || s.selection.length !== 1 || !doc.elements[s.selection[0]]) return null;
-    const r = screenRect(s, worldRect(doc, s.selection[0]));
+    const box = manyBox(doc, s.selection);
+    if (editing() || (s.selection.length !== 1 && !box) || !doc.elements[s.selection[0]]) return null;
+    const r = screenRect(s, box ?? worldRect(doc, s.selection[0]));
     // the handles of a turned shape are turned with it, so turn the pointer back to meet them
-    const p = turnPoint(sx, sy, r.x + r.width / 2, r.y + r.height / 2, -turnOf(doc.elements[s.selection[0]]));
+    const p = box ? { x: sx, y: sy } : turnPoint(sx, sy, r.x + r.width / 2, r.y + r.height / 2, -turnOf(doc.elements[s.selection[0]]));
     for (const hd of HANDLES) {
       const hx = r.x + r.width * hd.fx;
       const hy = r.y + r.height * hd.fy;
@@ -459,9 +466,11 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     const s = getState();
     const doc = workDoc(s);
     const id = s.selection[0];
-    if (editing() || s.selection.length !== 1 || !doc.elements[id] || !canTurn(doc, id)) return null;
-    const r = screenRect(s, worldRect(doc, id));
-    const p = turnPoint(sx, sy, r.x + r.width / 2, r.y + r.height / 2, -turnOf(doc.elements[id]));
+    const box = manyBox(doc, s.selection);
+    if (box && !s.selection.every((i) => canTurn(doc, i))) return null;
+    if (editing() || (s.selection.length !== 1 && !box) || !doc.elements[id] || !canTurn(doc, id)) return null;
+    const r = screenRect(s, box ?? worldRect(doc, id));
+    const p = box ? { x: sx, y: sy } : turnPoint(sx, sy, r.x + r.width / 2, r.y + r.height / 2, -turnOf(doc.elements[id]));
     if (p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height) return null;
     for (const [cx, cy] of [[r.x, r.y], [r.x + r.width, r.y], [r.x + r.width, r.y + r.height], [r.x, r.y + r.height]]) {
       if (Math.hypot(p.x - cx, p.y - cy) <= TURN_REACH) return id;
@@ -585,10 +594,26 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     const handle = handleAt(p.sx, p.sy);
     if (handle) {
       const id = s.selection[0];
+      const box = manyBox(doc, s.selection);
+      // several picked things grow and shrink together, inside the box around them all
+      if (box) {
+        const many = topLevelOnly(doc, s.selection).map((i) => ({ id: i, r: worldRect(doc, i) }));
+        dragRef.current = { kind: "resize", handle, id, orig: box, turn: 0, sx: p.sx, sy: p.sy, start: { x: p.x, y: p.y }, many };
+        return;
+      }
       dragRef.current = { kind: "resize", handle, id, orig: worldRect(doc, id), turn: turnOf(doc.elements[id]), sx: p.sx, sy: p.sy, start: { x: p.x, y: p.y } };
       return;
     }
     const turning = turnAt(p.sx, p.sy);
+    const box = turning ? manyBox(doc, s.selection) : null;
+    if (turning && box) {
+      // several picked things turn together, around the middle of the box around them all
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const from = (Math.atan2(p.y - centre.y, p.x - centre.x) * 180) / Math.PI;
+      const many = topLevelOnly(doc, s.selection).map((i) => ({ id: i, r: worldRect(doc, i), rot: doc.elements[i].rotation || 0 }));
+      dragRef.current = { kind: "turn", id: turning, centre, from, base: 0, sx: p.sx, sy: p.sy, moved: false, spun: 0, free: true, many };
+      return;
+    }
     if (turning) {
       const centre = turnCentre(doc, turning);
       const from = (Math.atan2(p.y - centre.y, p.x - centre.x) * 180) / Math.PI;
@@ -652,7 +677,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       const h = handleAt(p.sx, p.sy);
       if (h) {
         if (s.overlay.hoverId) setOverlay({ hoverId: null });
-        return setCursor(handleCursor(h, turnOf(workDoc(s).elements[s.selection[0]])));
+        return setCursor(handleCursor(h, s.selection.length > 1 ? 0 : turnOf(workDoc(s).elements[s.selection[0]])));
       }
       if (turnAt(p.sx, p.sy)) {
         if (s.overlay.hoverId) setOverlay({ hoverId: null });
@@ -753,6 +778,22 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       return;
     }
 
+    if (d.kind === "resize" && d.many) {
+      const rect = resizeTurned(d.orig, 0, d.handle, p.x - d.start.x, p.y - d.start.y, { keepRatio: e.shiftKey, fromCenter: e.altKey });
+      const fx = rect.width / Math.max(1, d.orig.width);
+      const fy = rect.height / Math.max(1, d.orig.height);
+      let doc = dragBase();
+      for (const m of d.many) {
+        const el = doc.elements[m.id];
+        if (!el) continue;
+        const parent = el.parentId ? worldPos(doc, el.parentId) : { x: 0, y: 0 };
+        const x = rect.x + (m.r.x - d.orig.x) * fx;
+        const y = rect.y + (m.r.y - d.orig.y) * fy;
+        doc = runCommand(doc, "resize_element", { id: m.id, x: x - parent.x, y: y - parent.y, width: Math.max(1, m.r.width * fx), height: Math.max(1, m.r.height * fy) });
+      }
+      dragPreviewDoc(doc);
+      return;
+    }
     if (d.kind === "resize") {
       const rect = resizeTurned(d.orig, d.turn, d.handle, p.x - d.start.x, p.y - d.start.y, { keepRatio: e.shiftKey, fromCenter: e.altKey });
       const doc = dragBase();
@@ -773,6 +814,24 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       const step = e.shiftKey ? 15 : 1;
       const turned = Math.round((d.base + d.spun) / step) * step;
       const rotation = d.free ? turned : tidyAngle(turned);
+      if (d.many) {
+        // each thing turns by the same amount and swings round the middle of them all
+        const rad = (turned * Math.PI) / 180;
+        let doc = dragBase();
+        for (const m of d.many) {
+          const el = doc.elements[m.id];
+          if (!el) continue;
+          const cx = m.r.x + m.r.width / 2 - d.centre.x;
+          const cy = m.r.y + m.r.height / 2 - d.centre.y;
+          const nx = d.centre.x + cx * Math.cos(rad) - cy * Math.sin(rad);
+          const ny = d.centre.y + cx * Math.sin(rad) + cy * Math.cos(rad);
+          const parent = el.parentId ? worldPos(doc, el.parentId) : { x: 0, y: 0 };
+          doc = runCommand(doc, "set_props", { ids: [m.id], props: { rotation: tidyAngle(m.rot + turned), x: nx - m.r.width / 2 - parent.x, y: ny - m.r.height / 2 - parent.y } });
+        }
+        dragPreviewDoc(doc);
+        setOverlay({ turning: tidyAngle(turned) });
+        return;
+      }
       dragPreview("set_props", { ids: [d.id], props: { rotation } });
       setOverlay({ turning: rotation });
       return;

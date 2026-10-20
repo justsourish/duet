@@ -596,6 +596,27 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
       }
     });
   }
+  if (sel.length > 1 && !s.overlay.nodeEdit) {
+    // several picked things share one set of handles, on the box around them all
+    const boxes = sel.map((id) => screenRect(s, worldBounds(doc, id)));
+    const bx = Math.min(...boxes.map((r) => r.x));
+    const by = Math.min(...boxes.map((r) => r.y));
+    const r = { x: bx, y: by, width: Math.max(...boxes.map((b) => b.x + b.width)) - bx, height: Math.max(...boxes.map((b) => b.y + b.height)) - by };
+    ctx.strokeStyle = COLORS.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(r.x, r.y, r.width, r.height);
+    for (const hd of HANDLES) {
+      const hx = r.x + r.width * hd.fx;
+      const hy = r.y + r.height * hd.fy;
+      ctx.fillStyle = COLORS.white;
+      ctx.strokeStyle = COLORS.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(hx - 4, hy - 4, 8, 8);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
   if (sel.length > 0) {
     const rects = sel.map((id) => screenRect(s, worldBounds(doc, id)));
     const x1 = Math.min(...rects.map((r) => r.x));
