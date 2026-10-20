@@ -413,12 +413,21 @@ export const setQuietCanvas = (on: boolean) => void (quiet = on);
 let only: string | null = null;
 export const setOnlyFrame = (id: string | null) => void (only = id);
 
+/** In Motion the scene being made is all there is: nothing around it is drawn or picked. */
+let sceneOnly: string | null = null;
+export const setSceneOnly = (id: string | null) => void (sceneOnly = id);
+const alone = (doc: Doc) => (sceneOnly && doc.elements[sceneOnly] ? sceneOnly : only && doc.elements[only] ? only : null);
+
 /** Whether a thing is on show: everything, or the one frame being looked at and what is inside it. */
 export function shownOn(doc: Doc, id: string): boolean {
-  if (!only || !doc.elements[only]) return true;
-  return id === only || ancestors(doc, id).includes(only);
+  const one = alone(doc);
+  if (!one) return true;
+  return id === one || ancestors(doc, id).includes(one);
 }
-const shownRoots = (doc: Doc) => (only && doc.elements[only] ? [only] : doc.rootIds);
+const shownRoots = (doc: Doc) => {
+  const one = alone(doc);
+  return one ? [one] : doc.rootIds;
+};
 
 /** How far down the canvas a label sits at least, so the bar floating along its top does not cover it. */
 const LABEL_CLEAR = 64;

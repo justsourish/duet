@@ -70,7 +70,7 @@ import type { AbsNode } from "../document/path";
 import { logError } from "../errorLog";
 import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
-import { draw, labelRect, screenRect, setQuietCanvas, shownOn } from "./render";
+import { draw, labelRect, screenRect, setQuietCanvas, setSceneOnly, shownOn } from "./render";
 import { fontCss, layoutText, lineStep, textLift } from "./text";
 
 let atNow: { doc: Doc; scene: string; t: number; out: Doc } | null = null;
@@ -333,7 +333,13 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
   const rafRef = useRef(0);
   // Motion and Colour work on one scene: the board goes there, and comes back to where it was when you return to Design
   const designing = useLayout((d) => d.mode === "design");
+  const motion = useLayout((d) => d.mode === "motion");
   const scene = useStore((s) => s.clock.scene);
+  useEffect(() => {
+    setSceneOnly(motion ? scene : null);
+    window.dispatchEvent(new Event("duet:repaint"));
+    return () => setSceneOnly(null);
+  }, [motion, scene]);
   const before = useRef<{ x: number; y: number; zoom: number } | null>(null);
   useEffect(() => {
     if (scene) {

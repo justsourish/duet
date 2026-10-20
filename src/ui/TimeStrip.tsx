@@ -86,7 +86,15 @@ export default function TimeStrip() {
   }, [picked]);
 
   // what is selected decides which frame is open, and with nothing selected the open one stays
-  const frame = pageFrame(doc, selection[0]) ?? (clock.scene ? (doc.elements[clock.scene] ?? null) : null);
+  const chosen = pageFrame(doc, selection[0]);
+  const openOne = clock.scene ? (doc.elements[clock.scene] ?? null) : null;
+  // Motion always has a scene open: picking something outside one keeps the scene you were in, unless you pick a frame to make it a scene
+  const asking = !!chosen && !(chosen.duration > 0) && selection.length === 1 && selection[0] === chosen.id;
+  const firstScene = () => doc.rootIds.map((id) => doc.elements[id]).find((e) => e?.type === "frame" && e.duration > 0) ?? null;
+  const frame =
+    mode === "motion" && !(chosen && chosen.duration > 0) && !asking
+      ? (openOne && openOne.duration > 0 ? openOne : firstScene()) ?? chosen
+      : chosen ?? openOne;
   const plays = !!frame && frame.duration > 0;
   const sceneId = mode !== "design" && plays ? frame.id : null;
   useEffect(() => openScene(sceneId), [sceneId]);
