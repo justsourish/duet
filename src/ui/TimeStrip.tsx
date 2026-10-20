@@ -62,6 +62,10 @@ export default function TimeStrip() {
   const [menu, setMenu] = useState<{ x: number; y: number; el: El; mark?: Picked } | null>(null);
   useDismiss(!!menu, () => setMenu(null), ".ctx");
   const [picked, setPicked] = useState<Picked | null>(null);
+  const anchor = useRef<string | null>(null);
+  const pulled = useRef(false);
+  const [rowDrop, setRowDrop] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
   // a layer opened or folded by its arrow; Option U opens or folds them all again
   const [folds, setFolds] = useState<Record<string, boolean>>({});
   useEffect(() => setFolds({}), [keysOpen]);
@@ -233,7 +237,7 @@ export default function TimeStrip() {
           key: el.id,
           name: el.name,
           items: [el],
-          onClick: (e: React.MouseEvent) => (e.shiftKey || e.metaKey || e.ctrlKey ? toggle(el.id) : select([el.id])),
+          onClick: (e: React.MouseEvent) => pick(e, el.id),
         }))
       : [
           ...packTracks(nonVideos).map((items, i) => ({
@@ -302,16 +306,63 @@ export default function TimeStrip() {
     return Math.max(0, Math.min(length, (clientX - box.left + lanes.current.scrollLeft - NAMES) / pps));
   };
 
-  const toggle = (id: string) => {
+  /** Ctrl or Cmd adds one or takes it away; Shift picks every row from the last one clicked to this one. */
+  const pick = (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }, id: string) => {
     const now = getState().selection;
-    select(now.includes(id) ? now.filter((i) => i !== id) : [...now, id]);
+    if (e.shiftKey && anchor.current) {
+      const order = displayRows.flatMap((r) => r.items.map((el) => el.id));
+      const a = order.indexOf(anchor.current);
+      const b = order.indexOf(id);
+      if (a >= 0 && b >= 0) return select(order.slice(Math.min(a, b), Math.max(a, b) + 1));
+    }
+    anchor.current = id;
+    if (e.shiftKey || e.metaKey || e.ctrlKey) select(now.includes(id) ? now.filter((i) => i !== id) : [...now, id]);
+    else select([id]);
+  };
+
+  /** Pull a layer's name up or down to put it in front of or behind the others. Picked layers go together. */
+  const pullRow = (e: React.PointerEvent, el: El) => {
+    if (e.button !== 0 || look !== "layers") return;
+    const startY = e.clientY;
+    const rows = () => Array.from(lanes.current?.querySelectorAll<HTMLElement>("[data-row]") ?? []);
+    const slot = (y: number) => {
+      const all = rows();
+      const i = all.findIndex((r) => {
+        const b = r.getBoundingClientRect();
+        return y < b.top + b.height / 2;
+      });
+      return i < 0 ? all.length : i;
+    };
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientY - startY) < 4) return;
+      moved = true;
+      setRowDrop(slot(ev.clientY));
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setRowDrop(null);
+      if (!moved) return;
+      // the click that ends a pull does not pick
+      pulled.current = true;
+      setTimeout(() => (pulled.current = false), 0);
+      const now = getState().selection;
+      const ids = now.includes(el.id) ? things.filter((t) => now.includes(t.id)).map((t) => t.id).reverse() : [el.id];
+      const at = slot(ev.clientY);
+      // the list shows the front first, so a place in it counts from the back in the frame
+      const index = at >= things.length ? 0 : frame.childIds.indexOf(things[at].id) + 1;
+      dispatch("reparent_elements", { ids, parentId: frame.id, index, label: ids.length > 1 ? `Reorder ${ids.length} layers` : "Reorder layer" });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   };
 
   const drag = (e: React.PointerEvent, el: El, part: "all" | "start" | "end") => {
     if (e.button !== 0) return;
     e.stopPropagation();
     // Shift or Cmd adds a clip to the picked ones, or takes it away
-    if (part === "all" && (e.shiftKey || e.metaKey || e.ctrlKey)) return toggle(el.id);
+    if (part === "all" && (e.shiftKey || e.metaKey || e.ctrlKey)) return pick(e, el.id);
     const now = getState().selection;
     // a picked clip moves with every other picked clip in this scene
     const group = part === "all" && now.includes(el.id) ? now.filter((id) => doc.elements[id]?.parentId === frame.id) : [el.id];
@@ -408,6 +459,7 @@ export default function TimeStrip() {
       if (moved) dragCommit(others.length ? `Move ${others.length + 1} clips in time` : "Change when it shows");
       // a click without a drag picks just this one
       else if (others.length) select([el.id]);
+      if (!moved) anchor.current = el.id;
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -885,10 +937,22 @@ export default function TimeStrip() {
             ))}
           </div>
         </div>
-        {displayRows.map((row) => (
+        {displayRows.map((row, ri) => (
           <Fragment key={row.key}>
-            <div className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""}`}>
-              <span className="time-name" onClick={row.onClick} title={row.name}>
+            <div
+              data-row={ri}
+              className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""} ${rowDrop === ri ? "drop-above" : ""} ${rowDrop === displayRows.length && ri === displayRows.length - 1 ? "drop-below" : ""}`}
+            >
+              <span
+                className="time-name"
+                onPointerDown={(e) => look === "layers" && renaming !== row.items[0].id && pullRow(e, row.items[0])}
+                onClick={(e) => {
+                  if (pulled.current) return void (pulled.current = false);
+                  row.onClick?.(e);
+                }}
+                onDoubleClick={() => look === "layers" && setRenaming(row.items[0].id)}
+                title={look === "layers" ? `${row.name}. Double-click to rename, drag up or down to reorder` : row.name}
+              >
                 {row.items.length === 1 && (
                   <button
                     className={`time-eye ${row.items[0].hidden ? "off" : ""}`}
@@ -938,7 +1002,28 @@ export default function TimeStrip() {
                     )}
                   </span>
                 )}
-                {row.name}
+                {renaming === row.items[0].id ? (
+                  <input
+                    className="rename time-rename"
+                    autoFocus
+                    defaultValue={row.name}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={(e) => {
+                      const name = e.currentTarget.value.trim();
+                      setRenaming(null);
+                      if (name && name !== row.name) dispatch("set_props", { ids: [row.items[0].id], props: { name }, label: "Rename" });
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") setRenaming(null);
+                    }}
+                  />
+                ) : (
+                  row.name
+                )}
               </span>
               <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
                 {row.items.map(renderBar)}

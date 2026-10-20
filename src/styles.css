@@ -3788,6 +3788,15 @@ button.agent-perm {
 .time-eye.time-sound {
   margin-left: -4px;
 }
+.time-row.drop-above .time-name {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.time-row.drop-below .time-name {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.time-rename {
+  width: 100px;
+}
 .time-row.is-hidden .time-lane > * {
   opacity: 0.35;
 }
