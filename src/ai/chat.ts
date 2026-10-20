@@ -121,7 +121,31 @@ export interface ChatState {
   /** The model chosen for each tool. Empty means the tool's own default. */
   models: Partial<Record<AgentId, string>>;
   effort: string;
+  /** Side conversations, each with one AI, of every open project. */
+  tasks: Task[];
+  /** The task on show, by its key. Null for the project's main chat. */
+  thread: string | null;
 }
+
+/** A side conversation with one AI on a project. It runs by itself, beside the main chat and other tasks. */
+export interface Task {
+  /** "task:" and a number, so it never looks like a project file. */
+  key: string;
+  /** The project file it belongs to. Empty for work that has no file yet. */
+  project: string;
+  agent: AgentId;
+  /** Its first words, once the designer has said something. */
+  title: string;
+  messages: Msg[];
+  sessionId: string | null;
+  sessionUsed: number;
+  sessionMessages: number;
+  running: boolean;
+  /** It finished a turn the designer has not looked at yet. */
+  done: boolean;
+}
+
+export const isTaskKey = (where: string | null | undefined): where is string => !!where && where.startsWith("task:");
 
 export interface ModelChoice {
   id: string;
@@ -184,6 +208,8 @@ let state: ChatState = {
   sessionMessages: 0,
   models: { claude: pick("duet:model:claude"), agy: pick("duet:model:agy") },
   effort: pick("duet:effort"),
+  tasks: [],
+  thread: null,
 };
 let nextId = 1;
 let nextPicture = 1;
@@ -217,6 +243,10 @@ const blank = (): Conversation => ({ messages: [], earlier: [], pictures: [], se
  * on screen writes to its own conversation, never to the one the designer is looking at.
  */
 function inConversation(project: string | null | undefined, change: (c: Conversation) => Partial<Conversation>) {
+  if (isTaskKey(project)) {
+    set({ tasks: state.tasks.map((t) => (t.key === project ? { ...t, ...change({ ...t, earlier: [], pictures: [] }) } : t)) });
+    return;
+  }
   if (project === undefined || project === null || project === shownFor) {
     set(change(state));
     return;
@@ -226,7 +256,8 @@ function inConversation(project: string | null | undefined, change: (c: Conversa
 }
 
 /** The messages of one project's conversation, on show or not. */
-export const messagesOf = (project?: string | null): Msg[] => (project === undefined || project === null || project === shownFor ? state.messages : (kept.get(project)?.messages ?? []));
+export const messagesOf = (project?: string | null): Msg[] =>
+  isTaskKey(project) ? (state.tasks.find((t) => t.key === project)?.messages ?? []) : (project === undefined || project === null || project === shownFor ? state.messages : (kept.get(project)?.messages ?? []));
 
 export function addMsg(m: Omit<Msg, "id">, project?: string | null): number {
   const id = nextId++;
@@ -315,7 +346,7 @@ export function setEffort(effort: string) {
 export const setSessionId = (sessionId: string | null, project?: string | null) => inConversation(project, () => ({ sessionId }));
 
 /** The AI tool starts fresh on the next message, instead of carrying its own session on. */
-export const dropSession = () => set({ sessionId: null, sessionMessages: 0 });
+export const dropSession = (where?: string | null) => inConversation(where, () => ({ sessionId: null, sessionMessages: 0 }));
 /** A message went into the AI tool's session, or it has just finished answering. */
 export const sessionUsed = (message = false, project?: string | null) => inConversation(project, (c) => ({ sessionUsed: Date.now(), sessionMessages: c.sessionMessages + (message ? 1 : 0) }));
 
@@ -364,6 +395,7 @@ export function showConversationFor(project: string, fresh = false) {
     sessionUsed: back?.sessionUsed ?? 0,
     sessionMessages: back?.sessionMessages ?? 0,
     running: state.busy !== null && state.busy === project,
+    thread: null,
   });
 }
 
@@ -392,17 +424,20 @@ export function restoreConversation(now: Omit<Msg, "id">[], earlier: Omit<Msg, "
 /** Save As: the conversation stays with the work and goes to its new file. */
 export function moveConversationTo(project: string) {
   kept.delete(project);
+  moveTasks(shownFor, project);
   shownFor = project;
 }
 
 /** Ask the designer a yes or no question and wait for the answer. */
 export function askDesigner(summary: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const id = addMsg({ role: "note", text: "", approval: { summary, status: "waiting" } });
+    // asked where the designer is looking, the main chat or a task, so it is never missed
+    const where = state.thread ?? undefined;
+    const id = addMsg({ role: "note", text: "", approval: { summary, status: "waiting" } }, where);
     // an AI working from outside may ask while the chat is folded away
     set({ minimized: false });
     pendingApprovals.set(id, (allowed) => {
-      updateMsg(id, { approval: { summary, status: allowed ? "allowed" : "declined" } });
+      updateMsg(id, { approval: { summary, status: allowed ? "allowed" : "declined" } }, where);
       resolve(allowed);
     });
   });
@@ -420,4 +455,74 @@ export function declineAllWaiting() {
     pendingApprovals.delete(id);
     fn(false);
   }
+}
+
+// ---- tasks: side conversations, each with one AI ----
+
+let nextTask = 1;
+const taskName = (said: string) => {
+  const words = said.trim().replace(/\s+/g, " ").split(" ").slice(0, 5).join(" ");
+  return words.length > 32 ? `${words.slice(0, 31)}…` : words;
+};
+
+/** Start a task with one AI on the project on show, and show it. Returns its key. */
+export function newTask(agent: AgentId): string {
+  const key = `task:${Date.now().toString(36)}${nextTask++}`;
+  const task: Task = { key, project: shownFor, agent, title: "", messages: [], sessionId: null, sessionUsed: 0, sessionMessages: 0, running: false, done: false };
+  set({ tasks: [...state.tasks, task], thread: key });
+  return key;
+}
+
+/** Show a task, or the main chat with null. Looking at a finished task clears its mark. */
+export function showThread(key: string | null) {
+  const thread = key && state.tasks.some((t) => t.key === key) ? key : null;
+  set({ thread, tasks: thread ? state.tasks.map((t) => (t.key === thread ? { ...t, done: false } : t)) : state.tasks });
+}
+
+export const taskOf = (key: string | null | undefined): Task | undefined => (key ? state.tasks.find((t) => t.key === key) : undefined);
+
+/** A task starts or stops work. When it stops out of sight, it is marked done. */
+export function setTaskRunning(key: string, running: boolean) {
+  set({ tasks: state.tasks.map((t) => (t.key === key ? { ...t, running, done: !running && state.thread !== key } : t)) });
+}
+
+/** Name a task after the first thing the designer said in it. */
+export function nameTask(key: string, said: string) {
+  const t = taskOf(key);
+  if (!t || t.title || !said.trim()) return;
+  set({ tasks: state.tasks.map((x) => (x.key === key ? { ...x, title: taskName(said) } : x)) });
+}
+
+/** Close a task for good. */
+export function removeTask(key: string) {
+  set({ tasks: state.tasks.filter((t) => t.key !== key), thread: state.thread === key ? null : state.thread });
+}
+
+/** Tasks saved with a project come back when it opens. Only when Duet has none of its own for it. */
+export function restoreTasks(project: string, saved: { agent: AgentId; title: string; messages: Omit<Msg, "id">[] }[]) {
+  if (!saved.length || state.tasks.some((t) => t.project === project)) return;
+  const back: Task[] = saved.map((x) => ({
+    key: `task:${Date.now().toString(36)}${nextTask++}`,
+    project,
+    agent: x.agent,
+    title: x.title,
+    messages: x.messages.map((m) => ({ ...m, id: nextId++ })),
+    sessionId: null,
+    sessionUsed: 0,
+    sessionMessages: 0,
+    running: false,
+    done: false,
+  }));
+  set({ tasks: [...state.tasks, ...back] });
+}
+
+/** Save As: the tasks go with the work to its new file. */
+function moveTasks(from: string, to: string) {
+  if (from === to) return;
+  set({ tasks: state.tasks.map((t) => (t.project === from ? { ...t, project: to } : t)) });
+}
+
+/** A project was closed: its tasks go, unless one is still at work. */
+export function forgetTasks(project: string) {
+  set({ tasks: state.tasks.filter((t) => t.project !== project || t.running) });
 }

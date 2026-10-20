@@ -7,7 +7,8 @@ import { emptyDoc } from "../document/types";
 import type { Doc } from "../document/types";
 import { DesignFileError, parseDoc, serializeDoc } from "../document/serialize";
 import { readyToLeave } from "../ai/agent";
-import { conversationProject, forgetSteps, getChat, moveConversationTo, restoreConversation, showConversationFor, subscribeChat } from "../ai/chat";
+import { AGENTS, conversationProject, forgetSteps, forgetTasks, getChat, moveConversationTo, restoreConversation, restoreTasks, showConversationFor, subscribeChat } from "../ai/chat";
+import type { AgentId } from "../ai/chat";
 import { loadThread, saveThread } from "../memory/files";
 import { stepsLine } from "../memory/steps";
 import { keepable, packThread, readThread } from "../memory/thread";
@@ -255,6 +256,7 @@ export function closeUntitled(key: string) {
   if (isParked(key)) {
     dropParked(key);
     forgetSteps(key);
+    forgetTasks(key);
   }
   dropUntitled(key);
 }
@@ -365,9 +367,11 @@ async function flushThread() {
   threadFor = null;
   if (!dir || getState().project.path !== dir) return;
   const chat = getChat();
+  const project = conversationProject();
+  const tasks = chat.tasks.filter((t) => t.project === project && t.messages.length).map((t) => ({ agent: t.agent, title: t.title, said: keepable(t.messages) }));
   // a project nobody has talked in gets no file
-  if (!chat.messages.length && !chat.earlier.length && threadKept?.dir !== dir) return;
-  const text = packThread({ now: keepable(chat.messages), earlier: keepable(chat.earlier) });
+  if (!chat.messages.length && !chat.earlier.length && !tasks.length && threadKept?.dir !== dir) return;
+  const text = packThread({ now: keepable(chat.messages), earlier: keepable(chat.earlier), tasks });
   if (threadKept?.dir === dir && threadKept.text === text) return;
   try {
     await saveThread(dir, text);
@@ -385,6 +389,9 @@ async function bringBackThread(dir: string) {
   const thread = readThread(text);
   threadKept = text === null ? null : { dir, text: packThread(thread) };
   restoreConversation(thread.now, thread.earlier);
+  // a task whose AI is not one Duet knows any more is left out
+  const known = (thread.tasks ?? []).filter((t) => AGENTS.some((a) => a.id === t.agent && a.runnable));
+  restoreTasks(conversationProject(), known.map((t) => ({ agent: t.agent as AgentId, title: t.title, messages: t.said })));
 }
 
 async function writeDesign(path: string, doc: Doc) {
@@ -507,6 +514,7 @@ async function forgetParked(file: string) {
   parkedSaves.delete(file);
   dropParked(file);
   forgetSteps(file);
+  forgetTasks(file);
 }
 
 /** The text stored with each saved step. The first line is what the history strip shows. */

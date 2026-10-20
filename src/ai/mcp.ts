@@ -45,7 +45,9 @@ async function answer(rpc: Rpc, client?: string | null): Promise<unknown> {
       const by = tool && !fromChat(client) ? tool + OUTSIDE : tool;
       // only a change counts as working: looking at the design, or a builder tool, does not
       if (tool && !fromChat(client) && !/^(get_|look_|select_|dev_)/.test(name)) outsideWorking(tool);
-      const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments, by) : await callTool(name, rpc.params?.arguments, by);
+      // a task's AI carries its task after a slash, so its changes are told in that task
+      const thread = /\/(task:[\w-]+)$/.exec(client ?? "")?.[1];
+      const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments, by) : await callTool(name, rpc.params?.arguments, by, thread);
       const content: Record<string, unknown>[] = [{ type: "text", text: result.text }];
       if (result.image) content.push({ type: "image", data: result.image.data, mimeType: result.image.mime });
       return { content, isError: !!result.isError };

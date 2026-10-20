@@ -24,7 +24,7 @@ import { saveNow, tabName } from "../project/project";
 import { tracePicture } from "../project/trace";
 import { getState, goTo, keepAiWorkWhile, liveRoom, roomFor } from "../state/store";
 import type { Room } from "../state/store";
-import { addMsg, askDesigner, getChat, setMinimized, updateMsg } from "./chat";
+import { addMsg, askDesigner, conversationProject, getChat, messagesOf, setMinimized, taskOf, updateMsg } from "./chat";
 import { outsideRules, skillsText } from "./rules";
 import { isOutside } from "./who";
 import { getSkills, keepTaughtSkill } from "./skills";
@@ -840,13 +840,13 @@ function prepare(tool: string, raw: Args, doc = R.currentDoc()): { args: Args } 
 // ---- each AI works in its own project, whichever one is on screen ----
 
 /** The project each AI works in, by the name it goes by, and when it last did something there. */
-const homes = new Map<string, { file: string | null; at: number }>();
+const homes = new Map<string, { file: string | null; at: number; thread?: string }>();
 /** An AI quiet for this long is taken to have finished. When it comes back it works on the project on screen. */
 const HOME_KEPT_MS = 10 * 60 * 1000;
 
-/** The project an AI works in from now on. Duet's chat sets it when it starts its AI. */
-export function bindAi(by: string, file: string | null) {
-  homes.set(by, { file, at: Date.now() });
+/** The project an AI works in from now on, and the task it works for, if any. Duet's chat sets it when it starts its AI. */
+export function bindAi(by: string, file: string | null, thread?: string) {
+  homes.set(by, { file, at: Date.now(), ...(thread ? { thread } : {}) });
 }
 
 /** The projects an AI from outside is at work in right now, for the sign on their tabs. */
@@ -856,10 +856,17 @@ export function outsideHomes(): string[] {
 }
 
 /** The project this AI works in. Null when it was closed while the AI was at work. */
-function roomOf(by?: string): Room | null {
+function roomOf(by?: string, thread?: string): Room | null {
+  // an AI at work on a task says so, and works in that task's project
+  const task = taskOf(thread);
+  if (task) {
+    T = task.key;
+    // the project on show may have no file yet, so it is found by its conversation, not its file
+    return task.project === conversationProject() ? liveRoom : roomFor(task.project || null);
+  }
   const busy = getChat().busy;
   // Duet's own chat: the AI works in the project of the conversation it was started from
-  if (by && !isOutside(by) && busy !== null) return roomFor(busy || null);
+  if (by && !isOutside(by) && busy !== null) return busy === conversationProject() ? liveRoom : roomFor(busy || null);
   if (!by) return liveRoom;
   const now = Date.now();
   const home = homes.get(by);
@@ -868,11 +875,14 @@ function roomOf(by?: string): Room | null {
     return liveRoom;
   }
   home.at = now;
+  if (home.thread && taskOf(home.thread)) T = home.thread;
   return roomFor(home.file);
 }
 
 /** The project the call being answered works in. Calls are answered one at a time, so this is never mixed up. */
 let R: Room = liveRoom;
+/** The task the call being answered works for. Null for the main chat. */
+let T: string | null = null;
 let calls: Promise<unknown> = Promise.resolve();
 function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
   const next = calls.then(job, job);
@@ -880,7 +890,7 @@ function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
   return next;
 }
 /** The conversation that hears about this call: the one of its project. */
-const said = () => (R.live ? undefined : R.file);
+const said = () => T ?? (R.live ? undefined : R.file);
 
 /** The step before the AI acts is already saved, so any AI change can be undone and the earlier state is safe. */
 async function ensureSaved() {
@@ -1158,30 +1168,33 @@ async function apply(tool: string, args: Args, by?: string): Promise<ToolResult>
 
 /** Called when the designer taps Apply on a suggestion. */
 export async function applyProposal(msgId: number) {
-  const msg = getChat().messages.find((m) => m.id === msgId);
+  const where = getChat().thread ?? undefined;
+  const msg = messagesOf(where).find((m) => m.id === msgId);
   if (!msg?.proposal || msg.proposal.status !== "open") return;
   const check = prepare(msg.proposal.tool, msg.proposal.args as Args);
   if ("error" in check) {
-    updateMsg(msgId, { proposal: { ...msg.proposal, status: "dismissed" } });
-    addMsg({ role: "error", text: `That suggestion no longer fits the design. ${check.error}` });
+    updateMsg(msgId, { proposal: { ...msg.proposal, status: "dismissed" } }, where);
+    addMsg({ role: "error", text: `That suggestion no longer fits the design. ${check.error}` }, where);
     return;
   }
-  updateMsg(msgId, { proposal: { ...msg.proposal, status: "applied" } });
+  updateMsg(msgId, { proposal: { ...msg.proposal, status: "applied" } }, where);
   const proposal = msg.proposal;
   await oneAtATime(() => {
     R = liveRoom;
+    T = where ?? null;
     return apply(proposal.tool, check.args, proposal.by);
   });
 }
 
 /** Take back an AI change, if nothing happened after it. */
 export function undoAiStep(msgId: number) {
-  const msg = getChat().messages.find((m) => m.id === msgId);
+  const where = getChat().thread ?? undefined;
+  const msg = messagesOf(where).find((m) => m.id === msgId);
   if (msg?.undoStep === undefined) return;
   const s = getState();
   if (s.cursor !== msg.undoStep) return;
   goTo(msg.undoStep - 1);
-  updateMsg(msgId, { undone: true });
+  updateMsg(msgId, { undone: true }, where);
 }
 
 function context(): string {
@@ -1213,7 +1226,7 @@ function context(): string {
 }
 
 // the working area stays up for as long as the chat's own AI is busy, however long it thinks
-keepAiWorkWhile(() => getChat().running);
+keepAiWorkWhile(() => getChat().running || getChat().tasks.some((t) => t.running));
 
 /** An AI has started, or is still going: keep its working area up if it has one. The area is never claimed just by starting. */
 export function aiStarted(by?: string) {
@@ -1236,9 +1249,10 @@ function changedIds(a: Doc, b: Doc): string[] {
 }
 
 /** Run one tool call from an agent. `by` is the name of the AI tool that asked, when it said who it is. */
-export function callTool(name: string, raw: unknown, by?: string): Promise<ToolResult> {
+export function callTool(name: string, raw: unknown, by?: string, thread?: string): Promise<ToolResult> {
   return oneAtATime(async () => {
-    const room = roomOf(by);
+    T = null;
+    const room = roomOf(by, thread);
     if (!room) return fail("The project you were working in has been closed, so nothing was changed. Stop, and tell the designer what you were doing.");
     R = room;
     return answerTool(name, raw, by);
