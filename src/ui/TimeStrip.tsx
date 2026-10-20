@@ -118,6 +118,47 @@ export default function TimeStrip() {
     return () => see.disconnect();
   }, [plays, mode, sceneId]);
 
+  // In Layers, as in After Effects: [ slides the picked layers so they start at the playhead, ] so they end there.
+  // With Option, the layer is trimmed instead: its start or end is brought to the playhead and the rest stays where it is.
+  useEffect(() => {
+    if (!sceneId || look !== "layers") return;
+    const key = (e: KeyboardEvent) => {
+      const on = document.activeElement as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
+      if (e.code !== "BracketLeft" && e.code !== "BracketRight") return;
+      const s = getState();
+      const d = currentDoc();
+      const scene = d.elements[sceneId];
+      const ids = s.selection.filter((id) => d.elements[id] && d.elements[id].parentId === sceneId);
+      if (!scene || !ids.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const t = Math.round(s.clock.t * 1000) / 1000;
+      const left = e.code === "BracketLeft";
+      let next = d;
+      for (const id of ids) {
+        const el = next.elements[id];
+        const span = spanOf(el, scene);
+        const len = span.end - span.start;
+        if (e.altKey) {
+          if (t <= span.start + 0.01 || t >= span.end - 0.01) continue;
+          next = left
+            ? runCommand(next, "set_timing", { ids: [id], start: t, ...(playsFile(el) ? { clipFrom: fileTimeAt(el, span.start, t) } : {}) })
+            : runCommand(next, "set_timing", { ids: [id], end: t });
+        } else {
+          const start = Math.max(0, Math.min(scene.duration - 0.1, left ? t : t - len));
+          next = runCommand(next, "set_timing", { ids: [id], start, end: Math.min(scene.duration, start + len) });
+        }
+      }
+      if (next === d) return;
+      dragPreviewDoc(next);
+      dragCommit(e.altKey ? (left ? "Trim the start to the playhead" : "Trim the end to the playhead") : left ? "Start at the playhead" : "End at the playhead");
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [sceneId, look]);
+
   // the tilde key, or the one beside 1, makes the timeline fill the window and brings it back; Escape too
   useEffect(() => {
     if (mode === "design") return;

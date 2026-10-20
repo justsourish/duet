@@ -66,6 +66,8 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
       ["C or S", "Split at the playhead"],
       ["D", "Delete the clip and close the gap"],
       ["M", "Add a marker at the playhead, or take it away"],
+      ["[ and ]", "In Layers: start or end the picked layers at the playhead, sliding them"],
+      ["Option [ and ]", "In Layers: trim the picked layers to the playhead"],
       ["` or ~", "Make the timeline fill the window, and bring it back"],
       ["= and -", "Zoom the timeline in and out"],
       ["\\", "Fit the timeline"],
