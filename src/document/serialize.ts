@@ -55,6 +55,7 @@ const EL_KEYS: (keyof El)[] = [
   "end",
   "keys",
   "shapeKeys",
+  "markers",
   "clipFrom",
   "volume",
   "speed",
@@ -117,6 +118,7 @@ const FALLBACK: Omit<El, "id" | "type"> = {
   end: 0,
   keys: {},
   shapeKeys: [],
+  markers: [],
   clipFrom: 0,
   volume: 1,
   speed: 1,
@@ -132,7 +134,7 @@ export function serializeDoc(doc: Doc): string {
     const ordered: Record<string, unknown> = {};
     for (const k of EL_KEYS) if (TEXT_ONLY.has(k) && (el.type !== "text" || el[k] === (FALLBACK as Record<string, unknown>)[k])) continue;
     else if (k === "childIds" && el.type === "instance") ordered[k] = [];
-    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (!PROTOTYPE_ONLY.has(k) || el[k] !== (FALLBACK as Record<string, unknown>)[k]) && (k !== "locked" || el.locked) && (k !== "hidden" || el.hidden) && (k !== "grade" || el.grade) && (k !== "mask" || el.mask) && ((k !== "maskFeather" && k !== "maskInvert" && k !== "maskGrow") || el.mask && el[k]) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "rotation" || el.rotation) && (k !== "src" || el.type === "image" || playsFile(el)) && (!TIME_ONLY.has(k) || el[k]) && (k !== "keys" || Object.keys(el.keys).length) && (k !== "shapeKeys" || el.shapeKeys.length) && (k !== "volume" || playsFile(el)) && (k !== "speed" || (playsFile(el) && el.speed !== 1)) && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
+    else if ((k !== "component" || el.component) && ((k !== "componentId" && k !== "overrides") || el.type === "instance") && (!PROTOTYPE_ONLY.has(k) || el[k] !== (FALLBACK as Record<string, unknown>)[k]) && (k !== "locked" || el.locked) && (k !== "hidden" || el.hidden) && (k !== "grade" || el.grade) && (k !== "mask" || el.mask) && ((k !== "maskFeather" && k !== "maskInvert" && k !== "maskGrow") || el.mask && el[k]) && (k !== "layout" || el.layout) && (k !== "grow" || el.grow) && (k !== "rotation" || el.rotation) && (k !== "src" || el.type === "image" || playsFile(el)) && (!TIME_ONLY.has(k) || el[k]) && (k !== "keys" || Object.keys(el.keys).length) && (k !== "shapeKeys" || el.shapeKeys.length) && (k !== "markers" || el.markers?.length) && (k !== "volume" || playsFile(el)) && (k !== "speed" || (playsFile(el) && el.speed !== 1)) && ((k !== "nodes" && k !== "closed") || el.type === "path")) ordered[k] = el[k];
     elements[id] = ordered;
   }
   const out: Record<string, unknown> = { version: doc.version, rootIds: doc.rootIds, elements };

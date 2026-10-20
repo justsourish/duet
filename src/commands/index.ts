@@ -135,6 +135,7 @@ const createElement: CommandDef<CreateArgs> = {
       end: 0,
       keys: {},
       shapeKeys: [],
+      markers: [],
       clipFrom: 0,
       volume: 1,
       speed: 1,
@@ -756,6 +757,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       end: 0,
       keys: {},
       shapeKeys: [],
+      markers: [],
       clipFrom: 0,
       volume: 1,
       speed: 1,
@@ -858,6 +860,7 @@ const groupElements: CommandDef<GroupArgs> = {
       end: 0,
       keys: {},
       shapeKeys: [],
+      markers: [],
       clipFrom: 0,
       volume: 1,
       speed: 1,
@@ -1026,6 +1029,71 @@ const setTiming: CommandDef<SetTimingArgs> = {
       changed = true;
     }
     return changed ? next : doc;
+  },
+};
+
+// ---- markers ----
+export const MARKER_COLORS = ["#ff6b6b", "#ffb347", "#ffd93d", "#4cd98a", "#4cc9f0", "#b68cff"];
+
+export interface AddMarkerArgs {
+  /** The frame that plays. */
+  id: string;
+  t: number;
+  name?: string;
+  color?: string;
+  markerId?: string;
+}
+
+/** Put a marker on a frame's timeline. */
+const addMarker: CommandDef<AddMarkerArgs> = {
+  label: () => "Add a marker",
+  run: (doc, a) => {
+    const frame = doc.elements[a.id];
+    if (!frame || frame.type !== "frame" || !(frame.duration > 0) || !Number.isFinite(a.t)) return doc;
+    const next = clone(doc);
+    const f = next.elements[a.id];
+    const marker = { id: a.markerId ?? newId("marker"), t: Math.max(0, Math.min(f.duration, round(a.t))), name: a.name ?? "", color: a.color ?? MARKER_COLORS[(f.markers ?? []).length % MARKER_COLORS.length] };
+    f.markers = [...(f.markers ?? []), marker].sort((x, y) => x.t - y.t);
+    return next;
+  },
+};
+
+export interface UpdateMarkerArgs {
+  id: string;
+  markerId: string;
+  t?: number;
+  name?: string;
+  color?: string;
+}
+
+/** Move, rename or recolour a marker. */
+const updateMarker: CommandDef<UpdateMarkerArgs> = {
+  label: (a) => (a.name !== undefined ? "Rename a marker" : a.color !== undefined ? "Colour a marker" : "Move a marker"),
+  run: (doc, a) => {
+    const frame = doc.elements[a.id];
+    if (!frame?.markers?.some((m) => m.id === a.markerId)) return doc;
+    const next = clone(doc);
+    const f = next.elements[a.id];
+    f.markers = f.markers
+      .map((m) => (m.id !== a.markerId ? m : { ...m, ...(a.t !== undefined ? { t: Math.max(0, Math.min(f.duration, round(Number(a.t) || 0))) } : {}), ...(a.name !== undefined ? { name: String(a.name) } : {}), ...(a.color !== undefined ? { color: String(a.color) } : {}) }))
+      .sort((x, y) => x.t - y.t);
+    return next;
+  },
+};
+
+export interface RemoveMarkerArgs {
+  id: string;
+  markerId: string;
+}
+
+const removeMarker: CommandDef<RemoveMarkerArgs> = {
+  label: () => "Remove a marker",
+  run: (doc, a) => {
+    const frame = doc.elements[a.id];
+    if (!frame?.markers?.some((m) => m.id === a.markerId)) return doc;
+    const next = clone(doc);
+    next.elements[a.id].markers = next.elements[a.id].markers.filter((m) => m.id !== a.markerId);
+    return next;
   },
 };
 
@@ -1461,6 +1529,9 @@ export const commands = {
   set_duration: setDuration,
   set_timing: setTiming,
   set_speed: setSpeed,
+  add_marker: addMarker,
+  update_marker: updateMarker,
+  remove_marker: removeMarker,
   set_shape_key: setShapeKey,
   remove_shape_key: removeShapeKey,
   set_key: setKey,

@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { runCommand } from "../commands";
+import { MARKER_COLORS, runCommand } from "../commands";
 import { KEY_GROUPS, fileTimeAt, frameTimeAt, spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
-import type { Doc, El, Moving } from "../document/types";
+import type { Doc, El, Marker, Moving } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dragPreviewDoc, getState, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
@@ -61,6 +61,10 @@ export default function TimeStrip() {
   const [snap, setSnap] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; el: El; mark?: Picked } | null>(null);
   useDismiss(!!menu, () => setMenu(null), ".ctx");
+  const [markerMenu, setMarkerMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  useDismiss(!!markerMenu, () => setMarkerMenu(null), ".ctx");
+  const [markerEdit, setMarkerEdit] = useState<string | null>(null);
+  const draggedMarker = useRef(false);
   const [picked, setPicked] = useState<Picked | null>(null);
   const anchor = useRef<string | null>(null);
   const pulled = useRef(false);
@@ -141,6 +145,17 @@ export default function TimeStrip() {
         return;
       }
       const k = e.key.toLowerCase();
+      // M puts a marker at the playhead, as in other video editors. On a marker, it takes it away.
+      if (k === "m" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const now = getState().clock.t;
+        const here = (currentDoc().elements[sceneId]?.markers ?? []).find((m) => Math.abs(m.t - now) < 0.05);
+        if (here) dispatch("remove_marker", { id: sceneId, markerId: here.id });
+        else dispatch("add_marker", { id: sceneId, t: now });
+        return;
+      }
       if (!["s", "c", "d", "k", "l", " "].includes(k)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -339,7 +354,7 @@ export default function TimeStrip() {
 
   const getSnapTargets = (excludeId?: string) => {
     if (!frame) return [];
-    const ts = [0, length, clock.t];
+    const ts = [0, length, clock.t, ...(frame.markers ?? []).map((m) => m.t)];
     for (const id of frame.childIds) {
       if (id === excludeId) continue;
       const other = doc.elements[id];
@@ -598,6 +613,44 @@ export default function TimeStrip() {
         setPicked({ id: el.id, t, props });
         seek(t);
       }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /** Drag a marker along the ruler. A click on it takes the playhead there. */
+  const dragMarker = (e: React.PointerEvent, m: Marker) => {
+    if (e.button !== 0 || markerEdit === m.id) return;
+    e.stopPropagation();
+    const from = e.clientX;
+    const targets = getSnapTargets().filter((t) => t !== m.t);
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientX - from) < 3 && !moved) return;
+      moved = true;
+      draggedMarker.current = true;
+      let to = Math.max(0, Math.min(length, m.t + (ev.clientX - from) / pps));
+      let snapTime: number | null = null;
+      if (!(ev.metaKey || ev.ctrlKey)) {
+        const s = findSnap(to, targets);
+        if (s) {
+          to = s.time;
+          snapTime = s.time;
+        }
+      }
+      setSnap(snapTime);
+      dragPreview("update_marker", { id: frame!.id, markerId: m.id, t: to });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setSnap(null);
+      if (moved) dragCommit("Move a marker");
+      else {
+        pause();
+        seek(m.t);
+      }
+      draggedMarker.current = false;
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -1001,6 +1054,47 @@ export default function TimeStrip() {
                 {clockText(t).replace(/\.0$/, "")}
               </i>
             ))}
+            {(frame.markers ?? []).map((m) => (
+              <b
+                key={m.id}
+                className="time-marker"
+                data-name="marker"
+                style={{ left: m.t * pps, "--marker": m.color } as React.CSSProperties}
+                title={`${m.name || "Marker"}, ${clockText(m.t)}. Click to go there, drag to move, double-click to rename, right-click for more`}
+                onPointerDown={(e) => dragMarker(e, m)}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setMarkerEdit(m.id);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMarkerMenu({ x: e.clientX, y: e.clientY, id: m.id });
+                }}
+              >
+                {markerEdit === m.id ? (
+                  <input
+                    className="time-marker-name"
+                    autoFocus
+                    defaultValue={m.name}
+                    placeholder="Name"
+                    onFocus={(e) => e.currentTarget.select()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onBlur={(e) => {
+                      setMarkerEdit(null);
+                      if (e.currentTarget.value !== m.name) dispatch("update_marker", { id: frame.id, markerId: m.id, name: e.currentTarget.value.trim() });
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") setMarkerEdit(null);
+                    }}
+                  />
+                ) : (
+                  m.name && <span>{m.name}</span>
+                )}
+              </b>
+            ))}
           </div>
         </div>
         {displayRows.map((row, ri) => (
@@ -1101,10 +1195,53 @@ export default function TimeStrip() {
             {look === "layers" && row.items.filter(opened).map((el) => renderKindRows(el))}
           </Fragment>
         ))}
+        {(frame.markers ?? []).map((m) => (
+          <div key={m.id} className="time-marker-line" style={{ left: NAMES + m.t * pps, "--marker": m.color } as React.CSSProperties} />
+        ))}
         <div className="time-head" style={{ left: NAMES + clock.t * pps }} />
         {snap !== null && <div className="time-snap" style={{ left: NAMES + snap * pps }} />}
         </div>
       </div>
+      {markerMenu && frame && (
+        <div className="ctx" style={{ left: Math.max(10, Math.min(markerMenu.x, window.innerWidth - 230)), top: Math.max(10, Math.min(markerMenu.y, window.innerHeight - 200)) }}>
+          <div
+            className="ctx-item"
+            data-name="rename-marker"
+            onClick={() => {
+              setMarkerEdit(markerMenu.id);
+              setMarkerMenu(null);
+            }}
+          >
+            <span>Rename</span>
+          </div>
+          <div className="ctx-colors">
+            {MARKER_COLORS.map((c) => (
+              <button
+                key={c}
+                className="marker-dot"
+                data-name="marker-colour"
+                style={{ background: c }}
+                title="Colour"
+                onClick={() => {
+                  dispatch("update_marker", { id: frame.id, markerId: markerMenu.id, color: c });
+                  setMarkerMenu(null);
+                }}
+              />
+            ))}
+          </div>
+          <div className="ctx-line" />
+          <div
+            className="ctx-item"
+            data-name="remove-marker"
+            onClick={() => {
+              dispatch("remove_marker", { id: frame.id, markerId: markerMenu.id });
+              setMarkerMenu(null);
+            }}
+          >
+            <span>Remove marker</span>
+          </div>
+        </div>
+      )}
       {menu && (
         <div
           className="ctx"
@@ -1125,7 +1262,7 @@ export default function TimeStrip() {
                   dispatch("remove_key", { ids: [m.id], props: m.props, t: m.t });
                 }}
               >
-                <span>Remove this mark</span>
+                <span>Remove this keyframe</span>
                 <kbd>Delete</kbd>
               </div>
               <div className="ctx-line" />
@@ -1184,7 +1321,7 @@ export default function TimeStrip() {
               dispatch("key_now", { ids: [el.id], props: ["x", "y"], t: clock.t });
             }}
           >
-            <span>Mark position</span>
+            <span>Keyframe position</span>
             <kbd>Option P</kbd>
           </div>
           <div
@@ -1195,7 +1332,7 @@ export default function TimeStrip() {
               dispatch("key_now", { ids: [el.id], props: ["width", "height"], t: clock.t });
             }}
           >
-            <span>Mark size</span>
+            <span>Keyframe size</span>
             <kbd>Option S</kbd>
           </div>
           <div
@@ -1206,7 +1343,7 @@ export default function TimeStrip() {
               dispatch("key_now", { ids: [el.id], props: ["opacity"], t: clock.t });
             }}
           >
-            <span>Mark opacity</span>
+            <span>Keyframe opacity</span>
             <kbd>Option T</kbd>
           </div>
           <div
@@ -1217,7 +1354,7 @@ export default function TimeStrip() {
               dispatch("key_now", { ids: [el.id], props: ["rotation"], t: clock.t });
             }}
           >
-            <span>Mark turn</span>
+            <span>Keyframe rotation</span>
             <kbd>Option R</kbd>
           </div>
           <div className="ctx-line" />
@@ -1229,7 +1366,7 @@ export default function TimeStrip() {
               dispatch("remove_key", { ids: [el.id] });
             }}
           >
-            <span>Remove every mark</span>
+            <span>Remove all keyframes</span>
           </div>
         </div>
       )}

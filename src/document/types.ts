@@ -55,6 +55,15 @@ export interface Key {
   curve?: [number, number, number, number];
 }
 
+/** A note on the timeline of a frame that plays: a moment with a name and a colour, for the editor. It changes nothing in the picture. */
+export interface Marker {
+  id: string;
+  /** Seconds from the start of the frame it plays in. */
+  t: number;
+  name: string;
+  color: string;
+}
+
 /** One moment in the changing outline of a drawn shape: where every point and its handles are, in pixels inside the parent. */
 export interface ShapeKey {
   /** Seconds from the start of the frame it plays in. */
@@ -156,6 +165,8 @@ export interface El {
   keys: Partial<Record<Moving, Key[]>>;
   /** A drawn shape only: its outline at moments in time. Between two with the same number of points it blends; empty when the outline stays as it is. */
   shapeKeys: ShapeKey[];
+  /** A frame that plays only: the markers on its timeline, in order of time. */
+  markers: Marker[];
   /** A video clip or a sound only: the second in its file where playing starts, and how loud it is from 0 to 1. For these, src is where the file is on the computer. A sound has no place on the canvas: it is only heard. */
   clipFrom: number;
   volume: number;

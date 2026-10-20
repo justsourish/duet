@@ -252,3 +252,24 @@ describe("the clip time rule", () => {
     for (const t of [2, 3.25, 9]) expect(frameTimeAt(clip, 2, fileTimeAt(clip, 2, t))).toBeCloseTo(t, 9);
   });
 });
+
+describe("markers", () => {
+  it("are added in order of time, moved, renamed, removed and saved", () => {
+    let doc = scene();
+    doc = runCommand(doc, "add_marker", { id: "f", t: 4, name: "Cut here", markerId: "m2" });
+    doc = runCommand(doc, "add_marker", { id: "f", t: 1.5, markerId: "m1" });
+    expect(doc.elements.f.markers.map((m) => m.id)).toEqual(["m1", "m2"]);
+    expect(doc.elements.f.markers[0].color).not.toBe(doc.elements.f.markers[1].color);
+    doc = runCommand(doc, "update_marker", { id: "f", markerId: "m1", t: 6, name: "Logo" });
+    expect(doc.elements.f.markers.map((m) => [m.id, m.t, m.name])).toEqual([["m2", 4, "Cut here"], ["m1", 6, "Logo"]]);
+    expect(parseDoc(serializeDoc(doc)).elements.f.markers.map((m) => m.name)).toEqual(["Cut here", "Logo"]);
+    // past the end is held at the end, and a frame with no markers writes none
+    expect(runCommand(doc, "update_marker", { id: "f", markerId: "m1", t: 999 }).elements.f.markers[1].t).toBe(doc.elements.f.duration);
+    doc = runCommand(runCommand(doc, "remove_marker", { id: "f", markerId: "m1" }), "remove_marker", { id: "f", markerId: "m2" });
+    expect(serializeDoc(doc)).not.toContain('"markers"');
+  });
+  it("go only on a frame that plays", () => {
+    const still = runCommand(emptyDoc(), "create_element", { id: "s", type: "frame", x: 0, y: 0, width: 100, height: 100 });
+    expect(runCommand(still, "add_marker", { id: "s", t: 1 })).toBe(still);
+  });
+});
