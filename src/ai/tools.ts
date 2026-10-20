@@ -1076,8 +1076,6 @@ async function exportFrame(args: Args): Promise<ToolResult> {
 
 /** Make a video of a frame that plays, the same way the designer's Export video does. */
 async function exportVideo(args: Args): Promise<ToolResult> {
-  // a video is drawn picture by picture on the canvas, so only the project on screen can be made into one
-  if (!R.live) return fail(`The project${R.file ? ` "${tabName(R.file)}"` : ""} is not on screen, and a video is drawn on the canvas. Ask the designer to bring its tab up, then try again. Nothing was saved.`);
   let to: string | undefined;
   if (typeof args.path === "string") {
     to = args.path.trim();
@@ -1089,7 +1087,10 @@ async function exportVideo(args: Args): Promise<ToolResult> {
   const quality = QUALITIES[{ best: 0, good: 1, small: 2 }[String(args.quality ?? "good") as "best" | "good" | "small"]].quality;
   const began = Date.now();
   try {
-    const file = await exportScene(String(args.id), () => {}, { ...defaultChoice(), fps: Number(args.fps) || 30, longSide: Number(args.size) || 0, quality, master: args.master === true, ...(to ? { to } : {}) });
+    // the video is drawn off screen, so a project waiting in its tab is made into one without coming on screen
+    const doc = R.currentDoc();
+    await preloadPictures(doc);
+    const file = await exportScene(String(args.id), () => {}, { ...defaultChoice(), fps: Number(args.fps) || 30, longSide: Number(args.size) || 0, quality, master: args.master === true, ...(to ? { to } : {}) }, doc);
     if (!file) return fail("The video was not made.");
     return { text: `Made the video ${file} in ${Math.round((Date.now() - began) / 1000)} seconds. The design was not changed.` };
   } catch (e) {

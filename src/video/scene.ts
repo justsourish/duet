@@ -268,8 +268,7 @@ async function baseClip(doc: Doc, now: Doc, sceneId: string, t: number, sizes: M
  * Make one video file out of a frame that plays. Every picture of it is drawn here, exactly as the
  * canvas draws it, and handed over one by one. Returns the file, or null if the designer backed out.
  */
-export async function exportScene(sceneId: string, progress: (done: number) => void, choice: ExportChoice = defaultChoice()): Promise<string | null> {
-  const doc = currentDoc();
+export async function exportScene(sceneId: string, progress: (done: number) => void, choice: ExportChoice = defaultChoice(), doc: Doc = currentDoc()): Promise<string | null> {
   const scene = doc.elements[sceneId];
   if (!scene?.duration) throw new Error("This frame has no length yet.");
   let out: string | null;
