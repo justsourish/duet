@@ -518,7 +518,8 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
 
     // beside the chat the canvas only looks: any drag moves the view
     if (viewOnly || e.button === 1 || spaceRef.current || s.tool === "hand") {
-      if (lockedRef.current) return;
+      // the middle button drags the view in every tool and in Motion too, as in other video and design tools
+      if (e.button === 1) e.preventDefault();
       stopGlide();
       dragRef.current = { kind: "pan", sx: p.sx, sy: p.sy, vx: s.viewport.x, vy: s.viewport.y };
       setCursor("grabbing");
