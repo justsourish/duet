@@ -992,6 +992,7 @@ export default function TimeStrip() {
           })();
         }}
       >
+        <div className="time-inner">
         <div className="time-row ruler">
           <span className="time-name" />
           <div className="time-lane" onPointerDown={scrub} style={{ width: laneWidth }}>
@@ -1102,6 +1103,7 @@ export default function TimeStrip() {
         ))}
         <div className="time-head" style={{ left: NAMES + clock.t * pps }} />
         {snap !== null && <div className="time-snap" style={{ left: NAMES + snap * pps }} />}
+        </div>
       </div>
       {menu && (
         <div

@@ -2255,6 +2255,12 @@ body.eyedropping * {
   overflow-x: auto;
   padding: 0 16px 6px 0;
 }
+/* holds the rows and the playhead, so the playhead is as tall as everything in the lanes, not only as what shows */
+.time-inner {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+}
 .time-row {
   display: flex;
   align-items: center;
