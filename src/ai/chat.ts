@@ -160,6 +160,7 @@ export const CLAUDE_MODELS: ModelChoice[] = [
   { id: "haiku", name: "Haiku (fastest)" },
 ];
 export const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"];
+export const EFFORT_NAMES: Record<string, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra", max: "Max" };
 
 const pick = (key: string): string => {
   try {

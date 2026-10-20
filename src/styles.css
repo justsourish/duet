@@ -4837,11 +4837,10 @@ button.agent-perm {
   align-items: center;
   gap: 5px;
 }
-/* the people in the chat, in quiet colours so no one stands out */
+/* every AI wears its own colour, the same one it has in the history line */
 .chat.docked .member-badge {
-  background: var(--panel-2) !important;
-  color: var(--muted);
-  border: 1px solid var(--line);
+  color: #141315;
+  border: 1px solid transparent;
 }
 /* side by side with a little air, not stacked */
 .chat.docked .members-cluster {
@@ -4850,11 +4849,9 @@ button.agent-perm {
 .chat.docked .member-badge + .member-badge {
   margin-left: 0;
 }
-/* the one who answers next wears its own colour as a thin outline, no heavy ring */
+/* the one who answers next has a thin ring in its own colour, with a gap */
 .chat.docked .member-badge.answers-ring {
-  box-shadow: none;
-  color: var(--who);
-  border-color: var(--who);
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--who);
 }
 /* the one that is answering lights up in its own colour */
 .chat.docked .member-badge.answering {
@@ -5093,4 +5090,172 @@ button.agent-perm {
   .task-working {
     animation: none;
   }
+}
+
+/* The chat, calmer: you in a soft bubble on the right, each AI speaking in its own colour on the left */
+.m.you {
+  border-radius: 16px;
+  padding: 9px 13px;
+}
+.m.ai {
+  background: none;
+  padding: 2px 0;
+}
+.m.ai .m-badge {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+.m.ai .m-author {
+  gap: 8px;
+}
+.m.ai .m-author-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+.m.ai .m-body {
+  padding-left: 28px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* what changed is a small chip, not a line of grey text */
+.m.note:not(.outside-ai) {
+  align-self: flex-start;
+  margin-left: 28px;
+  padding: 4px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+.chat-new-btn {
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+.chat-new-btn:hover:not(:disabled) {
+  background: var(--line);
+}
+
+/* who answers: each AI in its colour, what it uses under its name, the chosen one tinted with a tick */
+.cfoot .agent-pop {
+  border-radius: 16px;
+  padding: 14px;
+  gap: 14px;
+}
+.agent-pop-label {
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.agent-pop .who-answer-row {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  gap: 10px;
+}
+.agent-pop .who-answer-row.active {
+  background: color-mix(in srgb, var(--who) 14%, transparent);
+  border-color: var(--who);
+}
+.agent-pop .who-answer-row .member-badge {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+}
+.who-answer-name b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+.who-answer-name small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.who-answer-tick {
+  color: var(--who);
+  font-weight: 700;
+  flex: none;
+}
+/* model and effort are the choices this AI really has, side by side */
+.pick-choice {
+  display: flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+.pick-choice button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.pick-choice button:hover:not(:disabled) {
+  color: var(--text);
+}
+.pick-choice button.on {
+  background: var(--line);
+  color: var(--text);
+  font-weight: 600;
+}
+.agent-pop select {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* the ask box: soft and round, and send is a round arrow in the colour of who answers */
+.cfoot {
+  border-radius: 18px;
+  padding: 10px 10px 10px 12px;
+}
+.cfoot > button.primary.send-round {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #141315;
+}
+.cfoot > button.send-round:disabled {
+  opacity: 0.35;
+}
+.cfoot > button.send-round.stop {
+  background: var(--text);
+}
+.pick-choice.wrap {
+  flex-wrap: wrap;
+  border-radius: 14px;
+}
+.pick-choice.wrap button {
+  flex: 1 0 auto;
+  padding: 5px 10px;
+}
+/* the menu never runs off the window: when the ask box sits in the middle it opens downward */
+.cfoot .agent-pop {
+  max-height: min(520px, calc(100vh - 140px));
+  overflow-y: auto;
+}
+.chat.docked.is-empty .cfoot .agent-pop {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+.who-answer-tune {
+  cursor: pointer;
+  width: fit-content;
+}
+.who-answer-tune:hover {
+  color: var(--text);
 }

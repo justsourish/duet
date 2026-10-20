@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, Fragment } from "react";
 import { detectAgent, sendToAgent, sendToTask, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
-import { AGENTS, CLAUDE_MODELS, EFFORTS, answerApproval, removePicture, tookLine, setEffort, setModel, newTask, setAgent, setMinimized, setMode, showThread, updateMsg, useChat } from "../ai/chat";
+import { AGENTS, CLAUDE_MODELS, EFFORTS, EFFORT_NAMES, answerApproval, removePicture, tookLine, setEffort, setModel, newTask, setAgent, setMinimized, setMode, showThread, updateMsg, useChat } from "../ai/chat";
 import type { AgentId } from "../ai/chat";
 import { attachFiles } from "../ai/pictures";
 import type { ModelChoice, Mode, Msg } from "../ai/chat";
@@ -128,7 +128,6 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const running = task ? task.running : mainRunning;
   const folded = useChat((s) => s.minimized);
   const minimized = folded && !docked;
-  const isEmpty = docked && messages.length === 0;
   const found = useChat((s) => s.agentFound);
   const mainAgent = useChat((s) => s.agent);
   const agent = task ? task.agent : mainAgent;
@@ -143,6 +142,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const focusEls = useStore((s) => s.timeline[s.cursor].doc.elements);
   const focusNames = focus.filter((id) => focusEls[id]).map((id) => focusEls[id].name);
   const timeline = useStore((s) => s.timeline);
+  // a design an AI has already worked on is not a blank start, even before anyone writes here
+  const isEmpty = docked && messages.length === 0 && !timeline.some((e) => e.actor === "ai");
   const place = useLayout((d) => d.chat);
   const chatW = useLayout((d) => d.chatW);
   const chatH = useLayout((d) => d.chatH);
@@ -157,6 +158,9 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const [busyName, setBusyName] = useState<string | null>(() => busyOutside());
   const [litStep, setLitStep] = useState<string | null>(null);
   const [popOpen, setPopOpen] = useState(false);
+  // model and effort stay folded until asked for, so the menu is only who answers
+  const [tuneOpen, setTuneOpen] = useState(false);
+  useEffect(() => setTuneOpen(false), [popOpen]);
   const [permOpen, setPermOpen] = useState(false);
   const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
 
@@ -415,6 +419,12 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const members = AGENTS.filter((a) => a.runnable && Boolean(installed[a.id]));
   const modelChoices = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
   const modelName = models[agent] ? modelChoices.find((m) => m.id === models[agent])?.name : undefined;
+  // what each AI will use, written under its name in the picker
+  const usesLine = (id: AgentId) => {
+    const choices = id === "agy" ? agyModels : CLAUDE_MODELS;
+    const model = models[id] ? (choices.find((c) => c.id === models[id])?.name ?? models[id]) : "Default model";
+    return id === "claude" && effort ? `${model} · ${EFFORT_NAMES[effort]} effort` : model;
+  };
 
   // every badge opens the one place to pick who answers
   const openPicker = (e: React.MouseEvent) => {
@@ -429,11 +439,12 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
     const firstStep = timeline.find(
       (e) => e.actor === "ai" && isOutside(e.by) && plainName(e.by as string) === name
     );
+    const made = timeline.filter((e) => e.actor === "ai" && isOutside(e.by) && plainName(e.by as string) === name).length;
     return {
       type: "joined" as const,
       name,
       time: firstStep?.time ?? 0,
-      text: `${name} joined from its own window`,
+      text: `${name} worked from its own window: ${made} ${made === 1 ? "change" : "changes"}, on the history line below`,
     };
   });
 
@@ -902,7 +913,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                     <span className="m-badge" style={{ backgroundColor: agentColour(authorName) }}>
                       {authorName.charAt(0)}
                     </span>
-                    <span className="m-author-name" title={m.took ? tookLine(m.took) : undefined}>
+                    <span className="m-author-name" style={{ color: agentColour(authorName) }} title={m.took ? tookLine(m.took) : undefined}>
                       {authorName}
                     </span>
                   </div>
@@ -1035,6 +1046,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                         <div
                           key={m.id}
                           className={`who-answer-row ${m.id === agent ? "active" : ""}`}
+                          style={{ ["--who" as string]: agentColour(m.name) }}
                           onClick={() => {
                             if (running) return;
                             setAgent(m.id);
@@ -1047,8 +1059,24 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                           >
                             {m.name.charAt(0)}
                           </span>
-                          <span className="who-answer-name">{m.name}</span>
-                          {m.id === agent && <span className="who-answer-status">answers</span>}
+                          <span className="who-answer-name">
+                            <b>{m.name}</b>
+                            {m.id === agent ? (
+                              <small
+                                className="who-answer-tune"
+                                title="Change the model and effort"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTuneOpen((o) => !o);
+                                }}
+                              >
+                                {usesLine(m.id)} {tuneOpen ? "⌃" : "⌄"}
+                              </small>
+                            ) : (
+                              <small>{usesLine(m.id)}</small>
+                            )}
+                          </span>
+                          {m.id === agent && <span className="who-answer-tick">✓</span>}
                         </div>
                       ))}
                       {members.length === 0 && (
@@ -1056,44 +1084,26 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                       )}
                     </div>
                   </div>
-                  {members.some((m) => m.id === agent) && (
-                    <div className="agent-pop-row">
-                      <div>
-                        <div className="agent-pop-label">Model</div>
-                        <select title="Model" value={models[agent] ?? ""} disabled={running} onChange={(e) => setModel(agent, e.target.value)}>
-                          {modelChoices.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
+                  {tuneOpen && members.some((m) => m.id === agent) && (
+                    <div>
+                      <div className="agent-pop-label">Model</div>
+                      <div className="pick-choice wrap">
+                        {modelChoices.map((m) => (
+                          <button key={m.id} type="button" className={m.id === (models[agent] ?? "") ? "on" : ""} disabled={running} onClick={() => setModel(agent, m.id)}>
+                            {m.name}
+                          </button>
+                        ))}
                       </div>
-                      {agent === "claude" && (
-                        <div>
-                          <div className="agent-pop-label">Effort</div>
-                          <select title="How hard it thinks. More effort takes longer and costs more." value={effort} disabled={running} onChange={(e) => setEffort(e.target.value)}>
-                            {EFFORTS.map((x) => (
-                              <option key={x} value={x}>
-                                {x === "" ? "Default" : x}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
                     </div>
                   )}
-                  {outsideAgents.length > 0 && (
+                  {tuneOpen && agent === "claude" && (
                     <div>
-                      <div className="agent-pop-label">In their own window</div>
-                      <div className="who-answers-list">
-                        {outsideAgents.map((name) => (
-                          <div key={name} className="who-answer-row outside">
-                            <span className="member-badge outside" style={{ backgroundColor: agentColour(name) }}>
-                              {name.charAt(0)}
-                            </span>
-                            <span className="who-answer-name">{name}</span>
-                            <span className="who-answer-status">{busyName === name ? "working" : "can't be asked from here"}</span>
-                          </div>
+                      <div className="agent-pop-label">Effort{effort ? "" : " · it decides"}</div>
+                      <div className="pick-choice" title="How hard it thinks. More effort takes longer and costs more. Click the chosen one again to let it decide.">
+                        {EFFORTS.filter(Boolean).map((x) => (
+                          <button key={x} type="button" className={x === effort ? "on" : ""} disabled={running} onClick={() => setEffort(x === effort ? "" : x)}>
+                            {EFFORT_NAMES[x]}
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1178,12 +1188,23 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               }}
             />
             {running ? (
-              <button className="mini" onClick={() => void stopAgent(task?.key)}>
-                Stop
+              <button className="mini primary send-round stop" title="Stop" aria-label="Stop" onClick={() => void stopAgent(task?.key)}>
+                <svg width={10} height={10} viewBox="0 0 10 10" aria-hidden="true">
+                  <rect x={1} y={1} width={8} height={8} rx={1.5} fill="currentColor" />
+                </svg>
               </button>
             ) : (
-              <button className="mini primary" disabled={(!text.trim() && !waiting.length) || found === false} onClick={() => send(text)}>
-                Send
+              <button
+                className="mini primary send-round"
+                title="Send"
+                aria-label="Send"
+                style={{ backgroundColor: agentColour(toolName) }}
+                disabled={(!text.trim() && !waiting.length) || found === false}
+                onClick={() => send(text)}
+              >
+                <svg width={14} height={14} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M7 12V2M2.5 6.5L7 2l4.5 4.5" />
+                </svg>
               </button>
             )}
           </div>
