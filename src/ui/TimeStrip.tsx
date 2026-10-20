@@ -246,11 +246,36 @@ export default function TimeStrip() {
       e.preventDefault();
       pinching = null;
     };
+    // the middle button drags the timeline along, as it drags the canvas
+    const onMiddle = (e: PointerEvent) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      const x = e.clientX;
+      const y = e.clientY;
+      const left = box.scrollLeft;
+      const top = box.scrollTop;
+      box.setPointerCapture(e.pointerId);
+      box.style.cursor = "grabbing";
+      const move = (ev: PointerEvent) => {
+        box.scrollLeft = left - (ev.clientX - x);
+        box.scrollTop = top - (ev.clientY - y);
+      };
+      const up = () => {
+        box.releasePointerCapture(e.pointerId);
+        box.style.cursor = "";
+        box.removeEventListener("pointermove", move);
+        box.removeEventListener("pointerup", up);
+      };
+      box.addEventListener("pointermove", move);
+      box.addEventListener("pointerup", up);
+    };
+    box.addEventListener("pointerdown", onMiddle);
     box.addEventListener("wheel", onWheel, { passive: false });
     box.addEventListener("gesturestart", onStart);
     box.addEventListener("gesturechange", onChange);
     box.addEventListener("gestureend", onEnd);
     return () => {
+      box.removeEventListener("pointerdown", onMiddle);
       box.removeEventListener("wheel", onWheel);
       box.removeEventListener("gesturestart", onStart);
       box.removeEventListener("gesturechange", onChange);
