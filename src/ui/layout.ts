@@ -89,3 +89,24 @@ export function useLayout<T>(selector: (d: Dock) => T): T {
 }
 
 export const clampW = (n: number) => Math.max(MIN_W, Math.min(MAX_W, Math.round(n)));
+
+/** Each project keeps the space it was left in: Design, Motion or Colour. Kept on this computer. */
+const MODES = "duet:modes";
+export function modeOf(path: string): Mode | null {
+  try {
+    const m = (JSON.parse(localStorage.getItem(MODES) ?? "{}") as Record<string, Mode>)[path];
+    return m === "design" || m === "motion" || m === "color" ? m : null;
+  } catch {
+    return null;
+  }
+}
+export function keepMode(path: string, mode: Mode) {
+  try {
+    const all = JSON.parse(localStorage.getItem(MODES) ?? "{}") as Record<string, Mode>;
+    if (all[path] === mode) return;
+    all[path] = mode;
+    localStorage.setItem(MODES, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}

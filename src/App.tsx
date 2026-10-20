@@ -11,7 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ContextMenu from "./ui/ContextMenu";
 import { installMenu } from "./ui/menu";
-import { clampW, getLayout, setLayout, useLayout } from "./ui/layout";
+import { clampW, getLayout, keepMode, modeOf, setLayout, useLayout } from "./ui/layout";
 import Icon from "./ui/Icons";
 import ChatHome from "./ui/ChatHome";
 import VideoCut from "./ui/VideoCut";
@@ -71,6 +71,16 @@ const MAC = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 export default function App() {
   const zoom = useStore((s) => s.viewport.zoom);
   const project = useStore((s) => s.project);
+  // a project opens in the space it was left in, and another tab keeps its own
+  const spaceMode = useLayout((d) => d.mode);
+  useEffect(() => {
+    if (!project.path) return;
+    const m = modeOf(project.path) ?? "design";
+    if (m !== getLayout().mode) setLayout({ mode: m });
+  }, [project.path]);
+  useEffect(() => {
+    if (project.path) keepMode(project.path, spaceMode);
+  }, [spaceMode]);
   const [zoomMenu, setZoomMenu] = useState(false);
   useDismiss(zoomMenu, () => setZoomMenu(false), ".zoomwrap.zoomonly");
   const [presenting, setPresenting] = useState(false);
