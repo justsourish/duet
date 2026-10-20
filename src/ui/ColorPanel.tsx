@@ -53,21 +53,26 @@ function Slider({ ids, grade, k }: { ids: string[]; grade: Grade; k: (typeof GRA
   );
 }
 
-const GROUPS: { group: "colour" | "light" | "look"; title: string; keys: GradeNumber[] }[] = [
-  { group: "colour", title: "White balance", keys: ["temperature", "tint"] },
-  { group: "light", title: "Light", keys: ["exposure", "contrast", "highlights", "shadows", "whites", "blacks"] },
-  { group: "colour", title: "Colour", keys: ["saturation", "vibrance"] },
+/** The few that do almost everything, under the names a person grading uses. */
+const FEW: { key: GradeNumber; label: string }[] = [
+  { key: "exposure", label: "Brightness" },
+  { key: "highlights", label: "Highlights" },
+  { key: "contrast", label: "Contrast" },
+  { key: "saturation", label: "Saturation" },
+  { key: "temperature", label: "Warmth" },
 ];
+/** The rest stay out of the way, and show only on a picture that already uses them, so that work can still be changed. */
+const REST: GradeNumber[] = ["tint", "shadows", "whites", "blacks", "vibrance"];
 
 /** The Color tab's panel: the colour of the picked pictures and clips. */
-export default function ColorPanel({ els }: { els: El[] }) {
+export default function ColorPanel({ els, every }: { els: El[]; every?: string }) {
   const graded = els.filter(canGrade);
   const [problem, setProblem] = useState("");
   if (graded.length === 0) {
     return (
       <aside className="right">
         <div className="panel-title">Colour</div>
-        <div className="empty pad">{els.length ? "Only pictures and clips have colour to change here." : "Pick a picture or a clip to change its colour."}</div>
+        <div className="empty pad">{every !== undefined ? "There are no pictures or clips in this scene yet." : els.length ? "Only pictures and clips have colour to change here." : "Pick a picture or a clip to change its colour."}</div>
       </aside>
     );
   }
@@ -89,20 +94,20 @@ export default function ColorPanel({ els }: { els: El[] }) {
 
   return (
     <aside className="right">
-      <div className="panel-title">{graded.length === 1 ? graded[0].name : `${graded.length} pictures and clips`}</div>
+      <div className="panel-title">{every !== undefined ? `Every clip in ${every || "this scene"}` : graded.length === 1 ? graded[0].name : `${graded.length} pictures and clips`}</div>
       <div className="sec grade-top">
         <button className="mini" disabled={graded.every((e) => isNeutral(e.grade))} onClick={() => dispatch("set_grade", { ids, grade: null })}>
           Reset colour
         </button>
       </div>
-      {GROUPS.map((g) => (
-        <div className="sec" key={g.title}>
-          <h4>{g.title}</h4>
-          {g.keys.map((key) => (
-            <Slider key={key} ids={ids} grade={grade} k={control(key)} />
-          ))}
-        </div>
-      ))}
+      <div className="sec">
+        {FEW.map((f) => (
+          <Slider key={f.key} ids={ids} grade={grade} k={{ ...control(f.key), label: f.label }} />
+        ))}
+        {REST.filter((key) => graded.some((e) => (e.grade?.[key] ?? 0) !== 0)).map((key) => (
+          <Slider key={key} ids={ids} grade={grade} k={control(key)} />
+        ))}
+      </div>
       <div className="sec">
         <h4>Look</h4>
         {grade.look ? (

@@ -33,12 +33,14 @@ export interface Dock {
   historyLine: boolean;
   /** How wide the chat is in the Chat space, or 0 to share the room with the canvas as it comes. */
   homeChatW: number;
+  /** In Colour, a change goes to every picture and clip in the scene, not only the picked ones. */
+  gradeEvery: boolean;
 }
 
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false, homeChatW: 0 });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false, homeChatW: 0, gradeEvery: false });
 export const CHAT_MIN = { w: 280, h: 140 };
 export const TIME_MIN_H = 72;
 

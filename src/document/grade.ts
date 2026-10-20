@@ -69,6 +69,21 @@ export const neutralGrade = (): Grade => ({
 /** Things whose colour can be graded. */
 export const canGrade = (el: { type: string }) => el.type === "image" || el.type === "video";
 
+type Tree = { elements: Record<string, { id: string; type: string; childIds?: string[] }> };
+
+/** Every picture and clip inside a frame, the frame's own first. Used to grade them all at once. */
+export function gradablesIn(doc: Tree, rootId: string): string[] {
+  const out: string[] = [];
+  const walk = (id: string) => {
+    const el = doc.elements[id];
+    if (!el) return;
+    if (canGrade(el)) out.push(id);
+    el.childIds?.forEach(walk);
+  };
+  walk(rootId);
+  return out;
+}
+
 /** True when the grade leaves the picture as it was. */
 export function isNeutral(g: Grade | null | undefined): boolean {
   if (!g) return true;

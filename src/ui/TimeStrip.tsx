@@ -40,6 +40,7 @@ export default function TimeStrip() {
   const mode = useLayout((d) => d.mode);
   const look = useLayout((d) => d.timeLook ?? "layers");
   const keysOpen = useLayout((d) => d.keysOpen);
+  const gradeEvery = useLayout((d) => d.gradeEvery);
   const timeH = useLayout((d) => d.timeH ?? 170);
   const [growing, setGrowing] = useState<number | null>(null);
   const doc = useStore((s) => currentDoc(s));
@@ -693,6 +694,16 @@ export default function TimeStrip() {
         <button className="pill" data-name="add-media" onClick={() => void bring()} title="Bring in video, music or a voice, at the moment the clock is on">
           Add
         </button>
+        {mode === "color" && (
+          <div className="pill time-look grade-every" title="Where a colour change goes">
+            <button className={gradeEvery ? "" : "active"} data-name="grade-this" onClick={() => setLayout({ gradeEvery: false })} title="Change only the picked clips">
+              This clip
+            </button>
+            <button className={gradeEvery ? "active" : ""} data-name="grade-every" onClick={() => setLayout({ gradeEvery: true })} title="Change every clip in this scene at once">
+              Every clip
+            </button>
+          </div>
+        )}
         <span className="spacer" />
         <div className="time-zoom">
           <button

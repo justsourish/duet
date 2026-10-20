@@ -11,6 +11,8 @@ import { useKeyFocus } from "./keyFocus";
 import type { Entrance } from "../document/time";
 import SpeedGraph from "./SpeedGraph";
 import ColorPanel from "./ColorPanel";
+import { rootOf } from "./BeforeAfter";
+import { gradablesIn } from "../document/grade";
 import FontPicker from "./FontPicker";
 import { ColorField } from "./ColorPicker";
 import { colorOpacity, withOpacity } from "./color";
@@ -551,11 +553,17 @@ export default function PropertiesPanel() {
   useStore((s) => s.transientDoc);
   // the values are the ones at the moment the clock is on, and they stand still while it plays
   useStore((s) => (s.clock.playing ? -1 : s.clock.t));
-  useStore((s) => s.clock.scene);
+  const openScene = useStore((s) => s.clock.scene);
+  const every = useLayout((d) => d.gradeEvery);
   const doc = workDoc();
   const els = selection.map((id) => doc.elements[id]).filter(Boolean) as El[];
 
-  if (mode === "color") return <ColorPanel els={els} />;
+  if (mode === "color") {
+    // Every clip: what is changed goes to every picture and clip in the scene, like a layer over them all
+    const root = rootOf(doc, selection[0])?.id ?? openScene;
+    if (every && root) return <ColorPanel els={gradablesIn(doc, root).map((id) => doc.elements[id])} every={doc.elements[root]?.name ?? ""} />;
+    return <ColorPanel els={els} />;
+  }
 
   if (els.length === 0) {
     return (

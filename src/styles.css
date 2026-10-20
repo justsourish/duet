@@ -5634,3 +5634,50 @@ input.chathome-name.rename {
 .hl-chip svg {
   flex: none;
 }
+
+/* Colour: before and after, the same moment side by side */
+.before-after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 14px 16px 10px;
+  background: var(--canvas);
+}
+.ba-window {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.ba-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 6px 2px;
+}
+.ba-name.on {
+  color: var(--text);
+}
+.ba-pic {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 8px;
+  background: #0e0d0f;
+  overflow: hidden;
+}
+.ba-pic canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.ba-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}

@@ -19,6 +19,7 @@ import TimeStrip from "./ui/TimeStrip";
 import { wireClips } from "./video/play";
 import { wireKeys } from "./video/keys";
 import ChatPanel from "./ui/ChatPanel";
+import BeforeAfter from "./ui/BeforeAfter";
 import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
 import Versions from "./ui/Versions";
@@ -309,6 +310,7 @@ export default function App() {
             <CanvasView />
             <Grip side="l" />
             <Grip side="r" />
+            {dock.mode === "color" && <BeforeAfter />}
             <ChatPanel />
           </main>
           {!dock.rightHidden && <PropertiesPanel />}
