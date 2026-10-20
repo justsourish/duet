@@ -2287,6 +2287,8 @@ body.eyedropping * {
 }
 .time-lane {
   position: relative;
+  /* what is inside a lane stays under the ruler and the names when a row is scrolled beneath them */
+  isolation: isolate;
   flex: none;
   height: 100%;
   border-left: 1px solid var(--line);
