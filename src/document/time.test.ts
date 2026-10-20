@@ -273,3 +273,21 @@ describe("markers", () => {
     expect(runCommand(still, "add_marker", { id: "s", t: 1 })).toBe(still);
   });
 });
+
+describe("the work area", () => {
+  it("is begun and ended at the playhead, kept inside the scene, and saved", () => {
+    let doc = runCommand(scene(), "set_work_area", { id: "f", start: 2 });
+    expect(doc.elements.f.workArea).toEqual({ start: 2, end: doc.elements.f.duration });
+    doc = runCommand(doc, "set_work_area", { id: "f", end: 6 });
+    expect(doc.elements.f.workArea).toEqual({ start: 2, end: 6 });
+    expect(parseDoc(serializeDoc(doc)).elements.f.workArea).toEqual({ start: 2, end: 6 });
+    // a new beginning past the end takes the rest of the scene; an end before the beginning starts it from the top
+    expect(runCommand(doc, "set_work_area", { id: "f", start: 7 }).elements.f.workArea).toEqual({ start: 7, end: doc.elements.f.duration });
+    expect(runCommand(doc, "set_work_area", { id: "f", end: 1 }).elements.f.workArea).toEqual({ start: 0, end: 1 });
+    // the whole scene is no work area at all
+    const whole = runCommand(doc, "set_work_area", { id: "f", start: 0, end: doc.elements.f.duration });
+    expect(whole.elements.f.workArea).toBeUndefined();
+    expect(serializeDoc(whole)).not.toContain("workArea");
+    expect(runCommand(doc, "set_work_area", { id: "f", clear: true }).elements.f.workArea).toBeUndefined();
+  });
+});

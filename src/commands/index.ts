@@ -1159,6 +1159,49 @@ const removeGuide: CommandDef<GuideArgs> = {
   run: (doc, a) => ((doc.guides?.[a.axis] ?? []).some((v) => Math.abs(v - a.at) < 0.01) ? withGuides(doc, a.axis, (l) => l.filter((v) => Math.abs(v - a.at) >= 0.01)) : doc),
 };
 
+// ---- work area ----
+export interface SetWorkAreaArgs {
+  /** The frame that plays. */
+  id: string;
+  start?: number;
+  end?: number;
+  /** Make the whole scene the work area again. */
+  clear?: boolean;
+}
+
+/** Mark the part of a scene being worked on. Playing starts and stops inside it. */
+const setWorkArea: CommandDef<SetWorkAreaArgs> = {
+  label: (a) => (a.clear ? "Clear the work area" : a.start !== undefined && a.end === undefined ? "Start the work area here" : a.end !== undefined && a.start === undefined ? "End the work area here" : "Change the work area"),
+  run: (doc, a) => {
+    const frame = doc.elements[a.id];
+    if (!frame || frame.type !== "frame" || !(frame.duration > 0)) return doc;
+    const next = clone(doc);
+    const f = next.elements[a.id];
+    if (a.clear) {
+      if (!f.workArea) return doc;
+      delete f.workArea;
+      return next;
+    }
+    const was = f.workArea ?? { start: 0, end: f.duration };
+    let start = a.start !== undefined ? Math.max(0, Math.min(f.duration, round(Number(a.start) || 0))) : was.start;
+    let end = a.end !== undefined ? Math.max(0, Math.min(f.duration, round(Number(a.end) || 0))) : was.end;
+    // a new beginning past the old end makes the rest of the scene the work area; a new end before the beginning starts it from the top
+    if (end - start < 0.05) {
+      if (a.start !== undefined && a.end === undefined) end = f.duration;
+      else if (a.end !== undefined && a.start === undefined) start = 0;
+    }
+    if (end - start < 0.05) return doc;
+    if (start <= 0.001 && end >= f.duration - 0.001) {
+      if (!f.workArea) return doc;
+      delete f.workArea;
+      return next;
+    }
+    if (f.workArea && f.workArea.start === start && f.workArea.end === end) return doc;
+    f.workArea = { start, end };
+    return next;
+  },
+};
+
 // ---- markers ----
 export const MARKER_COLORS = ["#ff6b6b", "#ffb347", "#ffd93d", "#4cd98a", "#4cc9f0", "#b68cff"];
 
@@ -1660,6 +1703,7 @@ export const commands = {
   add_guide: addGuide,
   move_guide: moveGuide,
   remove_guide: removeGuide,
+  set_work_area: setWorkArea,
   add_marker: addMarker,
   update_marker: updateMarker,
   remove_marker: removeMarker,

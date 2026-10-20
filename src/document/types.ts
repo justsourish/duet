@@ -167,6 +167,8 @@ export interface El {
   shapeKeys: ShapeKey[];
   /** A frame that plays only: the markers on its timeline, in order of time. */
   markers: Marker[];
+  /** A frame that plays only: the part being worked on, from its start to its end. Playing begins and stops there; the rest is dimmed. Left out when the whole scene is the work area. */
+  workArea?: { start: number; end: number };
   /** A video clip or a sound only: the second in its file where playing starts, and how loud it is from 0 to 1. For these, src is where the file is on the computer. A sound has no place on the canvas: it is only heard. */
   clipFrom: number;
   volume: number;

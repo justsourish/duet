@@ -5965,3 +5965,36 @@ input.chathome-name.rename {
   background: var(--accent);
   opacity: 0.5;
 }
+
+/* the work area: a bar on the ruler, with the rest of the timeline dimmed */
+.time-row.ruler .time-work {
+  position: absolute;
+  bottom: 0;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.85;
+  z-index: 1;
+}
+.time-work .work-l,
+.time-work .work-r {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 7px;
+  cursor: ew-resize;
+}
+.time-work .work-l {
+  left: -3px;
+}
+.time-work .work-r {
+  right: -3px;
+}
+.time-work-dim {
+  position: absolute;
+  top: 20px;
+  bottom: 0;
+  background: rgba(10, 10, 12, 0.45);
+  pointer-events: none;
+  z-index: 1;
+}

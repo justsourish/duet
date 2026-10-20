@@ -215,6 +215,15 @@ export default function TimeStrip() {
         else dispatch("add_marker", { id: sceneId, t: now });
         return;
       }
+      // B begins the work area at the playhead and N ends it there, as in After Effects
+      if ((k === "b" || k === "n") && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const now = Math.round(getState().clock.t * 1000) / 1000;
+        dispatch("set_work_area", k === "b" ? { id: sceneId, start: now } : { id: sceneId, end: now });
+        return;
+      }
       if (!["s", "c", "d", "k", "l", " "].includes(k)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -710,6 +719,33 @@ export default function TimeStrip() {
     window.addEventListener("pointerup", up);
   };
 
+  /** Pull either end of the work area along the ruler. */
+  const dragWork = (e: React.PointerEvent, which: "start" | "end") => {
+    if (e.button !== 0 || !frame?.workArea) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const from = e.clientX;
+    const base = frame.workArea[which];
+    const targets = getSnapTargets();
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      moved = true;
+      let to = Math.max(0, Math.min(length, base + (ev.clientX - from) / pps));
+      if (!(ev.metaKey || ev.ctrlKey)) {
+        const s = findSnap(to, targets);
+        if (s) to = s.time;
+      }
+      dragPreview("set_work_area", { id: frame.id, [which]: to });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) dragCommit("Change the work area");
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   /** Drag a marker along the ruler. A click on it takes the playhead there. */
   const dragMarker = (e: React.PointerEvent, m: Marker) => {
     if (e.button !== 0 || markerEdit === m.id) return;
@@ -1171,6 +1207,23 @@ export default function TimeStrip() {
                 {clockText(t).replace(/\.0$/, "")}
               </i>
             ))}
+            {frame.workArea && (
+              <div
+                className="time-work"
+                data-name="work-area"
+                style={{ left: frame.workArea.start * pps, width: Math.max(2, (frame.workArea.end - frame.workArea.start) * pps) }}
+                title="The work area: playing starts and stops here. B and N set its ends at the playhead. Right-click to clear it."
+                onPointerDown={(e) => e.stopPropagation()}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMarkerMenu({ x: e.clientX, y: e.clientY, id: "work" });
+                }}
+              >
+                <em className="work-l" onPointerDown={(e) => dragWork(e, "start")} />
+                <em className="work-r" onPointerDown={(e) => dragWork(e, "end")} />
+              </div>
+            )}
             {(frame.markers ?? []).map((m) => (
               <b
                 key={m.id}
@@ -1313,6 +1366,12 @@ export default function TimeStrip() {
             {look === "layers" && row.items.filter(opened).map((el) => renderKindRows(el))}
           </Fragment>
         ))}
+        {frame.workArea && (
+          <>
+            <div className="time-work-dim" style={{ left: NAMES, width: frame.workArea.start * pps }} />
+            <div className="time-work-dim" style={{ left: NAMES + frame.workArea.end * pps, width: Math.max(0, (length - frame.workArea.end) * pps) }} />
+          </>
+        )}
         {(frame.markers ?? []).map((m) => (
           <div key={m.id} className="time-marker-line" style={{ left: NAMES + m.t * pps, "--marker": m.color } as React.CSSProperties} />
         ))}
@@ -1322,6 +1381,19 @@ export default function TimeStrip() {
       </div>
       {markerMenu && frame && (
         <div className="ctx" style={{ left: Math.max(10, Math.min(markerMenu.x, window.innerWidth - 230)), top: Math.max(10, Math.min(markerMenu.y, window.innerHeight - 200)) }}>
+          {markerMenu.id === "work" ? (
+            <div
+              className="ctx-item"
+              data-name="clear-work-area"
+              onClick={() => {
+                dispatch("set_work_area", { id: frame.id, clear: true });
+                setMarkerMenu(null);
+              }}
+            >
+              <span>Clear the work area</span>
+            </div>
+          ) : (
+            <>
           <div
             className="ctx-item"
             data-name="rename-marker"
@@ -1358,6 +1430,8 @@ export default function TimeStrip() {
           >
             <span>Remove marker</span>
           </div>
+            </>
+          )}
         </div>
       )}
       {menu && (

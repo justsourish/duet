@@ -18,9 +18,11 @@ function tick(now: number) {
   const own = s.clock.t + (now - last) / 1000;
   const t = clockFromClip(currentDoc(s), scene.id, s.clock.t) ?? own;
   last = now;
-  if (t >= scene.duration) {
+  // with a work area, playing stops at its end
+  const stop = scene.workArea ? Math.min(scene.workArea.end, scene.duration) : scene.duration;
+  if (t >= stop) {
     raf = 0;
-    setClock({ t: scene.duration, playing: false });
+    setClock({ t: stop, playing: false });
     return;
   }
   setClock({ t });
@@ -31,8 +33,10 @@ export function play() {
   const s = getState();
   const scene = s.clock.scene ? currentDoc(s).elements[s.clock.scene] : null;
   if (!scene?.duration || s.clock.playing) return;
-  // pressing play at the end starts again from the beginning
-  setClock({ playing: true, t: s.clock.t >= scene.duration - 0.01 ? 0 : s.clock.t });
+  // pressing play at the end, or outside the work area, starts again from its beginning
+  const from = scene.workArea?.start ?? 0;
+  const to = scene.workArea ? Math.min(scene.workArea.end, scene.duration) : scene.duration;
+  setClock({ playing: true, t: s.clock.t >= to - 0.01 || s.clock.t < from - 0.01 ? from : s.clock.t });
   last = performance.now();
   if (!raf) raf = requestAnimationFrame(tick);
 }
