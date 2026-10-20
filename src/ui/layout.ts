@@ -31,12 +31,14 @@ export interface Dock {
   timeH: number;
   /** The history line along the bottom. Hidden unless asked for: the chat holds the history. */
   historyLine: boolean;
+  /** How wide the chat is in the Chat space, or 0 to share the room with the canvas as it comes. */
+  homeChatW: number;
 }
 
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false, homeChatW: 0 });
 export const CHAT_MIN = { w: 280, h: 140 };
 export const TIME_MIN_H = 72;
 

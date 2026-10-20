@@ -11,11 +11,12 @@ import { useDismiss } from "./useDismiss";
  * in the middle, and on the right the whole canvas or one frame on its own.
  */
 
-const KINDS: { mode: Mode; label: string }[] = [
-  { mode: "design", label: "Design" },
-  { mode: "motion", label: "Motion" },
-  { mode: "color", label: "Colour" },
+const KINDS: { mode: Mode; label: string; key: string }[] = [
+  { mode: "design", label: "Design", key: "1" },
+  { mode: "motion", label: "Motion", key: "2" },
+  { mode: "color", label: "Colour", key: "3" },
 ];
+const CMD = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl ";
 
 export default function ChatToolbar() {
   const mode = useLayout((d) => d.mode);
@@ -77,6 +78,7 @@ export default function ChatToolbar() {
               }}
             >
               {k.label}
+              <kbd>{`${CMD}${k.key}`}</kbd>
             </div>
           ))}
         </div>

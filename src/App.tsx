@@ -232,6 +232,7 @@ export default function App() {
           <button
             className={dock.mode === "design" ? "active" : ""}
             data-name="mode-design"
+            title="Design (Cmd or Ctrl 1)"
             onClick={() => setLayout({ mode: "design" })}
           >
             Design
@@ -239,6 +240,7 @@ export default function App() {
           <button
             className={dock.mode === "motion" ? "active" : ""}
             data-name="mode-motion"
+            title="Motion (Cmd or Ctrl 2)"
             onClick={() => setLayout({ mode: "motion" })}
           >
             Motion
@@ -246,6 +248,7 @@ export default function App() {
           <button
             className={dock.mode === "color" ? "active" : ""}
             data-name="mode-color"
+            title="Colour (Cmd or Ctrl 3)"
             onClick={() => setLayout({ mode: "color" })}
           >
             Colour

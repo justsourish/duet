@@ -13,6 +13,7 @@ import { agentColour } from "../ai/colours";
 import ChatPanel from "./ChatPanel";
 import ChatToolbar from "./ChatToolbar";
 import Icon from "./Icons";
+import { setLayout, useLayout } from "./layout";
 import SkillsPanel from "./SkillsPanel";
 
 /** How long ago, in plain words. */
@@ -152,6 +153,28 @@ function ProjectRow({ r, on, open, onOpen, onMenu, renaming, onRenamed }: { r: R
   );
 }
 
+/** The chat's right edge: drag it to give the chat or the canvas more room. Double-click puts it back. */
+function ChatWidthGrip() {
+  const down = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const chat = e.currentTarget.parentElement?.getBoundingClientRect();
+    if (!chat) return;
+    const startX = e.clientX;
+    const move = (m: PointerEvent) => {
+      // the canvas always keeps some room, and the chat never gets too narrow to read
+      const most = window.innerWidth - chat.left - 240;
+      setLayout({ homeChatW: Math.round(Math.max(320, Math.min(most, chat.width + m.clientX - startX))) });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return <div className="grip grip-r" data-name="chat-width" onPointerDown={down} onDoubleClick={() => setLayout({ homeChatW: 0 })} title="Drag to make the chat wider or narrower. Double-click to put it back." />;
+}
+
 /** What is in the trash: each can be put back, or deleted for good. */
 function TrashView({ onBack }: { onBack: () => void }) {
   const [items, setItems] = useState<Trashed[] | null>(null);
@@ -259,6 +282,7 @@ export default function ChatHome() {
     };
   }, []);
   const recents = listedProjects();
+  const homeChatW = useLayout((d) => d.homeChatW);
   const tabs = getTabs();
   const [skills, setSkills] = useState(false);
   const [trash, setTrash] = useState(false);
@@ -311,7 +335,7 @@ export default function ChatHome() {
   };
 
   return (
-    <div className="chathome">
+    <div className="chathome" style={homeChatW ? { gridTemplateColumns: `276px ${homeChatW}px minmax(0, 1fr)` } : undefined}>
       <aside className="chathome-projects">
         <nav className="chathome-rail">
           <button className="rail-btn" title="New project" onClick={() => void newProject()} disabled={!inTauri()}>
@@ -491,6 +515,7 @@ export default function ChatHome() {
         </section>
       )}
       <section className="chathome-chat">
+        <ChatWidthGrip />
         {trash ? (
           <TrashView onBack={() => setTrash(false)} />
         ) : skills ? (
