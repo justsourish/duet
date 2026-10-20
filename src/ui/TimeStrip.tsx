@@ -6,7 +6,7 @@ import type { Doc, El, Marker, Moving } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dragPreviewDoc, getState, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
-import { openScene, pause, play, seek, togglePlay } from "../video/play";
+import { openScene, pause, seek, shuttle, togglePlay } from "../video/play";
 import Icon from "./Icons";
 import { setKeyFocus } from "./keyFocus";
 import { QUALITIES, SIZES, addMedia, clipKind, defaultChoice, dropClips, exportScene, exportSize, keepDropped, stopExport } from "../video/scene";
@@ -201,6 +201,7 @@ export default function TimeStrip() {
   // cutting keys, the ones video editors already have in their hands
   useEffect(() => {
     if (!sceneId) return;
+    let kDown = false;
     const key = (e: KeyboardEvent) => {
       const on = document.activeElement as HTMLElement | null;
       if (e.metaKey || e.ctrlKey || e.altKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
@@ -244,20 +245,37 @@ export default function TimeStrip() {
         dispatch("set_work_area", k === "b" ? { id: sceneId, start: now } : { id: sceneId, end: now });
         return;
       }
-      if (!["s", "c", "d", "k", "l", " "].includes(k)) return;
+      if (!["s", "c", "d", "j", "k", "l", " "].includes(k)) return;
       e.preventDefault();
       e.stopPropagation();
       // the canvas listens on the window too, and must not take the spacebar for the hand tool
       e.stopImmediatePropagation();
       // the spacebar plays and stops, as in every video editor. The hand tool still moves the canvas.
       if (k === " ") return e.repeat ? undefined : togglePlay();
-      if (k === "l") return play();
-      if (k === "k") return pause();
+      // J, K and L as in Premiere: back, stop, forward; with K held, J and L step one frame
+      if (k === "k") {
+        kDown = true;
+        return pause();
+      }
+      if (k === "j" || k === "l") {
+        if (kDown) {
+          pause();
+          return seek((Math.round(getState().clock.t * 30) + (k === "j" ? -1 : 1)) / 30);
+        }
+        return shuttle(k === "j" ? -1 : 1);
+      }
       // S or C splits at the playhead, as the razor does in other video editors; D takes the clip away and closes the gap
       cutNow(k === "d" ? "remove" : "split");
     };
+    const up = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "k") kDown = false;
+    };
     window.addEventListener("keydown", key, true);
-    return () => window.removeEventListener("keydown", key, true);
+    window.addEventListener("keyup", up, true);
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("keyup", up, true);
+    };
   }, [sceneId]);
 
   const length = frame?.duration ?? 0;
