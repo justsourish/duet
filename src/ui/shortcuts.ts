@@ -62,6 +62,7 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
     keys: [
       ["Space", "Play or stop"],
       ["L", "Play"],
+      ["Cmd Left and Right", "Step one frame back or forward. With Shift, ten frames"],
       ["K", "Stop"],
       ["C or S", "Split at the playhead"],
       ["D", "Delete the clip and close the gap"],

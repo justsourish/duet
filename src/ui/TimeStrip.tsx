@@ -119,6 +119,25 @@ export default function TimeStrip() {
     return () => see.disconnect();
   }, [plays, mode, sceneId, NAMES]);
 
+  // Cmd or Ctrl with the left and right arrows step the playhead one frame at a time; with Shift, ten frames
+  useEffect(() => {
+    if (!sceneId) return;
+    const key = (e: KeyboardEvent) => {
+      const on = document.activeElement as HTMLElement | null;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const FPS = 30;
+      const frames = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1);
+      pause();
+      seek((Math.round(getState().clock.t * FPS) + frames) / FPS);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [sceneId]);
+
   // In Layers, as in After Effects: [ slides the picked layers so they start at the playhead, ] so they end there.
   // With Option, the layer is trimmed instead: its start or end is brought to the playhead and the rest stays where it is.
   useEffect(() => {
