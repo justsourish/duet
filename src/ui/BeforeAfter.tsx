@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { drawElement, setPlainPictures } from "../canvas/render";
 import { canGrade } from "../document/grade";
 import { worldRect } from "../document/geometry";
@@ -15,9 +15,17 @@ export function rootOf(doc: Doc, id: string | undefined): El | null {
 }
 
 /** Where the thing fits inside a window, keeping its shape, with a little room around it. */
-function fitIn(el: El, w: number, h: number) {
-  const k = Math.min((w - 16) / el.width, (h - 16) / el.height);
-  return { k, ox: (w - el.width * k) / 2, oy: (h - el.height * k) / 2 };
+/** How far in the two windows are looking, and where: both windows share it, so they always see the same spot. */
+interface View {
+  zoom: number;
+  x: number;
+  y: number;
+}
+const FIT: View = { zoom: 1, x: 0, y: 0 };
+
+function fitIn(el: El, w: number, h: number, view: View = FIT) {
+  const k = Math.min((w - 16) / el.width, (h - 16) / el.height) * view.zoom;
+  return { k, ox: (w - el.width * k) / 2 + view.x, oy: (h - el.height * k) / 2 + view.y };
 }
 
 /** The picture or clip under a point in the window, the one on top first. */
@@ -47,6 +55,80 @@ export default function BeforeAfter() {
   const rootId = useStore((s) => rootOf(seenDoc(s), s.selection[0])?.id ?? null);
   const before = useRef<HTMLCanvasElement>(null);
   const after = useRef<HTMLCanvasElement>(null);
+  const view = useRef<View>(FIT);
+  const [looking, setLooking] = useState<View>(FIT);
+  const look = (v: View) => {
+    view.current = v;
+    setLooking(v);
+    window.dispatchEvent(new Event("duet:repaint"));
+  };
+
+  // Pinch or Cmd and scroll zooms where the pointer is; two fingers move the view. Both windows move together.
+  useEffect(() => {
+    view.current = FIT;
+    setLooking(FIT);
+    const root = () => seenDoc(getState()).elements[rootId ?? ""];
+    const zoomAt = (box: HTMLElement, cx: number, cy: number, factor: number) => {
+      const el = root();
+      if (!el) return;
+      const r = box.getBoundingClientRect();
+      const v = view.current;
+      const z = Math.max(1, Math.min(32, v.zoom * factor));
+      const { k, ox, oy } = fitIn(el, r.width, r.height, v);
+      const wx = (cx - ox) / k;
+      const wy = (cy - oy) / k;
+      const next = fitIn(el, r.width, r.height, { ...v, zoom: z, x: 0, y: 0 });
+      const nk = next.k;
+      look(z === 1 ? FIT : { zoom: z, x: cx - wx * nk - next.ox, y: cy - wy * nk - next.oy });
+    };
+    const boxes = Array.from(document.querySelectorAll<HTMLElement>(".ba-pic"));
+    const undo: (() => void)[] = [];
+    for (const box of boxes) {
+      let pinch: number | null = null;
+      const local = (e: { clientX: number; clientY: number }) => {
+        const r = box.getBoundingClientRect();
+        return { cx: e.clientX - r.left, cy: e.clientY - r.top };
+      };
+      const onWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          if (pinch !== null) return;
+          const { cx, cy } = local(e);
+          zoomAt(box, cx, cy, Math.exp(-Math.max(-40, Math.min(40, e.deltaY)) * 0.01));
+        } else if (view.current.zoom > 1) {
+          const v = view.current;
+          look({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
+        }
+      };
+      const onStart = (e: Event) => {
+        e.preventDefault();
+        pinch = view.current.zoom;
+      };
+      const onChange = (e: Event) => {
+        e.preventDefault();
+        if (pinch === null) return;
+        const g = e as Event & { scale: number; clientX: number; clientY: number };
+        const { cx, cy } = local(g);
+        zoomAt(box, cx, cy, (pinch * g.scale) / view.current.zoom);
+      };
+      const onEnd = (e: Event) => {
+        e.preventDefault();
+        pinch = null;
+      };
+      box.addEventListener("wheel", onWheel, { passive: false });
+      box.addEventListener("gesturestart", onStart);
+      box.addEventListener("gesturechange", onChange);
+      box.addEventListener("gestureend", onEnd);
+      undo.push(() => {
+        box.removeEventListener("wheel", onWheel);
+        box.removeEventListener("gesturestart", onStart);
+        box.removeEventListener("gesturechange", onChange);
+        box.removeEventListener("gestureend", onEnd);
+      });
+    }
+    return () => undo.forEach((u) => u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootId]);
 
   useLayoutEffect(() => {
     if (!rootId) return;
@@ -69,7 +151,7 @@ export default function BeforeAfter() {
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      const { k, ox, oy } = fitIn(root, w, h);
+      const { k, ox, oy } = fitIn(root, w, h, view.current);
       ctx.save();
       ctx.translate(ox, oy);
       ctx.scale(k, k);
@@ -134,7 +216,7 @@ export default function BeforeAfter() {
     const root = doc.elements[rootId];
     if (!root) return;
     const r = e.currentTarget.getBoundingClientRect();
-    const { k, ox, oy } = fitIn(root, r.width, r.height);
+    const { k, ox, oy } = fitIn(root, r.width, r.height, view.current);
     const id = pictureAt(doc, root, (e.clientX - r.left - ox) / k, (e.clientY - r.top - oy) / k);
     if (!id) return;
     if (e.shiftKey) select(selection.includes(id) ? selection.filter((s) => s !== id) : [...selection, id]);
@@ -155,7 +237,14 @@ export default function BeforeAfter() {
           <canvas ref={after} onPointerDown={pick} />
         </div>
       </div>
-      <p className="ba-note">Click a picture to pick it. Click around them to see the whole board.</p>
+      <p className="ba-note">
+        Click a picture to pick it. Click around them to see the whole board. Pinch or Cmd and scroll to zoom both windows.
+        {looking.zoom > 1 && (
+          <button className="pill" data-name="ba-fit" onClick={(e) => { e.stopPropagation(); look(FIT); }}>
+            Fit
+          </button>
+        )}
+      </p>
     </div>
   );
 }
