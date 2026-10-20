@@ -165,7 +165,7 @@ export default function TimeStrip() {
         if (e.altKey) {
           if (t <= span.start + 0.01 || t >= span.end - 0.01) continue;
           next = left
-            ? runCommand(next, "set_timing", { ids: [id], start: t, ...(playsFile(el) ? { clipFrom: fileTimeAt(el, span.start, t) } : {}) })
+            ? runCommand(next, "set_timing", { ids: [id], start: t, keepKeys: true, ...(playsFile(el) ? { clipFrom: fileTimeAt(el, span.start, t) } : {}) })
             : runCommand(next, "set_timing", { ids: [id], end: t });
         } else {
           const start = Math.max(0, Math.min(scene.duration - 0.1, left ? t : t - len));

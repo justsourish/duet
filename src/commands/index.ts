@@ -1097,6 +1097,8 @@ export interface SetTimingArgs {
   end?: number;
   /** A video clip only: the second in its file where playing starts. */
   clipFrom?: number;
+  /** A trim: what it does over time stays where it is instead of moving with the start. */
+  keepKeys?: boolean;
 }
 
 const setTiming: CommandDef<SetTimingArgs> = {
@@ -1114,7 +1116,7 @@ const setTiming: CommandDef<SetTimingArgs> = {
       if (el.end && el.end <= el.start) el.end = Math.min(scene.duration, round(el.start + 0.1));
       if (a.clipFrom !== undefined && playsFile(el)) el.clipFrom = Math.max(0, round(Number(a.clipFrom) || 0));
       // what it does over time moves along with it
-      const by = el.start - was;
+      const by = a.keepKeys ? 0 : el.start - was;
       if (by) for (const prop of MOVING) if (el.keys[prop]) el.keys[prop] = el.keys[prop]!.map((k) => ({ ...k, t: round(k.t + by) }));
       if (by) el.shapeKeys = el.shapeKeys.map((k) => ({ ...k, t: round(k.t + by) }));
       changed = true;
