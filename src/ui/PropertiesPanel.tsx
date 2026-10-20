@@ -664,6 +664,14 @@ export default function PropertiesPanel() {
       {els.length > 0 && !els.every((e) => e.type === "frame" && !e.parentId) && <AlignSection ids={els.map((e) => e.id)} />}
 
       {mode === "motion" && one && scene && one.id === scene.id && <LengthSection el={one} />}
+      {mode === "motion" && one && one.type === "frame" && !(one.duration > 0) && (
+        <div className="sec">
+          <h4>Motion</h4>
+          <button className="pill" data-name="make-video" title="Give this frame a length, so what is in it can appear, move and leave" onClick={() => dispatch("set_duration", { id: one.id, seconds: 10 })}>
+            Make this frame a scene
+          </button>
+        </div>
+      )}
       {mode === "motion" && els.length > 0 && els.every(playsFile) && <PlaySpeedSection els={els} />}
       {keyed && <SpeedSection el={keyed} />}
 

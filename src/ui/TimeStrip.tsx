@@ -97,11 +97,10 @@ export default function TimeStrip() {
   // what is selected decides which frame is open, and with nothing selected the open one stays
   const chosen = pageFrame(doc, selection[0]);
   const openOne = clock.scene ? (doc.elements[clock.scene] ?? null) : null;
-  // Motion always has a scene open: picking something outside one keeps the scene you were in, unless you pick a frame to make it a scene
-  const asking = !!chosen && !(chosen.duration > 0) && selection.length === 1 && selection[0] === chosen.id;
+  // Motion always has a scene open, and its timeline always shows: picking something outside one, even a frame that is not a scene yet, keeps the scene you were in
   const firstScene = () => doc.rootIds.map((id) => doc.elements[id]).find((e) => e?.type === "frame" && e.duration > 0) ?? null;
   const frame =
-    mode === "motion" && !(chosen && chosen.duration > 0) && !asking
+    mode === "motion" && !(chosen && chosen.duration > 0)
       ? (openOne && openOne.duration > 0 ? openOne : firstScene()) ?? chosen
       : chosen ?? openOne;
   const plays = !!frame && frame.duration > 0;
