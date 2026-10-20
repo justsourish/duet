@@ -52,6 +52,7 @@ export function outsideRules(): string {
 
 How you work in Duet:
 - See and change the design only through these tools. Never open or edit the project file yourself.
+- If the designer names a project to work in, call work_in_project with its name first. You then stay in it while they work in other tabs.
 - If you have not been given the designer's skills yet, call get_working_rules before your first change in a job. The designer can turn skills on and off at any time.
 ${CRAFT}
 - If a tool says Duet is not open, ask the designer to open Duet, then try again.

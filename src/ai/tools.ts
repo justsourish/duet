@@ -22,7 +22,7 @@ import { clipPicture, fileLength, seekClips } from "../video/clips";
 import { QUALITIES, defaultChoice, exportScene } from "../video/scene";
 import { saveNow, tabName } from "../project/project";
 import { tracePicture } from "../project/trace";
-import { getState, goTo, keepAiWorkWhile, liveRoom, roomFor } from "../state/store";
+import { getState, goTo, keepAiWorkWhile, liveRoom, parkedFiles, roomFor } from "../state/store";
 import type { Room } from "../state/store";
 import { parentOf } from "../state/directions";
 import { addMsg, askDesigner, conversationProject, getChat, messagesOf, setMinimized, taskOf, updateMsg } from "./chat";
@@ -63,6 +63,12 @@ export const TOOLS: ToolDef[] = [
     description:
       "Start here. Returns the project, what the designer has selected, the frames on the page, the permission level, and which skills are loaded.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "work_in_project",
+    description:
+      "For an AI connected from outside Duet's own chat: choose which open project you work in, by its tab name. You stay in it whichever tab the designer looks at, until you choose another or it is closed. Leave name out to list the open projects. Without this you work in the project that was on screen when you started.",
+    inputSchema: { type: "object", properties: { name: { type: "string", description: "The project's name, as on its tab." } } },
   },
   {
     name: "get_working_rules",
@@ -841,7 +847,7 @@ function prepare(tool: string, raw: Args, doc = R.currentDoc()): { args: Args } 
 // ---- each AI works in its own project, whichever one is on screen ----
 
 /** The project each AI works in, by the name it goes by, and when it last did something there. */
-const homes = new Map<string, { file: string | null; at: number; thread?: string }>();
+const homes = new Map<string, { file: string | null; at: number; thread?: string; chosen?: boolean }>();
 /** An AI quiet for this long is taken to have finished. When it comes back it works on the project on screen. */
 const HOME_KEPT_MS = 10 * 60 * 1000;
 
@@ -871,6 +877,11 @@ function roomOf(by?: string, thread?: string): Room | null {
   if (!by) return liveRoom;
   const now = Date.now();
   const home = homes.get(by);
+  // a project the AI chose itself is kept until it chooses another, however long it is quiet
+  if (home?.chosen) {
+    home.at = now;
+    return roomFor(home.file);
+  }
   if (!home || now - home.at > HOME_KEPT_MS) {
     homes.set(by, { file: liveRoom.file, at: now });
     return liveRoom;
@@ -878,6 +889,27 @@ function roomOf(by?: string, thread?: string): Room | null {
   home.at = now;
   if (home.thread && taskOf(home.thread)) T = home.thread;
   return roomFor(home.file);
+}
+
+/** The open projects, the one on screen first, by the name on their tab. */
+function openProjects(): { file: string; name: string }[] {
+  const on = liveRoom.file;
+  const files = [...(on ? [on] : []), ...parkedFiles().filter((f) => f !== on)];
+  return files.map((file) => ({ file, name: tabName(file) }));
+}
+
+/** An AI from outside chooses the project it works in, and keeps it whichever tab is on screen. */
+function workInProject(raw: unknown, by?: string): ToolResult {
+  const open = openProjects();
+  const list = open.map((p) => `- ${p.name}${p.file === liveRoom.file ? " (on screen)" : ""}`).join("\n");
+  const name = raw && typeof raw === "object" ? (raw as Args).name : undefined;
+  if (typeof name !== "string" || !name.trim()) return { text: open.length ? `The open projects:\n${list}` : "No project with a file is open." };
+  if (!by || !isOutside(by)) return fail("Only an AI connected from outside Duet's chat chooses its project. Duet's chat works in the project it was started from.");
+  const want = name.trim().toLowerCase().replace(/\.duet$/, "");
+  const found = open.find((p) => p.name.toLowerCase() === want) ?? open.find((p) => p.name.toLowerCase().includes(want));
+  if (!found) return fail(`No open project is called "${name}". Ask the designer to open it. The open projects:\n${list}`);
+  homes.set(by, { file: found.file, at: Date.now(), chosen: true });
+  return { text: `You now work in "${found.name}", whichever tab the designer looks at, until you choose another project or it is closed.` };
 }
 
 /** The project the call being answered works in. Calls are answered one at a time, so this is never mixed up. */
@@ -1253,6 +1285,7 @@ function changedIds(a: Doc, b: Doc): string[] {
 export function callTool(name: string, raw: unknown, by?: string, thread?: string): Promise<ToolResult> {
   return oneAtATime(async () => {
     T = null;
+    if (name === "work_in_project") return workInProject(raw, by);
     const room = roomOf(by, thread);
     if (!room) return fail("The project you were working in has been closed, so nothing was changed. Stop, and tell the designer what you were doing.");
     R = room;
