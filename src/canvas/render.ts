@@ -13,6 +13,8 @@ import { nameOf } from "../ai/names";
 import { HANDLES } from "./handles";
 import { agentColour } from "../ai/colours";
 import { plainName } from "../ai/who";
+import { RULER, rulerTicks } from "./guides";
+import { getLayout } from "../ui/layout";
 import { FONT_STACK, fontCss, layoutText, lineStep, lineWidth, measureText } from "./text";
 
 /** How far each scrolling screen is scrolled while presenting. Empty in the editor. */
@@ -23,6 +25,8 @@ export const COLORS = {
   dot: "#2a2a31",
   accent: "#7c5cff",
   guide: "#22d3ee",
+  gap: "#ff4d8d",
+  ruler: "#1c1c21",
   muted: "#8d8d98",
   white: "#ffffff",
 };
@@ -499,6 +503,92 @@ function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number
   ctx.textAlign = "left";
 }
 
+/** A small label on the canvas, like the one that shows the size of what is being drawn. */
+function tag(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number, colour: string) {
+  ctx.font = `600 10px ${FONT_STACK}`;
+  const w = ctx.measureText(text).width + 8;
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.roundRect(cx - w / 2, y - 2, w, 14, 4);
+  ctx.fill();
+  ctx.fillStyle = COLORS.white;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillText(text, cx, y + 5.5);
+  ctx.textAlign = "left";
+}
+
+/** The rulers along the top and the left, the ruler guides across the canvas, and the number on a guide being pulled. */
+function drawRulers(ctx: CanvasRenderingContext2D, s: State, doc: Doc, w: number, h: number) {
+  const z = s.viewport.zoom;
+  // guides first, so the rulers sit on top of their ends
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = COLORS.gap;
+  for (const gx of doc.guides?.x ?? []) {
+    const sx = Math.round(gx * z + s.viewport.x) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(sx, RULER);
+    ctx.lineTo(sx, h);
+    ctx.stroke();
+  }
+  for (const gy of doc.guides?.y ?? []) {
+    const sy = Math.round(gy * z + s.viewport.y) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(RULER, sy);
+    ctx.lineTo(w, sy);
+    ctx.stroke();
+  }
+  // the strips
+  ctx.fillStyle = COLORS.ruler;
+  ctx.fillRect(0, 0, w, RULER);
+  ctx.fillRect(0, 0, RULER, h);
+  ctx.strokeStyle = "#2c2c33";
+  ctx.beginPath();
+  ctx.moveTo(0, RULER + 0.5);
+  ctx.lineTo(w, RULER + 0.5);
+  ctx.moveTo(RULER + 0.5, 0);
+  ctx.lineTo(RULER + 0.5, h);
+  ctx.stroke();
+  ctx.fillStyle = COLORS.muted;
+  ctx.strokeStyle = "#55555f";
+  ctx.font = `500 9px ${FONT_STACK}`;
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  for (const t of rulerTicks((RULER - s.viewport.x) / z, (w - s.viewport.x) / z, z)) {
+    const sx = Math.round(t.at * z + s.viewport.x) + 0.5;
+    if (sx < RULER) continue;
+    ctx.beginPath();
+    ctx.moveTo(sx, RULER);
+    ctx.lineTo(sx, t.major ? 6 : RULER - 4);
+    ctx.stroke();
+    if (t.major) ctx.fillText(String(Math.round(t.at)), sx + 3, 10);
+  }
+  for (const t of rulerTicks((RULER - s.viewport.y) / z, (h - s.viewport.y) / z, z)) {
+    const sy = Math.round(t.at * z + s.viewport.y) + 0.5;
+    if (sy < RULER) continue;
+    ctx.beginPath();
+    ctx.moveTo(RULER, sy);
+    ctx.lineTo(t.major ? 6 : RULER - 4, sy);
+    ctx.stroke();
+    if (t.major) {
+      ctx.save();
+      ctx.translate(10, sy + 3);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(String(Math.round(t.at)), 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.fillStyle = COLORS.ruler;
+  ctx.fillRect(0, 0, RULER, RULER);
+  // while a guide is pulled, its place
+  const now = s.overlay.guideNow;
+  if (now) {
+    const p = now.axis === "x" ? now.at * z + s.viewport.x : now.at * z + s.viewport.y;
+    if (now.axis === "x") tag(ctx, String(Math.round(now.at)), p, RULER + 4, COLORS.gap);
+    else tag(ctx, String(Math.round(now.at)), RULER + 22, p - 7, COLORS.gap);
+  }
+}
+
 /** Beside the chat the canvas only looks, so it does not tell you to draw. */
 let quiet = false;
 export const setQuietCanvas = (on: boolean) => void (quiet = on);
@@ -894,6 +984,33 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     ctx.lineTo(w, sy);
     ctx.stroke();
   }
+
+  // measured gaps while something moves: a line across each space with its size
+  for (const g of s.overlay.gaps) {
+    const a = g.axis === "x" ? toScreen(s, g.from, g.at) : toScreen(s, g.at, g.from);
+    const b = g.axis === "x" ? toScreen(s, g.to, g.at) : toScreen(s, g.at, g.to);
+    ctx.strokeStyle = COLORS.gap;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5);
+    ctx.lineTo(Math.round(b.x) + 0.5, Math.round(b.y) + 0.5);
+    const cap = 3;
+    if (g.axis === "x") {
+      ctx.moveTo(Math.round(a.x) + 0.5, a.y - cap);
+      ctx.lineTo(Math.round(a.x) + 0.5, a.y + cap);
+      ctx.moveTo(Math.round(b.x) + 0.5, b.y - cap);
+      ctx.lineTo(Math.round(b.x) + 0.5, b.y + cap);
+    } else {
+      ctx.moveTo(a.x - cap, Math.round(a.y) + 0.5);
+      ctx.lineTo(a.x + cap, Math.round(a.y) + 0.5);
+      ctx.moveTo(b.x - cap, Math.round(b.y) + 0.5);
+      ctx.lineTo(b.x + cap, Math.round(b.y) + 0.5);
+    }
+    ctx.stroke();
+    tag(ctx, String(Math.round(g.to - g.from)), (a.x + b.x) / 2, (a.y + b.y) / 2 - (g.axis === "x" ? 16 : 0), COLORS.gap);
+  }
+
+  if (getLayout().rulers && !quiet) drawRulers(ctx, s, doc, w, h);
 
   // empty hint, but not while an AI is at work: the canvas is about to fill
   if (doc.rootIds.length === 0 && !s.overlay.draft && !s.aiWork && !quiet) {

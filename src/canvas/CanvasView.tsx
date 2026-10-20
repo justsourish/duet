@@ -1,6 +1,8 @@
 import { message } from "@tauri-apps/plugin-dialog";
 import { clipKind, dropClips, keepDropped } from "../video/scene";
-import { setLayout, useLayout } from "../ui/layout";
+import { getLayout, setLayout, useLayout } from "../ui/layout";
+import { RULER, gapsAround, snapEqualGaps, snapToGuides } from "./guides";
+import type { Gap } from "./guides";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { newId, runCommand } from "../commands";
 import { extractPayload, payloadToText, textToPayload } from "../document/clipboard";
@@ -93,6 +95,7 @@ type Drag =
   | { kind: "node"; hit: NodeHit; start: AbsNode[]; at: { x: number; y: number }; sx: number; sy: number; moved: boolean }
   | { kind: "node-marquee"; start: { x: number; y: number }; prev: number[]; additive: boolean; pathId: string; moved: boolean; sx: number; sy: number }
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
+  | { kind: "guide"; axis: "x" | "y"; from: number | null; moved: boolean; sx: number; sy: number }
   | { kind: "create"; type: ElementType; start: { x: number; y: number }; parentId: string | null; sx: number; sy: number }
   | { kind: "move"; start: { x: number; y: number }; ids: string[]; base: Doc; moved: boolean; sx: number; sy: number; duplicate?: boolean }
   | { kind: "resize"; handle: HandleKey; id: string; orig: Rect; turn: number; sx: number; sy: number; start: { x: number; y: number }; many?: { id: string; r: Rect }[] }
@@ -495,6 +498,17 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     if (canvasRef.current) canvasRef.current.style.cursor = c;
   };
 
+  /** The ruler guide under a point on the screen, if one is within a few pixels. */
+  const guideNear = (sx: number, sy: number): { axis: "x" | "y"; at: number } | null => {
+    if (!getLayout().rulers || sx < RULER || sy < RULER) return null;
+    const s = getState();
+    const g = workDoc(s).guides;
+    if (!g) return null;
+    for (const at of g.x) if (Math.abs(at * s.viewport.zoom + s.viewport.x - sx) <= 4) return { axis: "x", at };
+    for (const at of g.y) if (Math.abs(at * s.viewport.zoom + s.viewport.y - sy) <= 4) return { axis: "y", at };
+    return null;
+  };
+
   // ---------- pointer ----------
   const onPointerDown = (e: React.PointerEvent) => {
     if (getState().editingId) return;
@@ -509,6 +523,21 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       dragRef.current = { kind: "pan", sx: p.sx, sy: p.sy, vx: s.viewport.x, vy: s.viewport.y };
       setCursor("grabbing");
       return;
+    }
+
+    // with rulers on, a drag from a ruler pulls out a guide, and a guide can be picked up and moved
+    if (getLayout().rulers && s.tool === "move" && e.button === 0) {
+      const top = p.sy < RULER && p.sx >= RULER;
+      const left = p.sx < RULER && p.sy >= RULER;
+      if (top || left) {
+        dragRef.current = { kind: "guide", axis: top ? "y" : "x", from: null, moved: false, sx: p.sx, sy: p.sy };
+        return;
+      }
+      const near = guideNear(p.sx, p.sy);
+      if (near) {
+        dragRef.current = { kind: "guide", axis: near.axis, from: near.at, moved: false, sx: p.sx, sy: p.sy };
+        return;
+      }
     }
 
     if (s.tool === "pen") {
@@ -674,6 +703,11 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       }
       if (CREATE_TOOLS.includes(s.tool)) return setCursor(s.tool === "text" ? "text" : "crosshair");
       if (s.tool === "zoom") return setCursor(e.altKey ? "zoom-out" : "zoom-in");
+      if (getLayout().rulers) {
+        const near = guideNear(p.sx, p.sy);
+        if (near) return setCursor(near.axis === "x" ? "col-resize" : "row-resize");
+        if (p.sy < RULER || p.sx < RULER) return setCursor("default");
+      }
       const h = handleAt(p.sx, p.sy);
       if (h) {
         if (s.overlay.hoverId) setOverlay({ hoverId: null });
@@ -723,6 +757,16 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       return;
     }
 
+    if (d.kind === "guide") {
+      if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
+      d.moved = true;
+      const at = Math.round(d.axis === "x" ? p.x : p.y);
+      if (d.from === null) dragPreview("add_guide", { axis: d.axis, at });
+      else dragPreview("move_guide", { axis: d.axis, from: d.from, at });
+      setOverlay({ guideNow: { axis: d.axis, at } });
+      return;
+    }
+
     if (d.kind === "zoom") {
       if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 3) return;
       d.moved = true;
@@ -751,6 +795,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       let dy = p.y - d.start.y;
       let guidesX: number[] = [];
       let guidesY: number[] = [];
+      let gaps: Gap[] = [];
       if (!(e.metaKey || e.ctrlKey)) {
         const skip = new Set<string>();
         for (const id of d.ids) {
@@ -762,11 +807,27 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
           .map((id) => worldBounds(d.base, id));
         const box = unionRect(d.ids.map((id) => worldBounds(d.base, id)));
         if (box) {
-          const snap = snapRect({ ...box, x: box.x + dx, y: box.y + dy }, others, 6 / s.viewport.zoom);
-          dx += snap.dx;
-          dy += snap.dy;
-          guidesX = snap.guidesX;
-          guidesY = snap.guidesY;
+          const near = 6 / s.viewport.zoom;
+          // ruler guides first, then the edges and middles of neighbours on the way that is still free, then equal gaps
+          const moved = { ...box, x: box.x + dx, y: box.y + dy };
+          const onGuide = snapToGuides(moved, d.base.guides, near);
+          dx += onGuide.dx;
+          dy += onGuide.dy;
+          if (onGuide.x !== null) guidesX = [onGuide.x];
+          if (onGuide.y !== null) guidesY = [onGuide.y];
+          const snap = snapRect({ ...box, x: box.x + dx, y: box.y + dy }, others, near);
+          if (onGuide.x === null) {
+            dx += snap.dx;
+            guidesX = snap.guidesX;
+          }
+          if (onGuide.y === null) {
+            dy += snap.dy;
+            guidesY = snap.guidesY;
+          }
+          const equal = snapEqualGaps({ ...box, x: box.x + dx, y: box.y + dy }, others, near, 400 / s.viewport.zoom);
+          if (onGuide.x === null && snap.guidesX.length === 0) dx += equal.dx;
+          if (onGuide.y === null && snap.guidesY.length === 0) dy += equal.dy;
+          gaps = gapsAround({ ...box, x: box.x + dx, y: box.y + dy }, others, 160 / s.viewport.zoom);
         }
       }
       if (d.duplicate) {
@@ -774,7 +835,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       } else {
         dragPreview("move_elements", { ids: d.ids, dx, dy });
       }
-      setOverlay({ guidesX, guidesY });
+      setOverlay({ guidesX, guidesY, gaps });
       return;
     }
 
@@ -867,6 +928,18 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
 
     if (d.kind === "pen") return;
 
+    if (d.kind === "guide") {
+      setOverlay({ guideNow: null });
+      if (!d.moved) return;
+      // let go back on the ruler it came from, and the guide goes away
+      const onRuler = d.axis === "y" ? p.sy < RULER : p.sx < RULER;
+      if (onRuler) {
+        dragCancel();
+        if (d.from !== null) dispatch("remove_guide", { axis: d.axis, at: d.from });
+      } else dragCommit(d.from === null ? "Add a guide" : "Move a guide");
+      return;
+    }
+
     if (d.kind === "pan") {
       setCursor(spaceRef.current ? "grab" : "default");
       return;
@@ -931,7 +1004,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
         }
         dragCommit(label);
       } else dragCancel();
-      setOverlay({ guidesX: [], guidesY: [] });
+      setOverlay({ guidesX: [], guidesY: [], gaps: [] });
       if (e.altKey) {
         setCursor(isMovable(workDoc(), labelAt(p.sx, p.sy) ?? hitTest(workDoc(), p.x, p.y)) ? "copy" : "default");
       } else {
@@ -1255,6 +1328,11 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       }
       if (e.shiftKey && e.key === "@") {
         zoomToElements(getState().selection, sizeRef.current.w, sizeRef.current.h);
+        return;
+      }
+      if (e.shiftKey && !e.altKey && key === "r") {
+        e.preventDefault();
+        setLayout({ rulers: !getLayout().rulers });
         return;
       }
       const tools: Record<string, Tool> = { v: "move", f: "frame", r: "rect", o: "ellipse", t: "text", h: "hand", p: "pen", z: "zoom" };

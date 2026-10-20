@@ -140,6 +140,7 @@ export function serializeDoc(doc: Doc): string {
   const out: Record<string, unknown> = { version: doc.version, rootIds: doc.rootIds, elements };
   if (doc.background) out.background = doc.background;
   if (doc.styles && Object.keys(doc.styles).length) out.styles = doc.styles;
+  if (doc.guides && (doc.guides.x.length || doc.guides.y.length)) out.guides = { x: [...doc.guides.x].sort((a, b) => a - b), y: [...doc.guides.y].sort((a, b) => a - b) };
   return JSON.stringify(out, null, 2) + "\n";
 }
 
@@ -172,5 +173,8 @@ export function parseDoc(text: string): Doc {
   }
   const styles = r.styles && typeof r.styles === "object" ? (r.styles as Doc["styles"]) : undefined;
   const background = typeof r.background === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(r.background) ? r.background : undefined;
-  return relayout(syncInstances({ version: 1, rootIds: r.rootIds as string[], elements, ...(background ? { background } : {}), ...(styles ? { styles } : {}) }));
+  const g = (r as { guides?: { x?: unknown; y?: unknown } }).guides;
+  const nums = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is number => typeof n === "number" && Number.isFinite(n)) : []);
+  const guides = g && typeof g === "object" && (nums(g.x).length || nums(g.y).length) ? { x: nums(g.x), y: nums(g.y) } : undefined;
+  return relayout(syncInstances({ version: 1, rootIds: r.rootIds as string[], elements, ...(background ? { background } : {}), ...(styles ? { styles } : {}), ...(guides ? { guides } : {}) }));
 }

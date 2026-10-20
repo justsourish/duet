@@ -2762,3 +2762,20 @@ describe("line up, space evenly, tidy up", () => {
     expect(runCommand(d, "align_elements", { ids: ["a"], how: "left" })).toBe(d);
   });
 });
+
+describe("ruler guides", () => {
+  it("are added, moved, removed, kept sorted and saved with the design", () => {
+    let d = runCommand(emptyDoc(), "add_guide", { axis: "x", at: 300 });
+    d = runCommand(d, "add_guide", { axis: "x", at: 100 });
+    d = runCommand(d, "add_guide", { axis: "y", at: 50 });
+    expect(d.guides).toEqual({ x: [100, 300], y: [50] });
+    // the same place twice is one guide
+    expect(runCommand(d, "add_guide", { axis: "x", at: 100 })).toBe(d);
+    d = runCommand(d, "move_guide", { axis: "x", from: 300, at: 20 });
+    expect(d.guides?.x).toEqual([20, 100]);
+    expect(parseDoc(serializeDoc(d)).guides).toEqual({ x: [20, 100], y: [50] });
+    d = runCommand(runCommand(runCommand(d, "remove_guide", { axis: "x", at: 20 }), "remove_guide", { axis: "x", at: 100 }), "remove_guide", { axis: "y", at: 50 });
+    expect(d.guides).toBeUndefined();
+    expect(serializeDoc(d)).not.toContain("guides");
+  });
+});

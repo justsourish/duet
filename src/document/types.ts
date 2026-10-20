@@ -192,6 +192,8 @@ export interface Doc {
   background?: string;
   /** Saved text styles, by id. */
   styles?: Record<string, TextStyle>;
+  /** Ruler guides pulled out from the rulers: the page pixel each runs through. Left out when there are none. */
+  guides?: { x: number[]; y: number[] };
   rootIds: string[];
   elements: Record<string, El>;
 }

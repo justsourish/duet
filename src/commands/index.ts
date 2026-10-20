@@ -1123,6 +1123,42 @@ const setTiming: CommandDef<SetTimingArgs> = {
   },
 };
 
+// ---- ruler guides ----
+export interface GuideArgs {
+  /** "x" is a vertical line at that page pixel from the left, "y" a horizontal one. */
+  axis: "x" | "y";
+  at: number;
+}
+
+const withGuides = (doc: Doc, axis: "x" | "y", change: (list: number[]) => number[]): Doc => {
+  const next = clone(doc);
+  const g = { x: [...(next.guides?.x ?? [])], y: [...(next.guides?.y ?? [])] };
+  g[axis] = change(g[axis]).sort((a, b) => a - b);
+  if (g.x.length || g.y.length) next.guides = g;
+  else delete next.guides;
+  return next;
+};
+
+const addGuide: CommandDef<GuideArgs> = {
+  label: () => "Add a guide",
+  run: (doc, a) => (!Number.isFinite(a.at) || (doc.guides?.[a.axis] ?? []).some((v) => Math.abs(v - a.at) < 0.01) ? doc : withGuides(doc, a.axis, (l) => [...l, round(a.at)])),
+};
+
+export interface MoveGuideArgs extends GuideArgs {
+  /** Where it is now. */
+  from: number;
+}
+
+const moveGuide: CommandDef<MoveGuideArgs> = {
+  label: () => "Move a guide",
+  run: (doc, a) => (!Number.isFinite(a.at) || !(doc.guides?.[a.axis] ?? []).some((v) => Math.abs(v - a.from) < 0.01) ? doc : withGuides(doc, a.axis, (l) => l.map((v) => (Math.abs(v - a.from) < 0.01 ? round(a.at) : v)))),
+};
+
+const removeGuide: CommandDef<GuideArgs> = {
+  label: () => "Remove a guide",
+  run: (doc, a) => ((doc.guides?.[a.axis] ?? []).some((v) => Math.abs(v - a.at) < 0.01) ? withGuides(doc, a.axis, (l) => l.filter((v) => Math.abs(v - a.at) >= 0.01)) : doc),
+};
+
 // ---- markers ----
 export const MARKER_COLORS = ["#ff6b6b", "#ffb347", "#ffd93d", "#4cd98a", "#4cc9f0", "#b68cff"];
 
@@ -1621,6 +1657,9 @@ export const commands = {
   set_timing: setTiming,
   set_speed: setSpeed,
   align_elements: alignElements,
+  add_guide: addGuide,
+  move_guide: moveGuide,
+  remove_guide: removeGuide,
   add_marker: addMarker,
   update_marker: updateMarker,
   remove_marker: removeMarker,

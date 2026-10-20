@@ -1,3 +1,4 @@
+import type { Gap } from "../canvas/guides";
 import { newStepId } from "../memory/steps";
 import { childOf, parentOf } from "./directions";
 import type { AbsNode } from "../document/path";
@@ -38,6 +39,10 @@ export interface Overlay {
   draft: { type: ElementType; rect: Rect } | null;
   guidesX: number[];
   guidesY: number[];
+  /** Measured gaps shown while something moves, with their sizes. */
+  gaps: Gap[];
+  /** The ruler guide being pulled right now: which way it runs and where. */
+  guideNow: { axis: "x" | "y"; at: number } | null;
   marquee: Rect | null;
   hoverId: string | null;
   /** The line being drawn with the pen, in page pixels, and where the pointer is. */
@@ -95,7 +100,7 @@ export interface State {
   clock: Clock;
 }
 
-const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], marquee: null, hoverId: null, pen: null, nodeEdit: null, turning: null });
+const noOverlay = (): Overlay => ({ draft: null, guidesX: [], guidesY: [], gaps: [], guideNow: null, marquee: null, hoverId: null, pen: null, nodeEdit: null, turning: null });
 
 const initial = (): State => ({
   project: { path: null, file: null, name: "Untitled", status: "unsaved", error: null },

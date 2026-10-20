@@ -12,6 +12,7 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
       ["H", "Hand"],
       ["Z", "Zoom"],
       ["Esc", "Pick nothing and go back to Move"],
+      ["Shift R", "Show or hide the rulers, and pull guides out of them"],
     ],
   },
   {

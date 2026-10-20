@@ -106,6 +106,7 @@ export async function installMenu() {
       await item("Motion", () => setLayout({ mode: "motion" }), "CmdOrCtrl+2"),
       await item("Colour", () => setLayout({ mode: "color" }), "CmdOrCtrl+3"),
       await line(),
+      await item("Rulers and guides", () => setLayout({ rulers: !getLayout().rulers }), "Shift+R"),
       await item("Zoom in", () => zoomBy(1.25), "CmdOrCtrl+="),
       await item("Zoom out", () => zoomBy(0.8), "CmdOrCtrl+-"),
       await item("Actual size", () => send("duet:zoom", 1), "CmdOrCtrl+0"),
