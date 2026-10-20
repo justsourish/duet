@@ -82,6 +82,20 @@ export interface Recent {
 }
 
 /** Every project you have made or opened here, newest first. */
+/**
+ * The projects to list: every open one, even one not on the list yet (a new project in Duet dev,
+ * which never writes to the list), then the rest as they are kept.
+ */
+export function listedProjects(): Recent[] {
+  const recents = getRecents();
+  const known = new Set(recents.map((r) => r.path));
+  const here = getState().project.file;
+  const open = [...new Set([...(here ? [here] : []), ...getTabs()])]
+    .filter((p) => !known.has(p) && /\.duet$/i.test(p))
+    .map((path) => ({ path, name: baseName(path), opened: Date.now() }));
+  return [...open, ...recents];
+}
+
 export function getRecents(): Recent[] {
   try {
     const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as Recent[];

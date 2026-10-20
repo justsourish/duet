@@ -5,7 +5,7 @@ import CanvasView from "../canvas/CanvasView";
 import type { Recent } from "../project/project";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import type { Trashed } from "../project/project";
-import { closeProject, closeTab, getRecents, getTabs, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
+import { closeProject, closeTab, getTabs, listedProjects, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
 import { closeTask, readyToLeave } from "../ai/agent";
 import { AGENTS, showThread, useChat } from "../ai/chat";
@@ -229,7 +229,7 @@ export default function ChatHome() {
       window.removeEventListener("duet:recents", redo);
     };
   }, []);
-  const recents = getRecents();
+  const recents = listedProjects();
   const tabs = getTabs();
   const [skills, setSkills] = useState(false);
   const [trash, setTrash] = useState(false);
