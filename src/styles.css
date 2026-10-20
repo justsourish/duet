@@ -3785,6 +3785,9 @@ button.agent-perm {
   color: var(--text);
   background: var(--panel-2);
 }
+.time-eye.time-sound {
+  margin-left: -4px;
+}
 .time-row.is-hidden .time-lane > * {
   opacity: 0.35;
 }

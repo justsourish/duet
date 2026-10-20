@@ -837,6 +837,21 @@ export default function TimeStrip() {
                     <Icon name={row.items[0].hidden ? "eye-off" : "eye"} size={12} />
                   </button>
                 )}
+                {row.items.some(playsFile) && (
+                  <button
+                    className={`time-eye time-sound ${row.items.filter(playsFile).every((el) => el.volume <= 0) ? "off" : ""}`}
+                    data-name={`sound-${row.name}`}
+                    title={row.items.filter(playsFile).every((el) => el.volume <= 0) ? "Turn its sound on" : "Turn its sound off, in playing and in the video you export"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const ids = row.items.filter(playsFile).map((el) => el.id);
+                      const on = row.items.filter(playsFile).every((el) => el.volume <= 0);
+                      dispatch("set_props", { ids, props: { volume: on ? 1 : 0 }, label: on ? "Sound on" : "Sound off" });
+                    }}
+                  >
+                    <Icon name={row.items.filter(playsFile).every((el) => el.volume <= 0) ? "sound-off" : "sound"} size={12} />
+                  </button>
+                )}
                 {look === "layers" && (
                   <span className="time-fold-room">
                     {row.items.length === 1 && (
