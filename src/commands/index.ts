@@ -918,6 +918,15 @@ const makeMask: CommandDef<MaskArgs> = {
     // the shape goes to the bottom of the group: that is what marks it as the mask
     g.childIds = [a.maskId, ...g.childIds.filter((c) => c !== a.maskId)];
     g.mask = true;
+    // in a scene that plays, the mask lives as long as what it shows, so the timeline bar is still the clip's
+    const scene = sceneOf(next, a.groupId);
+    if (scene) {
+      const spans = ids.map((id) => spanOf(next.elements[id], scene));
+      const start = Math.min(...spans.map((s) => s.start));
+      const end = Math.max(...spans.map((s) => s.end));
+      g.start = start;
+      g.end = end < scene.duration - 0.001 ? end : 0;
+    }
     g.name = `Mask ${Object.values(doc.elements).filter((e) => e.type === "group" && e.mask).length + 1}`;
     return next;
   },

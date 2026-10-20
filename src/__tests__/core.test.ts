@@ -1810,6 +1810,15 @@ describe("masks", () => {
     expect(serializeDoc(masked())).not.toContain("maskFeather");
   });
 
+  it("lives in the timeline as long as the pictures it shows", () => {
+    let d = runCommand(scene(), "set_props", { ids: ["f"], props: { duration: 9 } });
+    d = runCommand(d, "set_props", { ids: ["photo"], props: { start: 2, end: 5 } });
+    d = runCommand(d, "make_mask", { maskId: "ring", ids: ["photo"], groupId: "m" });
+    expect([d.elements.m.start, d.elements.m.end]).toEqual([2, 5]);
+    const whole = runCommand(runCommand(scene(), "set_props", { ids: ["f"], props: { duration: 9 } }), "make_mask", { maskId: "ring", ids: ["photo"], groupId: "m" });
+    expect([whole.elements.m.start, whole.elements.m.end]).toEqual([0, 0]);
+  });
+
   it("needs a plain shape, and something to show through it", () => {
     expect(canMask(scene().elements.photo)).toBe(false);
     expect(runCommand(scene(), "make_mask", { maskId: "photo", ids: ["ring"], groupId: "m" }).elements.m).toBeUndefined();
