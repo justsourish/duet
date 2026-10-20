@@ -335,6 +335,9 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
   const designing = useLayout((d) => d.mode === "design");
   const motion = useLayout((d) => d.mode === "motion");
   const scene = useStore((s) => s.clock.scene);
+  // in Motion the scene sits still in the middle: no scrolling, panning or zooming away from it
+  const lockedRef = useRef(false);
+  lockedRef.current = motion && !!scene && !viewOnly;
   useEffect(() => {
     setSceneOnly(motion ? scene : null);
     window.dispatchEvent(new Event("duet:repaint"));
@@ -401,6 +404,8 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       sizeRef.current = { w, h, dpr };
+      const open = getState().clock.scene;
+      if (lockedRef.current && open) zoomToElements([open], w, h);
       schedule();
     };
     resize();
@@ -490,6 +495,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
 
     // beside the chat the canvas only looks: any drag moves the view
     if (viewOnly || e.button === 1 || spaceRef.current || s.tool === "hand") {
+      if (lockedRef.current) return;
       stopGlide();
       dragRef.current = { kind: "pan", sx: p.sx, sy: p.sy, vx: s.viewport.x, vy: s.viewport.y };
       setCursor("grabbing");
@@ -935,7 +941,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     let pinch: { zoom: number; wx: number; wy: number } | null = null;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (getState().editingId) return;
+      if (getState().editingId || lockedRef.current) return;
       stopGlide();
       const p = point(e);
       if (e.ctrlKey || e.metaKey) {
@@ -958,7 +964,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     };
     const onGestureChange = (e: Event) => {
       e.preventDefault();
-      if (!pinch) return;
+      if (!pinch || lockedRef.current) return;
       const g = e as GestureEvent;
       const p = point(g);
       const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinch.zoom * g.scale));
