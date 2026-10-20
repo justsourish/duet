@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { spanOf } from "../document/time";
+import { fileTimeAt, frameTimeAt, spanOf } from "../document/time";
 import { playsFile } from "../document/types";
 import type { Doc } from "../document/types";
 import { logError } from "../errorLog";
@@ -181,7 +181,7 @@ export function syncClips(doc: Doc, sceneId: string | null, t: number, playing: 
       if (t < start || t >= end || live.has(el.src)) continue;
       live.add(el.src);
       const v = player(el.src);
-      const at = t - start + el.clipFrom;
+      const at = fileTimeAt(el, start, t);
       v.volume = Math.max(0, Math.min(1, el.volume));
       if (playing) {
         // while playing, the clip leads the clock (see clockFromClip); only a big gap means a jump
@@ -209,7 +209,7 @@ export function clockFromClip(doc: Doc, sceneId: string, t: number): number | nu
     if (t < start || t >= end) continue;
     const v = players.get(el.src);
     if (!v || v.paused || v.seeking || v.readyState < 3) continue;
-    const at = start + v.currentTime - el.clipFrom;
+    const at = frameTimeAt(el, start, v.currentTime);
     // a clip that has not started yet, or has run out, does not lead
     if (at < t - 1 || at > t + 1) continue;
     return Math.max(t, at);
@@ -229,7 +229,7 @@ export async function seekClips(doc: Doc, sceneId: string, t: number) {
     done.add(el.src);
     const v = fullPlayer(el.src);
     v.pause();
-    const at = Math.min(t - start + el.clipFrom, (v.duration || Infinity) - 0.001);
+    const at = Math.min(fileTimeAt(el, start, t), (v.duration || Infinity) - 0.001);
     waits.push(
       new Promise<void>((resolve) => {
         const ready = () => v.readyState >= 2 && !v.seeking && Math.abs(v.currentTime - at) < 0.001;

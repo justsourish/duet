@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { runCommand } from "../commands";
-import { KEY_GROUPS, spanOf } from "../document/time";
+import { KEY_GROUPS, fileTimeAt, frameTimeAt, spanOf } from "../document/time";
 import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, Moving } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dragPreviewDoc, getState, select, useStore } from "../state/store";
@@ -420,7 +420,7 @@ export default function TimeStrip() {
         for (const o of others) next = runCommand(next, "set_timing", { ids: [o.id], start: o.span.start + shift, end: o.span.end + shift });
         dragPreviewDoc(next);
       } else if (part === "start") {
-        const least = playsFile(el) ? span.start - el.clipFrom : 0;
+        const least = playsFile(el) ? frameTimeAt(el, span.start, 0) : 0;
         const rawStart = span.start + by;
         let start = rawStart;
         let snapTime: number | null = null;
@@ -434,9 +434,9 @@ export default function TimeStrip() {
         start = Math.max(0, least, Math.min(span.end - SHORTEST, start));
         if (snapTime !== null && Math.abs((start - snapTime) * pps) > 0.5) snapTime = null;
         setSnap(snapTime);
-        dragPreview("set_timing", { ids: [el.id], start, end: span.end, ...(playsFile(el) ? { clipFrom: el.clipFrom + (start - span.start) } : {}) });
+        dragPreview("set_timing", { ids: [el.id], start, end: span.end, ...(playsFile(el) ? { clipFrom: fileTimeAt(el, span.start, start) } : {}) });
       } else {
-        const most = file ? span.start + file - el.clipFrom : length;
+        const most = file ? frameTimeAt(el, span.start, file) : length;
         const rawEnd = span.end + by;
         let end = rawEnd;
         let snapTime: number | null = null;

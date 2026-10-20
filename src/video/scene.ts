@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { drawElement } from "../canvas/render";
-import { docAt, spanOf } from "../document/time";
+import { docAt, fileTimeAt, spanOf } from "../document/time";
 import { playsFile } from "../document/types";
 import type { Doc } from "../document/types";
 import { currentDoc, dispatch, getState, select } from "../state/store";
@@ -181,7 +181,7 @@ export function soundsOf(doc: Doc, sceneId: string) {
       const start = Math.max(span.start, from);
       const end = Math.min(span.end, to);
       if (end <= start) continue;
-      if (playsFile(el) && el.src && el.volume > 0) out.push({ path: el.src, from: el.clipFrom + (start - span.start), at: start, length: end - start, volume: el.volume });
+      if (playsFile(el) && el.src && el.volume > 0) out.push({ path: el.src, from: fileTimeAt(el, span.start, start), at: start, length: end - start, volume: el.volume });
       walk(c, start, end);
     }
   };
@@ -259,7 +259,7 @@ async function baseClip(doc: Doc, now: Doc, sceneId: string, t: number, sizes: M
   const { start } = spanOf(doc.elements[el.id], doc.elements[sceneId]);
   const without = { ...now, elements: { ...now.elements, [el.id]: { ...el, hidden: true }, [sceneId]: { ...scene, fill: "#00000000", gradient: null } } };
   return {
-    base: { id: el.id, path: el.src, at: Math.max(0, t - start + el.clipFrom), crop: [cx, cy, cw, ch], matrix: info.height <= 576 ? "bt601" : "bt709", grade: el.grade },
+    base: { id: el.id, path: el.src, at: Math.max(0, fileTimeAt(el, start, t)), crop: [cx, cy, cw, ch], matrix: info.height <= 576 ? "bt601" : "bt709", grade: el.grade },
     over: shown.length > 1,
     without,
   };

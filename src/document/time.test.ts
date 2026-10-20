@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { commandLabel, runCommand } from "../commands";
 import { parseDoc, serializeDoc } from "./serialize";
-import { CURVES, curveAt, docAt, elAt, entranceOf, valueAt } from "./time";
+import { CURVES, curveAt, docAt, elAt, entranceOf, fileTimeAt, frameTimeAt, valueAt } from "./time";
 import { emptyDoc } from "./types";
+import type { El } from "./types";
 import { exportSize, soundsOf } from "../video/scene";
 import { currentDoc, dispatch, loadDoc, resetStore, seenDoc, setClock, workDoc } from "../state/store";
 
@@ -216,5 +217,17 @@ describe("time", () => {
     // without props, everything at that moment moves
     doc = runCommand(doc, "move_key", { id: "r", from: 1, to: 3 });
     expect(doc.elements.r.keys.width![0].t).toBe(3);
+  });
+});
+
+describe("the clip time rule", () => {
+  const clip = { clipFrom: 4 } as El;
+  it("maps a moment of the frame to a second of the file and back", () => {
+    expect(fileTimeAt(clip, 2, 5)).toBe(7);
+    expect(frameTimeAt(clip, 2, 7)).toBe(5);
+    expect(frameTimeAt(clip, 2, 0)).toBe(-2);
+  });
+  it("is a clean round trip", () => {
+    for (const t of [2, 3.25, 9]) expect(frameTimeAt(clip, 2, fileTimeAt(clip, 2, t))).toBeCloseTo(t, 9);
   });
 });

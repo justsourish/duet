@@ -90,6 +90,14 @@ export function spanOf(el: El, scene: El): { start: number; end: number } {
   return { start, end: el.end > start ? Math.min(el.end, scene.duration) : scene.duration };
 }
 
+/**
+ * The one rule for a clip or sound: which second of its file is heard or seen at a moment of the
+ * frame, and the other way round. `from` is the moment the clip appears in the frame (its span start).
+ * Everything that plays, exports, trims or splits a clip asks here, so they cannot disagree.
+ */
+export const fileTimeAt = (el: El, from: number, t: number) => el.clipFrom + (t - from);
+export const frameTimeAt = (el: El, from: number, file: number) => from + (file - el.clipFrom);
+
 /** Whether anything at all changes over time on this thing. */
 export const moves = (el: El) => MOVING.some((p) => el.keys[p]?.length) || !!el.shapeKeys?.length;
 

@@ -5,7 +5,7 @@ import { canBeComponent, captureOverrides, detachInstance, isDerived, syncInstan
 import { orderByPosition, relayout } from "../document/layout";
 import { MOVING, playsFile } from "../document/types";
 import type { Doc, El, ElementType, Key, Layout, Moving, ShapeKey, TextStyle } from "../document/types";
-import { CURVES, ENTRANCES, entranceKeys, outlineOf, sceneOf, spanOf, valueAt, withKey, withShapeKey } from "../document/time";
+import { CURVES, ENTRANCES, entranceKeys, fileTimeAt, outlineOf, sceneOf, spanOf, valueAt, withKey, withShapeKey } from "../document/time";
 import type { CurveName, Entrance } from "../document/time";
 import { canGrade, mergeGrade } from "../document/grade";
 import type { GradeChange } from "../document/grade";
@@ -1241,7 +1241,7 @@ const splitAt: CommandDef<SplitArgs> = {
       second.start = t;
       // one that stayed to the end still does
       second.end = first.end ? span.end : 0;
-      if (playsFile(first)) second.clipFrom = round(first.clipFrom + (t - span.start));
+      if (playsFile(first)) second.clipFrom = round(fileTimeAt(first, span.start, t));
       first.end = t;
       next.elements[second.id] = second;
       scene.childIds.splice(scene.childIds.indexOf(id) + 1, 0, second.id);
