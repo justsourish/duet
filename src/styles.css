@@ -5906,3 +5906,17 @@ input.chathome-name.rename {
   opacity: 0.3;
   cursor: default;
 }
+
+/* Motion with no scene: the timeline stays, empty, with a way to make one */
+.time.still {
+  padding: 0;
+  display: block;
+}
+.time-blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+}

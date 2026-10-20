@@ -261,18 +261,24 @@ export default function TimeStrip() {
 
   if (mode === "design") return null;
   if (!plays) {
-    if (frame && selection.length === 1 && selection[0] === frame.id) {
-      return (
-        <section className="time still" onContextMenu={(e) => e.preventDefault()}>
-          <button className="pill" data-name="make-video" onClick={() => dispatch("set_duration", { id: frame.id, seconds: 10 })} title="Give this frame a length, so what is in it can appear, move and leave">
-            Make this frame a scene
-          </button>
-        </section>
-      );
-    }
+    // the timeline is what Motion is, so it is always there: blank, with a way to make a scene
+    const target = frame && !(frame.duration > 0) && selection.length === 1 && selection[0] === frame.id ? frame : doc.rootIds.map((id) => doc.elements[id]).find((e) => e?.type === "frame") ?? null;
     return (
-      <section className="time still" onContextMenu={(e) => e.preventDefault()}>
-        <span className="time-quiet">Select a frame to make it a scene.</span>
+      <section className="time still" data-name="time-strip" onContextMenu={(e) => e.preventDefault()}>
+        <div className="time-bar">
+          <button className="pill" disabled>
+            Play
+          </button>
+          <span className="time-now">0:00.0 / 0:00.0</span>
+        </div>
+        <div className="time-blank" style={{ height: timeH }}>
+          <span className="time-quiet">{target ? `${target.name} is not a scene yet. A scene is a frame that plays.` : "Draw a frame, then make it a scene to animate it."}</span>
+          {target && (
+            <button className="pill" data-name="make-video" title="Give this frame a length, so what is in it can appear, move and leave" onClick={() => dispatch("set_duration", { id: target.id, seconds: 10 })}>
+              {`Make ${target.name} a scene`}
+            </button>
+          )}
+        </div>
       </section>
     );
   }
