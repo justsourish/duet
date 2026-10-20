@@ -5259,3 +5259,331 @@ button.agent-perm {
 .who-answer-tune:hover {
   color: var(--text);
 }
+
+/* The chat is the history: one line down the left through everyone who speaks, each change a dot on it */
+.hl {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 0 2px 30px;
+}
+.hl::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--line);
+}
+.hl > * {
+  position: relative;
+}
+.chat .hl .m.you,
+.chat .hl .m.ai {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  align-self: stretch;
+  max-width: none;
+}
+.chat .hl .m-author {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.chat .hl .m-author .m-badge {
+  position: absolute;
+  left: -30px;
+  top: -1px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  font-size: 11px;
+  box-shadow: 0 0 0 3px var(--panel);
+}
+.chat.docked .hl .m-author .m-badge {
+  box-shadow: 0 0 0 3px var(--bg);
+}
+.chat .hl .m-badge.you-badge {
+  background: var(--text);
+}
+.chat .hl .m-author-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--text);
+  cursor: default;
+}
+.chat .hl .m.ai .m-author-name {
+  cursor: text;
+}
+.chat .hl .m-author-tool {
+  font-size: 11px;
+  color: var(--muted);
+}
+.chat .hl .m-body {
+  padding-left: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.chat .hl .m.card,
+.chat .hl .m.err {
+  align-self: stretch;
+}
+.chat .hl .m.note {
+  padding: 0;
+}
+.m-rename {
+  width: 120px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid var(--accent);
+  background: none;
+  font: 600 12px/18px inherit;
+  outline: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.hl .lit {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* changes, folded into one chip */
+.hl-changes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.hl-dots {
+  position: absolute;
+  left: -22px;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transform: translateY(-50%);
+}
+.hl-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--who);
+}
+.hl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.hl-chip:hover {
+  color: var(--text);
+}
+.hl-changes.later,
+.hl-change.later,
+.hl-version.later {
+  opacity: 0.4;
+}
+.hl-who {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--who);
+}
+.hl-change {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.hl-change:hover,
+.hl-change.now {
+  color: var(--text);
+}
+.hl-change.gone {
+  cursor: default;
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+.hl-dot {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--who);
+}
+.hl-change.now .hl-dot {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--who);
+}
+.hl-change .undo {
+  margin-left: 4px;
+}
+.hl-more {
+  font-size: 11px;
+  color: var(--muted);
+}
+.hl-more span {
+  cursor: pointer;
+}
+.hl-more span:hover {
+  color: var(--text);
+}
+
+/* a version is a square on the line */
+.hl-version {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.hl-version b {
+  font-weight: 600;
+}
+.hl-square {
+  position: absolute;
+  left: -25px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.hl-version.now .hl-square {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--accent);
+}
+
+/* search at the top of the chat */
+.chat-settings-btn.on {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.chat-find {
+  position: relative;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.chat-find input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.chat-find input:focus {
+  border-color: var(--accent);
+}
+.chat-find-list {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: calc(100% - 2px);
+  z-index: 30;
+  max-height: 260px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+.chat-find-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat-find-row:hover {
+  background: var(--panel-2);
+}
+.chat-find-row small {
+  flex: none;
+  width: 48px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.chat-find-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-find-empty {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* names: the tool an AI uses, quietly after its name */
+.who-answer-tool,
+.mention-item small {
+  margin-left: 4px;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* the history line along the bottom is hidden unless asked for */
+.app.no-hist {
+  grid-template-rows: 44px var(--tabbar-h) 1fr auto 0;
+}
+.early-tag {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.popover.versions-pop {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 50;
+}
+.popover.versions-pop.over-line {
+  bottom: 56px;
+}
+.hl-chip {
+  max-width: 100%;
+}
+.hl-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hl-chip svg {
+  flex: none;
+}

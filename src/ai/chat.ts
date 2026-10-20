@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from "react";
+import { giveNames, tidyName } from "./names";
+import type { Given } from "./names";
 
 export type Mode = "suggest" | "ask" | "auto";
 
@@ -58,13 +60,14 @@ export interface Msg {
  * Who a message is meant for, when it names an agent with @. "@antigravity tidy this" and
  * "@Claude Code look" both work: the name may be shortened and may hold a space.
  */
-export function mentioned(text: string, installed: Partial<Record<AgentId, boolean>>): AgentId | null {
+export function mentioned(text: string, installed: Partial<Record<AgentId, boolean>>, names: Given = {}): AgentId | null {
   const flat = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   for (const m of text.matchAll(/@([A-Za-z][A-Za-z0-9]*(?: [A-Za-z][A-Za-z0-9]*)?)/g)) {
     const words = m[1].split(" ");
     for (const said of [flat(m[1]), flat(words[0])]) {
       if (said.length < 3) continue;
-      const hit = AGENTS.find((a) => a.runnable && installed[a.id] && (flat(a.name).startsWith(said) || a.id === said));
+      // an AI is called by the name it goes by in the project, "@Juniper", or by its tool's name
+      const hit = AGENTS.find((a) => a.runnable && installed[a.id] && (flat(a.name).startsWith(said) || a.id === said || (!!names[a.name] && flat(names[a.name]).startsWith(said))));
       if (hit) return hit.id;
     }
   }
@@ -125,6 +128,8 @@ export interface ChatState {
   tasks: Task[];
   /** The task on show, by its key. Null for the project's main chat. */
   thread: string | null;
+  /** The names the AIs go by in the project on show, by tool: "Claude Code" goes by "Juniper". */
+  names: Given;
 }
 
 /** A side conversation with one AI on a project. It runs by itself, beside the main chat and other tasks. */
@@ -211,6 +216,7 @@ let state: ChatState = {
   effort: pick("duet:effort"),
   tasks: [],
   thread: null,
+  names: {},
 };
 let nextId = 1;
 let nextPicture = 1;
@@ -236,8 +242,8 @@ export function useChat<T>(selector: (s: ChatState) => T): T {
 }
 
 /** What a conversation holds. The one on show lives in the chat state; the others are kept aside. */
-type Conversation = Pick<ChatState, "messages" | "earlier" | "pictures" | "sessionId" | "sessionUsed" | "sessionMessages">;
-const blank = (): Conversation => ({ messages: [], earlier: [], pictures: [], sessionId: null, sessionUsed: 0, sessionMessages: 0 });
+type Conversation = Pick<ChatState, "messages" | "earlier" | "pictures" | "sessionId" | "sessionUsed" | "sessionMessages" | "names">;
+const blank = (): Conversation => ({ messages: [], earlier: [], pictures: [], sessionId: null, sessionUsed: 0, sessionMessages: 0, names: {} });
 
 /**
  * Change the conversation of one project, on show or not. An AI at work in a project that is not
@@ -245,7 +251,7 @@ const blank = (): Conversation => ({ messages: [], earlier: [], pictures: [], se
  */
 function inConversation(project: string | null | undefined, change: (c: Conversation) => Partial<Conversation>) {
   if (isTaskKey(project)) {
-    set({ tasks: state.tasks.map((t) => (t.key === project ? { ...t, ...change({ ...t, earlier: [], pictures: [] }) } : t)) });
+    set({ tasks: state.tasks.map((t) => (t.key === project ? { ...t, ...change({ ...t, earlier: [], pictures: [], names: {} }) } : t)) });
     return;
   }
   if (project === undefined || project === null || project === shownFor) {
@@ -383,6 +389,7 @@ export function showConversationFor(project: string, fresh = false) {
       sessionId: state.sessionId,
       sessionUsed: state.sessionUsed,
       sessionMessages: state.sessionMessages,
+      names: state.names,
     });
   }
   const back = fresh ? undefined : kept.get(project);
@@ -395,6 +402,7 @@ export function showConversationFor(project: string, fresh = false) {
     sessionId: back?.sessionId ?? null,
     sessionUsed: back?.sessionUsed ?? 0,
     sessionMessages: back?.sessionMessages ?? 0,
+    names: back?.names ?? {},
     running: state.busy !== null && state.busy === project,
     thread: null,
   });
@@ -413,13 +421,30 @@ export const conversationProject = () => shownFor;
  * Put back a conversation that was saved with its project, when Duet has just opened it and has
  * nothing of its own to show. The AI tool's own session is long gone, so it starts fresh.
  */
-export function restoreConversation(now: Omit<Msg, "id">[], earlier: Omit<Msg, "id">[]) {
+export function restoreConversation(now: Omit<Msg, "id">[], earlier: Omit<Msg, "id">[], names: Given = {}) {
   if (state.messages.length || state.earlier.length) return;
+  // names come back even with nothing said: an AI may have worked from its own window
+  if (Object.keys(names).length && !Object.keys(state.names).length) set({ names });
   if (!now.length && !earlier.length) return;
   const number = (list: Omit<Msg, "id">[]) => list.map((m) => ({ ...m, id: nextId++ }));
   // pictures are not kept, and a new one must not take the number of one that is gone
   for (const m of [...now, ...earlier]) for (const n of m.pictures ?? []) nextPicture = Math.max(nextPicture, n + 1);
   set({ messages: number(now), earlier: number(earlier), sessionId: null, sessionUsed: 0, sessionMessages: 0 });
+}
+
+/** Give a name to each AI tool met in the project on show that has none yet. */
+export function nameAgents(tools: string[]) {
+  const names = giveNames(tools, state.names);
+  if (names !== state.names) set({ names });
+}
+
+/** The designer renames an AI in the project on show. An empty name, or one another AI has, is not taken. */
+export function renameAgent(tool: string, typed: string): boolean {
+  const name = tidyName(typed);
+  if (!name) return false;
+  if (Object.entries(state.names).some(([t, n]) => t !== tool && n.toLowerCase() === name.toLowerCase())) return false;
+  set({ names: { ...state.names, [tool]: name } });
+  return true;
 }
 
 /** Save As: the conversation stays with the work and goes to its new file. */

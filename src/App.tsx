@@ -21,6 +21,7 @@ import { wireKeys } from "./video/keys";
 import ChatPanel from "./ui/ChatPanel";
 import ExportMenu from "./ui/ExportMenu";
 import HistoryStrip from "./ui/HistoryStrip";
+import Versions from "./ui/Versions";
 import PresentView from "./ui/PresentView";
 import SendCopy from "./ui/SendCopy";
 import Update from "./ui/Update";
@@ -191,7 +192,7 @@ export default function App() {
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const chatting = dock.space === "chat";
   const appStyle = chatting
-    ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "44px minmax(0, 1fr) 48px", gridTemplateAreas: '"top" "chathome" "hist"' }
+    ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: `44px minmax(0, 1fr) ${dock.historyLine ? "48px" : "0"}`, gridTemplateAreas: '"top" "chathome" "hist"' }
     : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
     gridTemplateAreas: dock.swapped
@@ -200,13 +201,14 @@ export default function App() {
   };
 
   return (
-    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""} ${full ? "fs" : ""}`} style={appStyle}>
+    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""} ${full ? "fs" : ""} ${dock.historyLine ? "" : "no-hist"}`} style={appStyle}>
       {/* the top row: the name, how it is saved, the kind of work, and Export; on a Mac it shares the row with the window buttons */}
       <header className="top" data-tauri-drag-region>
         <div className="top-side">
           <span className="logo">
             Du<b>et</b>
             {check && <i className="checkmark" title="Duet dev, used only to build and check Duet itself. It never opens your projects by itself.">dev</i>}
+            <i className="early-tag" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
           </span>
           <span className={`status ${project.status}`} title={project.error ?? undefined}>
             {project.path ? STATUS[project.status] : "Not saved yet"}
@@ -307,7 +309,8 @@ export default function App() {
           <TimeStrip />
         </>
       )}
-      <HistoryStrip />
+      {dock.historyLine && <HistoryStrip />}
+      <Versions />
       {presenting && <PresentView onClose={() => setPresenting(false)} />}
       <ContextMenu />
       {videoCut && <VideoCut onClose={() => setVideoCut(false)} />}

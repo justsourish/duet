@@ -115,6 +115,7 @@ export async function installMenu() {
       await item("Show or hide the layers panel", () => setLayout({ leftHidden: !getLayout().leftHidden }), "CmdOrCtrl+Alt+1"),
       await item("Show or hide the design panel", () => setLayout({ rightHidden: !getLayout().rightHidden }), "CmdOrCtrl+Alt+2"),
       await item("Swap the panel sides", () => setLayout({ swapped: !getLayout().swapped })),
+      await item("Show or hide the history line", () => setLayout({ historyLine: !getLayout().historyLine })),
       await item("Reset the layout", resetLayout),
       await line(),
       await MenuItem.new({ text: "Present", enabled: hasFrames(), action: () => send("duet:present"), accelerator: "CmdOrCtrl+Enter" }),

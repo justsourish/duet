@@ -1,11 +1,10 @@
 import { whoColour } from "../ai/colours";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { useDismiss } from "./useDismiss";
 import { askFeedback } from "./Feedback";
-import { saveVersion } from "../project/project";
 import { useChat } from "../ai/chat";
+import { nameOf } from "../ai/names";
 import { wordsBehind } from "../memory/steps";
-import { goTo, redo, restoreDoc, undo, useStore } from "../state/store";
+import { goTo, redo, undo, useStore } from "../state/store";
 import type { Actor } from "../commands";
 
 const STEP = 30;
@@ -34,19 +33,9 @@ export default function HistoryStrip() {
   const said = useChat((s) => s.messages);
   const earlier = useChat((s) => s.earlier);
   const scroller = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  useDismiss(open, () => setOpen(false), ".popover, [data-toggle=\"versions\"]");
-  const [name, setName] = useState("");
-  const [note, setNote] = useState<string | null>(null);
   // The tooltip is drawn outside the scrolling strip, so it is never clipped.
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
-
-  // Cmd or Ctrl + Shift + S opens the versions list, ready to type a name
-  useEffect(() => {
-    const show = () => setOpen(true);
-    window.addEventListener("duet:versions", show);
-    return () => window.removeEventListener("duet:versions", show);
-  }, []);
+  const names = useChat((s) => s.names);
 
   // keep the current step in view
   useEffect(() => {
@@ -59,19 +48,13 @@ export default function HistoryStrip() {
   }, [cursor, timeline.length]);
 
   const width = timeline.length > 0 ? getX(timeline.length - 1, timeline.length) + PAD : PAD * 2;
-  const versions = timeline.map((e, i) => ({ e, i })).filter(({ e }) => e.version).reverse();
-
-  const submit = async () => {
-    const result = await saveVersion(name);
-    setNote(result);
-    if (!result) setName("");
-  };
+  const versions = timeline.filter((e) => e.version).length;
 
   const legendItems: { name: string; color: string }[] = [{ name: "You", color: "var(--text)" }];
   const seenAi = new Set<string>();
   for (const e of timeline) {
     if (e.actor === "ai") {
-      const aiName = e.by ?? "Duet";
+      const aiName = e.by ? nameOf(e.by, names) : "Duet";
       if (!seenAi.has(aiName)) {
         seenAi.add(aiName);
         legendItems.push({
@@ -87,7 +70,6 @@ export default function HistoryStrip() {
   return (
     <footer className="hist">
       <span className="hist-about">
-        <i className="early" title="Duet is in early access. Some things are unfinished and you may meet bugs. Save versions of work that matters.">Early access</i>
         <button className="feedback-btn" data-name="feedback" title="Tell the creator what went wrong or what you want. Cmd or Ctrl, Shift, F" onClick={askFeedback}>
           Feedback
         </button>
@@ -117,7 +99,7 @@ export default function HistoryStrip() {
           {timeline.map((e, i) => {
             const isOld = i < cutoff;
             const words = wordsBehind(said, e) ?? wordsBehind(earlier, e);
-            const who = e.actor === "ai" ? (e.by ?? "Duet") : "You";
+            const who = e.actor === "ai" ? (e.by ? `${nameOf(e.by, names)} · ${e.by}` : "Duet") : "You";
             const asked = words ? ` · You asked: “${words.length > 90 ? `${words.slice(0, 89).trimEnd()}…` : words}”` : "";
             const ringX = getX(i, timeline.length);
             const outlineColor = outlineFor(e.actor, e.by, e.version);
@@ -175,8 +157,8 @@ export default function HistoryStrip() {
         <button className="mini" disabled={cursor >= timeline.length - 1} onClick={redo} title="Redo (Shift Ctrl or Cmd Z)">
           Redo
         </button>
-        <button data-toggle="versions" className={`mini ${open ? "on" : ""}`} onClick={() => setOpen(!open)}>
-          Versions{versions.length ? ` (${versions.length})` : ""}
+        <button data-toggle="versions" className="mini" onClick={() => window.dispatchEvent(new CustomEvent("duet:versions", { detail: "toggle" }))}>
+          Versions{versions ? ` (${versions})` : ""}
         </button>
       </div>
 
@@ -186,54 +168,6 @@ export default function HistoryStrip() {
         </div>
       )}
 
-      {open && (
-        <div className="popover">
-          <div className="pop-title">
-            Save a version
-            <span className="pop-close" title="Close" onClick={() => setOpen(false)}>
-              ×
-            </span>
-          </div>
-          <div className="pop-row">
-            <input
-              autoFocus
-              value={name}
-              placeholder="Name it, like Client round 1"
-              onChange={(e) => {
-                setName(e.target.value);
-                setNote(null);
-              }}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") submit();
-              }}
-            />
-            <button className="mini primary" onClick={submit}>
-              Save
-            </button>
-          </div>
-          {note && <div className="pop-note">{note}</div>}
-          <div className="pop-title">Your versions</div>
-          {versions.length === 0 && <div className="pop-empty">None yet. A version is a moment you want to come back to.</div>}
-          {versions.map(({ e, i }) => (
-            <div className="pop-version" key={i}>
-              <div>
-                <div className="v-name">{e.version}</div>
-                <div className="v-time">{new Date(e.time).toLocaleString()}</div>
-              </div>
-              <button
-                className="mini"
-                onClick={() => {
-                  restoreDoc(e.doc, `Went back to version "${e.version}"`);
-                  setOpen(false);
-                }}
-              >
-                Go back
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </footer>
   );
 }

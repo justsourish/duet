@@ -2094,6 +2094,13 @@ describe("the thread a project keeps", () => {
     expect(readThread(packThread({ now, earlier }))).toEqual({ now, earlier });
   });
 
+  it("keeps who spoke and the names the AIs go by", () => {
+    const now = keepable([{ role: "duet", text: "hi", time: 2, by: "Claude Code" }]);
+    expect(now[0].by).toBe("Claude Code");
+    const names = { "Claude Code": "Juniper" };
+    expect(readThread(packThread({ now, earlier: [], names }))).toEqual({ now, earlier: [], names });
+  });
+
   it("treats a missing or damaged file as an empty thread", () => {
     expect(readThread(null)).toEqual({ now: [], earlier: [] });
     expect(readThread("not json")).toEqual({ now: [], earlier: [] });

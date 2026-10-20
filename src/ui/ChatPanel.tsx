@@ -1,21 +1,23 @@
 import { isOutside, plainName } from "../ai/who";
-import { useEffect, useLayoutEffect, useRef, useState, Fragment } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { detectAgent, sendToAgent, sendToTask, stopAgent } from "../ai/agent";
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../project/project";
-import { AGENTS, CLAUDE_MODELS, EFFORTS, EFFORT_NAMES, answerApproval, removePicture, tookLine, setEffort, setModel, newTask, setAgent, setMinimized, setMode, showThread, updateMsg, useChat } from "../ai/chat";
+import { AGENTS, CLAUDE_MODELS, EFFORTS, EFFORT_NAMES, answerApproval, nameAgents, removePicture, renameAgent, tookLine, setEffort, setModel, newTask, setAgent, setMinimized, setMode, showThread, updateMsg, useChat } from "../ai/chat";
+import { giveNames, nameOf } from "../ai/names";
+import { chatHistory, findInHistory } from "./chatHistory";
+import type { Found, Item } from "./chatHistory";
 import type { AgentId } from "../ai/chat";
 import { attachFiles } from "../ai/pictures";
-import type { ModelChoice, Mode, Msg } from "../ai/chat";
+import type { ModelChoice, Mode } from "../ai/chat";
 import { applyProposal, undoAiStep } from "../ai/tools";
-import { findStep } from "../memory/steps";
 import { goTo, setFocus, useStore } from "../state/store";
 import ConnectAi from "./ConnectAi";
 import Rich from "./rich";
 import Icon from "./Icons";
 import { CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
-import { agentColour } from "../ai/colours";
+import { agentColour, whoColour } from "../ai/colours";
 import { busyOutside } from "../ai/outside";
 import { useDismiss } from "./useDismiss";
 import { pickWaitingLine } from "../ai/waitingLines";
@@ -34,55 +36,21 @@ const IDEAS = [
   { label: "Trace a picture", ask: "Trace the selected picture into shapes I can edit. If nothing is selected, tell me which picture to trace." },
 ];
 
-type ChatMessage = Msg;
+/** How many changes show when a group is opened, before "and more". */
+const FIRST_CHANGES = 5;
 
-type RenderItem =
-  | { type: "single"; msg: ChatMessage }
-  | { type: "noteGroup"; id: number; messages: ChatMessage[] };
+const FOUND_KIND: Record<Found["kind"], string> = { said: "Said", change: "Change", version: "Version", name: "AI" };
 
-function groupMessages(list: ChatMessage[]): RenderItem[] {
-  const result: RenderItem[] = [];
-  let currentNotes: ChatMessage[] = [];
-
-  const flushNotes = () => {
-    if (currentNotes.length === 1) {
-      result.push({ type: "single", msg: currentNotes[0] });
-    } else if (currentNotes.length > 1) {
-      result.push({ type: "noteGroup", id: currentNotes[0].id, messages: currentNotes });
-    }
-    currentNotes = [];
-  };
-
-  for (const m of list) {
-    if (m.role === "note") {
-      currentNotes.push(m);
-    } else {
-      flushNotes();
-      result.push({ type: "single", msg: m });
-    }
-  }
-  flushNotes();
-
-  return result;
-}
-
-function renderYouText(content: string, membersList: { name: string }[]) {
+function renderYouText(content: string, membersList: { name: string; tool: string }[]) {
   const parts = content.split(/(@[A-Za-z0-9_-]+)/g);
   return parts.map((part, idx) => {
     if (part.startsWith("@") && part.length > 1) {
       const word = part.slice(1).toLowerCase();
-      const hit =
-        membersList.find((m) => {
-          const flat = m.name.replace(/\s+/g, "").toLowerCase();
-          return flat.startsWith(word);
-        }) ??
-        AGENTS.find((a) => {
-          const flat = a.name.replace(/\s+/g, "").toLowerCase();
-          return flat.startsWith(word);
-        });
+      const flat = (n: string) => n.replace(/\s+/g, "").toLowerCase();
+      const hit = membersList.find((m) => flat(m.name).startsWith(word)) ?? membersList.find((m) => flat(m.tool).startsWith(word)) ?? AGENTS.map((a) => ({ tool: a.name })).find((a) => flat(a.tool).startsWith(word));
       if (hit) {
         return (
-          <span key={idx} style={{ color: agentColour(hit.name), fontWeight: "bold" }}>
+          <span key={idx} style={{ color: agentColour(hit.tool), fontWeight: "bold" }}>
             {part}
           </span>
         );
@@ -142,8 +110,11 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const focusEls = useStore((s) => s.timeline[s.cursor].doc.elements);
   const focusNames = focus.filter((id) => focusEls[id]).map((id) => focusEls[id].name);
   const timeline = useStore((s) => s.timeline);
-  // a design an AI has already worked on is not a blank start, even before anyone writes here
-  const isEmpty = docked && messages.length === 0 && !timeline.some((e) => e.actor === "ai");
+  const given = useChat((s) => s.names);
+  // what was said, every change and every version, on one line
+  const items = chatHistory(messages, timeline, !task);
+  // a design with any history is not a blank start, even before anyone writes here
+  const isEmpty = docked && items.length === 0;
   const place = useLayout((d) => d.chat);
   const chatW = useLayout((d) => d.chatW);
   const chatH = useLayout((d) => d.chatH);
@@ -162,7 +133,14 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const [tuneOpen, setTuneOpen] = useState(false);
   useEffect(() => setTuneOpen(false), [popOpen]);
   const [permOpen, setPermOpen] = useState(false);
-  const [unfoldedGroups, setUnfoldedGroups] = useState<Record<number, boolean>>({});
+  /** Groups of changes opened, and those showing all their changes. */
+  const [openGroups, setOpenGroups] = useState<Record<string, "open" | "all">>({});
+  const [findOpen, setFindOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  /** The AI being renamed, by its tool, and the name typed so far. */
+  const [renaming, setRenaming] = useState<{ tool: string; name: string } | null>(null);
+  const itemsRef = useRef<Item[]>(items);
+  itemsRef.current = items;
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** The New task menu, and the AI picked in it. */
@@ -211,6 +189,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   useDismiss(permOpen, () => setPermOpen(false), ".perm-pop, [data-name='perm-button']");
   useDismiss(settingsOpen, () => setSettingsOpen(false), ".chat-settings, [data-name='chat-settings']");
   useDismiss(taskPick !== null, () => setTaskPick(null), ".task-pop, [data-name='new-task']");
+  useDismiss(findOpen && !query, () => setFindOpen(false), ".chat-find, [data-name='chat-find']");
 
   useEffect(() => {
     if (minimized) {
@@ -260,7 +239,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
 
   useEffect(() => {
     if (list.current) list.current.scrollTop = connecting ? 0 : list.current.scrollHeight;
-  }, [messages, minimized, room, sizing, chatH, connecting, isWorking]);
+  }, [messages, items.length, minimized, room, sizing, chatH, connecting, isWorking]);
 
   useEffect(() => setConnecting(false), [messages.length]);
 
@@ -275,6 +254,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
       if (!step) return;
       setMinimized(false);
       setLitStep(step);
+      const group = itemsRef.current.find((i) => i.kind === "changes" && i.changes.some((c) => c.step === step));
+      if (group) setOpenGroups((g) => ({ ...g, [group.key]: "all" }));
       if (litTimer.current) clearTimeout(litTimer.current);
       litTimer.current = setTimeout(() => {
         setLitStep(null);
@@ -296,24 +277,19 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
     };
   }, []);
 
-  const renderItems = groupMessages(messages);
-
-  useEffect(() => {
-    if (!litStep) return;
-    setUnfoldedGroups((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const item of renderItems) {
-        if (item.type === "noteGroup" && item.messages.some((m) => m.step === litStep)) {
-          if (!next[item.id]) {
-            next[item.id] = true;
-            changed = true;
-          }
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [litStep, renderItems]);
+  /** Go to something found: open its group, bring it into view and light it for a moment. */
+  const jump = (f: Found) => {
+    if (f.group) setOpenGroups((g) => ({ ...g, [f.group as string]: "all" }));
+    setFindOpen(false);
+    setQuery("");
+    setTimeout(() => {
+      const el = list.current?.querySelector<HTMLElement>(`[data-key="${f.key}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.add("lit");
+      setTimeout(() => el.classList.remove("lit"), 1500);
+    }, 60);
+  };
 
   const waiting = pictures.filter((p) => !p.sent);
   const attach = (files: File[]) => void attachFiles(files).then(setPictureNote);
@@ -407,7 +383,6 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const chosenAgentObj = AGENTS.find((a) => a.id === agent);
   // with nothing installed, the button must not name a tool that is not there
   const toolName = found === false ? "No AI installed" : chosenAgentObj?.name || "AI";
-  const chatToolLetter = toolName.charAt(0);
 
   const outsideAgents: string[] = [];
   for (const e of timeline) {
@@ -417,6 +392,19 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   }
 
   const members = AGENTS.filter((a) => a.runnable && Boolean(installed[a.id]));
+
+  // an AI keeps its name once it has said or changed something here; until then it shows the name it will get
+  const acted: string[] = [];
+  for (const m of messages) if (m.role === "duet" && m.by && !acted.includes(m.by)) acted.push(m.by);
+  for (const e of timeline) if (e.actor === "ai" && e.by && !acted.includes(plainName(e.by))) acted.push(plainName(e.by));
+  const actedKey = acted.join("|");
+  useEffect(() => {
+    if (actedKey) nameAgents(actedKey.split("|"));
+  }, [actedKey]);
+  const names = giveNames([...acted, toolName, ...members.map((m) => m.name)], given);
+  /** The name an AI goes by here: "Juniper". */
+  const nm = (tool: string | undefined) => nameOf(tool, names) || "AI";
+  const chatName = found === false ? toolName : nm(toolName);
   const modelChoices = agent === "agy" ? (agyModels.length ? agyModels : [{ id: "", name: "Default" }]) : CLAUDE_MODELS;
   const modelName = models[agent] ? modelChoices.find((m) => m.id === models[agent])?.name : undefined;
   // what each AI will use, written under its name in the picker
@@ -435,55 +423,16 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
     setSettingsOpen(false);
   };
 
-  const joinedLines = outsideAgents.map((name) => {
-    const firstStep = timeline.find(
-      (e) => e.actor === "ai" && isOutside(e.by) && plainName(e.by as string) === name
-    );
-    const made = timeline.filter((e) => e.actor === "ai" && isOutside(e.by) && plainName(e.by as string) === name).length;
-    return {
-      type: "joined" as const,
-      name,
-      time: firstStep?.time ?? 0,
-      text: `${name} worked from its own window: ${made} ${made === 1 ? "change" : "changes"}, on the history line below`,
-    };
-  });
-
-  type RenderEntry =
-    | RenderItem
-    | { type: "joined"; name: string; time: number; text: string };
-
-  const getItemTime = (item: RenderEntry): number => {
-    if (item.type === "joined") return item.time;
-    if (item.type === "single") return item.msg.time ?? 0;
-    return item.messages[0]?.time ?? 0;
-  };
-
-  const sortedJoined = [...joinedLines].sort((a, b) => a.time - b.time);
-  const conversationItems: RenderEntry[] = [];
-  let jIdx = 0;
-  for (const r of renderItems) {
-    const rTime = getItemTime(r);
-    while (jIdx < sortedJoined.length && sortedJoined[jIdx].time <= rTime) {
-      conversationItems.push(sortedJoined[jIdx]);
-      jIdx++;
-    }
-    conversationItems.push(r);
-  }
-  while (jIdx < sortedJoined.length) {
-    conversationItems.push(sortedJoined[jIdx]);
-    jIdx++;
-  }
-
   const mentionMatch = text.match(/@([A-Za-z]*)$/);
   const mentionQuery = mentionMatch ? mentionMatch[1].toLowerCase() : null;
   const matchingMembers = mentionQuery !== null
-    ? members.filter((m) => m.name.toLowerCase().startsWith(mentionQuery))
+    ? members.filter((m) => m.name.toLowerCase().startsWith(mentionQuery) || nm(m.name).toLowerCase().startsWith(mentionQuery))
     : [];
   const showMentions = !mentionHidden && mentionMatch !== null && matchingMembers.length > 0;
   const activeMentionIdx = Math.min(mentionIndex, Math.max(0, matchingMembers.length - 1));
 
   const insertMention = (m: (typeof AGENTS)[number]) => {
-    const replacement = "@" + m.name.replace(/\s+/g, "") + " ";
+    const replacement = "@" + nm(m.name).replace(/\s+/g, "") + " ";
     const next = text.replace(/@[A-Za-z]*$/, replacement);
     setText(next);
     setMentionHidden(false);
@@ -503,66 +452,130 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
     void (task ? sendToTask(task.key, t) : sendToAgent(t));
   };
 
-  const renderNote = (m: ChatMessage) => {
-    const isLater = m.undoStep !== undefined && m.undoStep > cursor;
-    const isLit = litStep === m.step;
-    const laterTitle = isLater ? "This comes after the moment you are looking at" : undefined;
-    const noteStepIndex = findStep(timeline, m.step);
-    const noteAgent = (m as any).by || (m as any).name || (noteStepIndex >= 0 ? timeline[noteStepIndex]?.by : undefined) || (m.undoStep !== undefined ? timeline[m.undoStep]?.by : undefined);
-    const col = isOutside(noteAgent) ? agentColour(plainName(noteAgent)) : undefined;
+  const later = (at: number) => at > cursor;
+  const laterTitle = "This comes after the moment you are looking at";
+
+  /** An AI's name in its colour, then the tool it is. Click the name to rename it. */
+  const authorLine = (tool: string) => {
+    const colour = agentColour(tool);
+    if (renaming?.tool === tool)
+      return (
+        <input
+          className="m-rename"
+          autoFocus
+          value={renaming.name}
+          style={{ color: colour }}
+          onChange={(e) => setRenaming({ tool, name: e.target.value })}
+          onBlur={() => {
+            renameAgent(tool, renaming.name);
+            setRenaming(null);
+          }}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") setRenaming(null);
+          }}
+        />
+      );
     return (
-      <div
-        key={m.id}
-        data-step={m.step}
-        className={`m note ${noteAgent ? "outside-ai" : ""} ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-        title={laterTitle}
-        style={col ? { color: col } : undefined}
-      >
-        {noteAgent && (
-          <span className="m-badge" style={{ backgroundColor: col }}>
-            {noteAgent.charAt(0)}
+      <>
+        <span className="m-author-name" style={{ color: colour }} title="Click to rename" onClick={() => setRenaming({ tool, name: nm(tool) })}>
+          {nm(tool)}
+        </span>
+        <span className="m-author-tool">
+          {tool}
+          {task ? " · task" : ""}
+        </span>
+      </>
+    );
+  };
+
+  /** Changes sit on the line as dots. Several fold into one, opened on click; each opens the design at that moment. */
+  const renderChanges = (item: Extract<Item, { kind: "changes" }>) => {
+    const colour = item.actor === "you" ? "var(--text)" : whoColour("ai", item.by);
+    const count = item.changes.length;
+    const who = item.actor === "you" ? "You" : isOutside(item.by) ? `${nm(item.by)}, from its own window` : "";
+    const shown = count === 1 ? "all" : openGroups[item.key];
+    const allLater = item.changes.every((c) => later(c.at));
+    if (!shown)
+      return (
+        <div key={item.key} data-key={item.key} className={`hl-changes ${allLater ? "later" : ""}`} style={{ ["--who" as string]: colour }} title={allLater ? laterTitle : undefined}>
+          <span className="hl-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
           </span>
-        )}
-        {noteAgent ? (
-          <span className="m-body">
-            {m.text}
-            {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
-              <span className="undo" onClick={() => undoAiStep(m.id)}>
-                Undo
-              </span>
-            )}
-            {m.undone && <em> Undone</em>}
-            {(() => {
-              const at = findStep(timeline, m.step);
-              return at >= 0 && at !== cursor && !m.undone ? (
-                <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
-                  Show this step
+          <button type="button" className="hl-chip" onClick={() => setOpenGroups((g) => ({ ...g, [item.key]: "open" }))}>
+            <span>
+              {who ? `${who} · ` : ""}
+              {count} changes
+            </span>
+            <svg width={9} height={9} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 3.5l3 3 3-3" />
+            </svg>
+          </button>
+        </div>
+      );
+    const list = shown === "all" ? item.changes : item.changes.slice(0, FIRST_CHANGES);
+    const rest = count - list.length;
+    return (
+      <div key={item.key} data-key={item.key} className="hl-changes open" style={{ ["--who" as string]: colour }}>
+        {who && <div className="hl-who">{who}</div>}
+        {list.map((c) => {
+          const m = c.msg;
+          const gone = c.at < 0 || !!m?.undone;
+          return (
+            <div
+              key={c.key}
+              data-key={c.key}
+              data-step={c.step}
+              className={`hl-change ${c.at === cursor ? "now" : ""} ${later(c.at) ? "later" : ""} ${gone ? "gone" : ""} ${c.step && litStep === c.step ? "lit" : ""}`}
+              title={gone ? undefined : c.at === cursor ? "The design is at this moment" : "See the design at this moment"}
+              onClick={() => !gone && goTo(c.at)}
+            >
+              <i className="hl-dot" aria-hidden="true" />
+              <span>{c.text}</span>
+              {m && !gone && c.at === cursor && m.undoStep === cursor && cursor === timeline.length - 1 && (
+                <span
+                  className="undo"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    undoAiStep(m.id);
+                  }}
+                >
+                  Undo
                 </span>
-              ) : null;
-            })()}
-          </span>
-        ) : (
-          <>
-            {m.text}
-            {m.undoStep !== undefined && !m.undone && cursor === m.undoStep && (
-              <span className="undo" onClick={() => undoAiStep(m.id)}>
-                Undo
-              </span>
+              )}
+              {m?.undone && <em> Undone</em>}
+            </div>
+          );
+        })}
+        {count > 1 && (
+          <div className="hl-more">
+            {rest > 0 && (
+              <>
+                <span onClick={() => setOpenGroups((g) => ({ ...g, [item.key]: "all" }))}>and {rest} more</span>
+                {" · "}
+              </>
             )}
-            {m.undone && <em> Undone</em>}
-            {(() => {
-              const at = findStep(timeline, m.step);
-              return at >= 0 && at !== cursor && !m.undone ? (
-                <span className="undo" title="Go to this moment in the history" onClick={() => goTo(at)}>
-                  Show this step
-                </span>
-              ) : null;
-            })()}
-          </>
+            <span
+              onClick={() =>
+                setOpenGroups((g) => {
+                  const next = { ...g };
+                  delete next[item.key];
+                  return next;
+                })
+              }
+            >
+              Fold
+            </span>
+          </div>
         )}
       </div>
     );
   };
+
+  const hits = findOpen ? findInHistory(items, query, nm) : [];
 
   return (
     <div
@@ -643,9 +656,12 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               {members.map((m) => (
                 <div key={m.id} className={`who-answer-row ${m.id === taskPick ? "active" : ""}`} onClick={() => setTaskPick(m.id)}>
                   <span className="member-badge" style={{ backgroundColor: agentColour(m.name) }}>
-                    {m.name.charAt(0)}
+                    {nm(m.name).charAt(0)}
                   </span>
-                  <span className="who-answer-name">{m.name}</span>
+                  <span className="who-answer-name">
+                    <b>{nm(m.name)}</b>
+                    <small>{m.name}</small>
+                  </span>
                 </div>
               ))}
             </div>
@@ -675,27 +691,44 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 key={m.id}
                 className={`member-badge ${isAnswers ? "answers-ring" : ""} ${isAnswers && running ? "answering" : ""}`}
                 style={{ backgroundColor: agentColour(m.name), ["--who" as string]: agentColour(m.name) }}
-                title={m.name}
+                title={`${nm(m.name)} · ${m.name}`}
                 onClick={openPicker}
               >
-                {m.name.charAt(0)}
+                {nm(m.name).charAt(0)}
               </div>
             );
           })}
-          {outsideAgents.map((name) => (
+          {outsideAgents.filter((name) => !members.some((m) => m.name === name)).map((name) => (
             <div
               key={name}
               className={`member-badge outside ${busyName === name ? "answering" : ""}`}
               style={{ backgroundColor: agentColour(name), ["--who" as string]: agentColour(name) }}
-              title={name}
+              title={`${nm(name)} · ${name}, from its own window`}
               onClick={openPicker}
             >
-              {name.charAt(0)}
+              {nm(name).charAt(0)}
             </div>
           ))}
 
         </div>
 
+        <button
+          type="button"
+          className={`chat-settings-btn ${findOpen ? "on" : ""}`}
+          data-name="chat-find"
+          title="Search what was said, the changes, the versions and the AIs"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (minimized) setMinimized(false);
+            setFindOpen((o) => !o);
+            setQuery("");
+            setSettingsOpen(false);
+            setPopOpen(false);
+          }}
+        >
+          <Icon name="search" size={14} />
+        </button>
         <button
           type="button"
           className="chat-settings-btn"
@@ -753,6 +786,32 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
         )}
       </div>
 
+      {!minimized && findOpen && (
+        <div className="chat-find">
+          <input
+            autoFocus
+            value={query}
+            placeholder="Search messages, changes, versions, AIs"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Escape") setFindOpen(false);
+              if (e.key === "Enter" && hits[0]) jump(hits[0]);
+            }}
+          />
+          {query.trim() && (
+            <div className="chat-find-list">
+              {hits.map((f) => (
+                <div key={`${f.kind}-${f.key}`} className="chat-find-row" onClick={() => jump(f)}>
+                  <small>{FOUND_KIND[f.kind]}</small>
+                  <span>{f.text}</span>
+                </div>
+              ))}
+              {hits.length === 0 && <div className="chat-find-empty">Nothing found</div>}
+            </div>
+          )}
+        </div>
+      )}
       {!minimized && (
         <>
           {HANDLES.map((hnd) => (
@@ -771,66 +830,48 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 Install {AGENTS.filter((a) => a.runnable).map((a) => `${a.name} from ${a.install}`).join(" or ")}, sign in once, then reopen Duet.
               </div>
             )}
-            {!docked && messages.length === 0 && found !== false && (
+            {!docked && items.length === 0 && found !== false && (
               <div className="m greeting">
                 <span className="member-badge" style={{ backgroundColor: agentColour(toolName) }}>
-                  {chatToolLetter}
+                  {chatName.charAt(0)}
                 </span>
-                Hey, {toolName} here. Tell me what to make or change. I can see what is selected on your canvas.
+                Hey, {chatName} here, using {toolName}. Tell me what to make or change. I can see what is selected on your canvas.
               </div>
             )}
-            {conversationItems.map((item) => {
-              if (item.type === "joined") {
+            <div className="hl">
+            {items.map((item) => {
+              if (item.kind === "changes") return renderChanges(item);
+              if (item.kind === "version")
                 return (
-                  <div key={`joined-${item.name}`} className="chat-joined-line">
-                    {item.text}
+                  <div
+                    key={item.key}
+                    data-key={item.key}
+                    className={`hl-version ${later(item.at) ? "later" : ""} ${item.at === cursor ? "now" : ""}`}
+                    title="See the design at this version"
+                    onClick={() => goTo(item.at)}
+                  >
+                    <i className="hl-square" aria-hidden="true" />
+                    Version saved: <b>{item.name}</b>
                   </div>
                 );
-              }
-              if (item.type === "noteGroup") {
-                const isGroupLit = item.messages.some((m) => litStep === m.step);
-                const isGroupLater = item.messages.some((m) => m.undoStep !== undefined && m.undoStep > cursor);
-                const isUnfolded = unfoldedGroups[item.id] ?? isGroupLit;
-                const targetStep = item.messages.find((m) => m.step === litStep)?.step ?? item.messages[0].step;
-                return (
-                  <Fragment key={`group-${item.id}`}>
-                    <div
-                      data-step={targetStep}
-                      className={`m note ${isGroupLater ? "later" : ""} ${isGroupLit ? "lit" : ""}`}
-                      title={isGroupLater ? "This comes after the moment you are looking at" : undefined}
-                    >
-                      {item.messages.length} changes
-                      <span
-                        className="undo note-toggle"
-                        onClick={() =>
-                          setUnfoldedGroups((prev) => ({
-                            ...prev,
-                            [item.id]: !isUnfolded,
-                          }))
-                        }
-                      >
-                        {isUnfolded ? "Hide" : "Show"}
-                      </span>
-                    </div>
-                    {isUnfolded && item.messages.map((m) => renderNote(m))}
-                  </Fragment>
-                );
-              }
-
               const m = item.msg;
               const isLater = m.undoStep !== undefined && m.undoStep > cursor;
               const isLit = litStep === m.step;
-              const laterTitle = isLater ? "This comes after the moment you are looking at" : undefined;
+              const title = isLater ? laterTitle : undefined;
 
-              if (m.role === "working") return null;
               if (m.role === "you")
                 return (
                   <div
                     key={m.id}
+                    data-key={item.key}
                     data-step={m.step}
                     className={`m you ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-                    title={laterTitle}
+                    title={title}
                   >
+                    <div className="m-author">
+                      <span className="m-badge you-badge">Y</span>
+                      <span className="m-author-name">You</span>
+                    </div>
                     {m.pictures && (
                       <div className="pics">
                         {m.pictures.map((n) => {
@@ -840,16 +881,17 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                         })}
                       </div>
                     )}
-                    {renderYouText(m.text, members)}
+                    <div className="m-body">{renderYouText(m.text, members.map((x) => ({ name: nm(x.name), tool: x.name })))}</div>
                   </div>
                 );
               if (m.role === "error")
                 return (
                   <div
                     key={m.id}
+                    data-key={item.key}
                     data-step={m.step}
                     className={`m err ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-                    title={laterTitle}
+                    title={title}
                   >
                     {m.text}
                   </div>
@@ -858,9 +900,10 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 return (
                   <div
                     key={m.id}
+                    data-key={item.key}
                     data-step={m.step}
                     className={`m card ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-                    title={laterTitle}
+                    title={title}
                   >
                     <div className="tagline">Suggestion</div>
                     {m.proposal.summary}
@@ -880,9 +923,10 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 return (
                   <div
                     key={m.id}
+                    data-key={item.key}
                     data-step={m.step}
                     className={`m card warn ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-                    title={laterTitle}
+                    title={title}
                   >
                     <div className="tagline">Duet is asking</div>
                     {m.approval.summary}
@@ -898,24 +942,20 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                     </div>
                   </div>
                 );
-              if (m.role === "note") {
-                return renderNote(m);
-              }
-              const authorName = m.by || toolName;
+              if (m.role === "note")
+                return (
+                  <div key={m.id} data-key={item.key} className="m note">
+                    {m.text}
+                  </div>
+                );
+              const tool = m.by || toolName;
               return (
-                <div
-                  key={m.id}
-                  data-step={m.step}
-                  className={`m ai ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`}
-                  title={laterTitle}
-                >
-                  <div className="m-author">
-                    <span className="m-badge" style={{ backgroundColor: agentColour(authorName) }}>
-                      {authorName.charAt(0)}
+                <div key={m.id} data-key={item.key} data-step={m.step} className={`m ai ${isLater ? "later" : ""} ${isLit ? "lit" : ""}`} title={title}>
+                  <div className="m-author" title={m.took ? tookLine(m.took) : undefined}>
+                    <span className="m-badge" style={{ backgroundColor: agentColour(tool) }}>
+                      {nm(tool).charAt(0)}
                     </span>
-                    <span className="m-author-name" style={{ color: agentColour(authorName) }} title={m.took ? tookLine(m.took) : undefined}>
-                      {authorName}
-                    </span>
+                    {authorLine(tool)}
                   </div>
                   <div className="m-body">
                     <Rich text={m.text} />
@@ -923,14 +963,15 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                 </div>
               );
             })}
+            </div>
             {isWorking && workingTool && waitingLine && (
               <div className="chat-working-line">
-                <span className="chat-working-tool">{workingTool}</span>: {waitingLine}
+                <span className="chat-working-tool" style={{ color: agentColour(workingTool) }}>{nm(workingTool)}</span>: {waitingLine}
               </div>
             )}
           </div>
 
-          {!docked && messages.length === 0 && found !== false && (
+          {!docked && items.length === 0 && found !== false && (
             <div className="chips">
               {IDEAS.map((i) => (
                 <span key={i.label} className="chip" onClick={() => send(i.ask)}>
@@ -942,7 +983,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
 
           {docked && found !== false && (
             <div className="chat-start-title" aria-hidden={!isEmpty}>
-              {task ? `What should ${toolName} do?` : "What shall we make?"}
+              {task ? `What should ${chatName} do?` : "What shall we make?"}
             </div>
           )}
 
@@ -991,8 +1032,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                   setSettingsOpen(false);
                 }}
               >
-                <span className="agent-btn-badge" style={{ backgroundColor: agentColour(toolName) }}>{chatToolLetter}</span>
-                <span className="agent-btn-name">{toolName}</span>
+                <span className="agent-btn-badge" style={{ backgroundColor: agentColour(toolName) }}>{chatName.charAt(0)}</span>
+                <span className="agent-btn-name" title={found === false ? undefined : `${chatName} uses ${toolName}`}>{chatName}</span>
                 {modelName && <span className="agent-btn-model">{modelName}</span>}
                 <span className="agent-btn-v">
                   <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1057,10 +1098,12 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                             className="member-badge"
                             style={{ backgroundColor: agentColour(m.name) }}
                           >
-                            {m.name.charAt(0)}
+                            {nm(m.name).charAt(0)}
                           </span>
                           <span className="who-answer-name">
-                            <b>{m.name}</b>
+                            <b>
+                              {nm(m.name)} <i className="who-answer-tool">{m.name}</i>
+                            </b>
                             {m.id === agent ? (
                               <small
                                 className="who-answer-tune"
@@ -1108,7 +1151,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                       </div>
                     </div>
                   )}
-                  {members.length > 1 && <div className="agent-pop-empty">Or write @ and a name to ask another one once.</div>}
+                  {members.length > 1 && <div className="agent-pop-empty">Or write @ and a name, like @{nm(members.find((x) => x.id !== agent)?.name)}, to ask another one once.</div>}
                 </div>
               )}
             </div>
@@ -1130,9 +1173,11 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
                       className="member-badge"
                       style={{ backgroundColor: agentColour(m.name) }}
                     >
-                      {m.name.charAt(0)}
+                      {nm(m.name).charAt(0)}
                     </span>
-                    <span>{m.name}</span>
+                    <span>
+                      {nm(m.name)} <small>{m.name}</small>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1141,7 +1186,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               ref={textareaRef}
               value={text}
               rows={1}
-              placeholder={found === false ? "Install an AI tool to start" : task ? `Ask ${toolName} about this task` : `Ask ${toolName}`}
+              placeholder={found === false ? "Install an AI tool to start" : task ? `Ask ${chatName} about this task` : `Ask ${chatName}`}
               disabled={found === false}
               onChange={(e) => {
                 setText(e.target.value);

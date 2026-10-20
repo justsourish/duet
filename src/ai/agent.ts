@@ -357,7 +357,7 @@ export async function sendToAgent(text: string) {
   }
   if (!said && !getChat().pictures.some((p) => !p.sent)) return;
   // naming an agent with @ hands the message to that one, and it answers from then on
-  const asked = mentioned(said, getChat().installed);
+  const asked = mentioned(said, getChat().installed, getChat().names);
   if (asked && asked !== getChat().agent) setAgent(asked);
   const agent = getChat().agent;
   if (agent === "agy" && agyBusy()) {

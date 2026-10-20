@@ -370,8 +370,8 @@ async function flushThread() {
   const project = conversationProject();
   const tasks = chat.tasks.filter((t) => t.project === project && t.messages.length).map((t) => ({ agent: t.agent, title: t.title, said: keepable(t.messages) }));
   // a project nobody has talked in gets no file
-  if (!chat.messages.length && !chat.earlier.length && !tasks.length && threadKept?.dir !== dir) return;
-  const text = packThread({ now: keepable(chat.messages), earlier: keepable(chat.earlier), tasks });
+  if (!chat.messages.length && !chat.earlier.length && !tasks.length && !Object.keys(chat.names).length && threadKept?.dir !== dir) return;
+  const text = packThread({ now: keepable(chat.messages), earlier: keepable(chat.earlier), tasks, names: chat.names });
   if (threadKept?.dir === dir && threadKept.text === text) return;
   try {
     await saveThread(dir, text);
@@ -388,7 +388,7 @@ async function bringBackThread(dir: string) {
   const text = await loadThread(dir);
   const thread = readThread(text);
   threadKept = text === null ? null : { dir, text: packThread(thread) };
-  restoreConversation(thread.now, thread.earlier);
+  restoreConversation(thread.now, thread.earlier, thread.names);
   // a task whose AI is not one Duet knows any more is left out
   const known = (thread.tasks ?? []).filter((t) => AGENTS.some((a) => a.id === t.agent && a.runnable));
   restoreTasks(conversationProject(), known.map((t) => ({ agent: t.agent as AgentId, title: t.title, messages: t.said })));

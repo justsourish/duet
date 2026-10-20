@@ -47,5 +47,6 @@ describe("a saved step says which AI tool made it", () => {
     expect(mentioned("@claude look", here)).toBe("claude");
     expect(mentioned("mail me at a@b.co", here)).toBe(null);
     expect(mentioned("@Antigravity tidy", { claude: true })).toBe(null);
+    expect(mentioned("@Juniper tidy the spacing", here, { Antigravity: "Juniper" })).toBe("agy");
   });
 });

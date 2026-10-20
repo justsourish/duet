@@ -1,3 +1,5 @@
+import { readGiven } from "../ai/names";
+
 /**
  * The thread: what was said and done in a project's conversation, as Duet keeps it.
  *
@@ -22,6 +24,8 @@ export interface Said {
   step?: string;
   /** On the last thing an AI said in a turn: which tool and model, how long, how many changes. */
   took?: { tool: string; model?: string; ms: number; changes: number };
+  /** For what an AI said: the tool that said it. */
+  by?: string;
 }
 
 export interface Thread {
@@ -31,6 +35,8 @@ export interface Thread {
   earlier: Said[];
   /** Side conversations, each with one AI. Left out when there are none. */
   tasks?: KeptTask[];
+  /** The names the AIs go by in this project, by tool. Left out when there are none. */
+  names?: Record<string, string>;
 }
 
 /** A task as it is kept: which AI does it, its name, and what was said in it. */
@@ -56,6 +62,7 @@ export interface Speaking {
   undone?: boolean;
   step?: string;
   took?: { tool: string; model?: string; ms: number; changes: number };
+  by?: string;
 }
 
 /** How many things a project remembers. Older ones are let go, earlier conversations first. */
@@ -81,6 +88,7 @@ export function keepable(messages: Speaking[], now = Date.now()): Said[] {
     if (m.pictures?.length) said.pictures = m.pictures;
     if (m.undone) said.undone = true;
     if (typeof m.step === "string" && m.step) said.step = m.step;
+    if (typeof m.by === "string" && m.by) said.by = m.by.slice(0, 60);
     const t = m.took;
     if (t && typeof t.tool === "string" && Number.isFinite(t.ms) && Number.isFinite(t.changes)) {
       said.took = { tool: t.tool, ms: t.ms, changes: t.changes, ...(typeof t.model === "string" && t.model ? { model: t.model } : {}) };
@@ -96,7 +104,8 @@ export function packThread(thread: Thread): string {
   const room = THREAD_LIMIT - now.length;
   const earlier = room > 0 ? thread.earlier.slice(-room) : [];
   const tasks = (thread.tasks ?? []).slice(-TASKS_KEPT).map((t) => ({ agent: t.agent, title: t.title, said: t.said.slice(-TASK_LIMIT) }));
-  return JSON.stringify(tasks.length ? { version: 1, now, earlier, tasks } : { version: 1, now, earlier });
+  const names = thread.names && Object.keys(thread.names).length ? { names: thread.names } : {};
+  return JSON.stringify(tasks.length ? { version: 1, now, earlier, tasks, ...names } : { version: 1, now, earlier, ...names });
 }
 
 function taskList(value: unknown): KeptTask[] {
@@ -118,9 +127,11 @@ function list(value: unknown): Said[] {
 export function readThread(text: string | null | undefined): Thread {
   if (!text) return { now: [], earlier: [] };
   try {
-    const raw = JSON.parse(text) as { now?: unknown; earlier?: unknown; tasks?: unknown };
+    const raw = JSON.parse(text) as { now?: unknown; earlier?: unknown; tasks?: unknown; names?: unknown };
     const tasks = taskList(raw.tasks);
-    return tasks.length ? { now: list(raw.now), earlier: list(raw.earlier), tasks } : { now: list(raw.now), earlier: list(raw.earlier) };
+    const given = readGiven(raw.names);
+    const names = Object.keys(given).length ? { names: given } : {};
+    return tasks.length ? { now: list(raw.now), earlier: list(raw.earlier), tasks, ...names } : { now: list(raw.now), earlier: list(raw.earlier), ...names };
   } catch {
     return { now: [], earlier: [] };
   }

@@ -8,6 +8,8 @@ import { isLooseCopy } from "../document/components";
 import { getPicture } from "../project/assets";
 import { clipPicture } from "../video/clips";
 import { graded } from "./grade";
+import { getChat } from "../ai/chat";
+import { nameOf } from "../ai/names";
 import { HANDLES } from "./handles";
 import { agentColour } from "../ai/colours";
 import { plainName } from "../ai/who";
@@ -545,7 +547,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, w: number, h: numb
     }
     ctx.fillStyle = colour;
     // the label sits on the top edge, in the AI's colour
-    const label = `${by ? plainName(by) : "Duet"} ${working.length ? "is working here" : "is getting ready"}`;
+    const label = `${by ? nameOf(by, getChat().names) : "Duet"} ${working.length ? "is working here" : "is getting ready"}`;
     ctx.globalAlpha = 1;
     ctx.font = `600 12px ${FONT_STACK}`;
     const lw = ctx.measureText(label).width + 16;
