@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SHORTCUTS, keyText } from "./shortcuts";
 import { BUILDER_TOOLS } from "../ai/builder";
 import { AGENTS, useChat } from "../ai/chat";
 import { busyOutside } from "../ai/outside";
@@ -11,8 +12,10 @@ interface SettingsProps {
   onClose: () => void;
 }
 
+const MAC = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+
 export default function Settings({ check = false, onClose }: SettingsProps) {
-  const [section, setSection] = useState<"General" | "Developer">("General");
+  const [section, setSection] = useState<"Keyboard shortcuts" | "General" | "Developer">("Keyboard shortcuts");
   const [version, setVersion] = useState("");
   useEffect(() => void getVersion().then(setVersion).catch(() => undefined), []);
 
@@ -38,8 +41,8 @@ export default function Settings({ check = false, onClose }: SettingsProps) {
     : undefined;
   const workingNow = who ?? "No one";
 
-  const sections = check ? (["General", "Developer"] as const) : (["General"] as const);
-  const activeSection = check ? section : "General";
+  const sections = check ? (["Keyboard shortcuts", "General", "Developer"] as const) : (["Keyboard shortcuts", "General"] as const);
+  const activeSection = section === "Developer" && !check ? "General" : section;
 
   return (
     <div className="settings-screen" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -64,6 +67,22 @@ export default function Settings({ check = false, onClose }: SettingsProps) {
           </div>
         </aside>
         <section className="settings-right">
+          {activeSection === "Keyboard shortcuts" && (
+            <div className="settings-content">
+              <div className="settings-section-title">Keyboard shortcuts</div>
+              {SHORTCUTS.map((g) => (
+                <div key={g.group} className="shortcut-group">
+                  <div className="settings-subtitle">{g.group}</div>
+                  {g.keys.map(([keys, what]) => (
+                    <div key={g.group + keys} className="shortcut-row">
+                      <span>{what}</span>
+                      <kbd>{keyText(keys, MAC)}</kbd>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           {activeSection === "General" && (
             <div className="settings-content">
               <div className="settings-section-title">General</div>
