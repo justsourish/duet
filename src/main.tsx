@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { watchForFreezes } from "./freezeWatch";
 
 // In development only: lets a developer look at the app's state from the console.
 if (import.meta.env.DEV) void import("./state/store").then((m) => ((window as unknown as { __duet: unknown }).__duet = m));
@@ -20,6 +21,8 @@ if (import.meta.env.PROD) {
 
 // A file dropped anywhere Duet does not take it must never be opened by the window itself: that would
 // replace Duet with the file, and the window could then not even be closed.
+watchForFreezes();
+
 for (const ev of ["dragover", "drop"]) window.addEventListener(ev, (e) => e.preventDefault());
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
