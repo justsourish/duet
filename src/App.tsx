@@ -255,10 +255,10 @@ export default function App() {
           <button
             className={dock.mode === "motion" ? "active" : ""}
             data-name="mode-motion"
-            title="Motion (Cmd or Ctrl 2)"
+            title="Video: edit, animate and tell the story over time (Cmd or Ctrl 2)"
             onClick={() => setLayout({ mode: "motion" })}
           >
-            Motion
+            Video
           </button>
           <button
             className={dock.mode === "color" ? "active" : ""}

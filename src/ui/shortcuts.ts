@@ -44,7 +44,7 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
     group: "See",
     keys: [
       ["Cmd 1", "Design"],
-      ["Cmd 2", "Motion"],
+      ["Cmd 2", "Video"],
       ["Cmd 3", "Colour"],
       ["Shift 1", "Fit everything"],
       ["Shift 2", "Zoom to what is picked"],
@@ -58,7 +58,7 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
     ],
   },
   {
-    group: "Video, in Motion",
+    group: "Video",
     keys: [
       ["Space", "Play or stop"],
       ["L", "Play"],
@@ -66,8 +66,8 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
       ["C or S", "Split at the playhead"],
       ["D", "Delete the clip and close the gap"],
       ["M", "Add a marker at the playhead, or take it away"],
-      ["[ and ]", "In Layers: start or end the picked layers at the playhead, sliding them"],
-      ["Option [ and ]", "In Layers: trim the picked layers to the playhead"],
+      ["[ and ]", "In Motion: start or end the picked layers at the playhead, sliding them"],
+      ["Option [ and ]", "In Motion: trim the picked layers to the playhead"],
       ["` or ~", "Make the timeline fill the window, and bring it back"],
       ["= and -", "Zoom the timeline in and out"],
       ["\\", "Fit the timeline"],

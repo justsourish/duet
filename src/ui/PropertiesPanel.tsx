@@ -468,7 +468,7 @@ function momentTimes(el: El, props: Moving[]): number[] {
 function LengthSection({ el }: { el: El }) {
   return (
     <div className="sec">
-      <h4>Motion</h4>
+      <h4>Scene</h4>
       <NumField label="Length" value={Math.round(el.duration * 100) / 100} min={0} onCommit={(seconds) => dispatch("set_duration", { id: el.id, seconds })} />
     </div>
   );
@@ -666,7 +666,7 @@ export default function PropertiesPanel() {
       {mode === "motion" && one && scene && one.id === scene.id && <LengthSection el={one} />}
       {mode === "motion" && one && one.type === "frame" && !(one.duration > 0) && (
         <div className="sec">
-          <h4>Motion</h4>
+          <h4>Scene</h4>
           <button className="pill" data-name="make-video" title="Give this frame a length, so what is in it can appear, move and leave" onClick={() => dispatch("set_duration", { id: one.id, seconds: 10 })}>
             Make this frame a scene
           </button>

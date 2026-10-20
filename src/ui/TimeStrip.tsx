@@ -976,14 +976,14 @@ export default function TimeStrip() {
             data-name="look-layers"
             onClick={() => setLayout({ timeLook: "layers" })}
           >
-            Layers
+            Motion
           </button>
           <button
             className={look === "cut" ? "active" : ""}
             data-name="look-cut"
             onClick={() => setLayout({ timeLook: "cut" })}
           >
-            Cut
+            Edit
           </button>
         </div>
         <button className="pill" data-name="add-media" onClick={() => void bring()} title="Bring in video, music or a voice, at the moment the clock is on">
