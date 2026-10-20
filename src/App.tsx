@@ -202,18 +202,21 @@ export default function App() {
   const lw = dock.leftHidden ? 0 : dock.leftW;
   const rw = dock.rightHidden ? 0 : dock.rightW;
   const chatting = dock.space === "chat";
+  const timeMax = dock.timeMax && !chatting && dock.mode !== "design";
   const appStyle = chatting
     ? { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: `44px minmax(0, 1fr) ${dock.historyLine ? "48px" : "0"}`, gridTemplateAreas: '"top" "chathome" "hist"' }
     : {
     gridTemplateColumns: dock.swapped ? `auto ${rw}px 1fr ${lw}px` : `auto ${lw}px 1fr ${rw}px`,
-    gridTemplateAreas: dock.swapped
+    gridTemplateAreas: timeMax
+      ? '"top top top top" "tools time time time" "tools time time time" "tools time time time" "hist hist hist hist"'
+      : dock.swapped
       ? '"top top top top" "tools right tabs left" "tools right canvas left" "tools time time time" "hist hist hist hist"'
       : '"top top top top" "tools left tabs right" "tools left canvas right" "tools time time time" "hist hist hist hist"',
 
   };
 
   return (
-    <div className={`app ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""} ${full ? "fs" : ""} ${dock.historyLine ? "" : "no-hist"}`} style={appStyle}>
+    <div className={`app ${timeMax ? "time-max" : ""} ${dock.swapped ? "swapped" : ""} ${check ? "check" : ""} ${MAC ? "mac" : ""} ${full ? "fs" : ""} ${dock.historyLine ? "" : "no-hist"}`} style={appStyle}>
       {/* the top row: the name, how it is saved, the kind of work, and Export; on a Mac it shares the row with the window buttons */}
       <header className="top" data-tauri-drag-region>
         <div className="top-side" data-tauri-drag-region>

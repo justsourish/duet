@@ -37,12 +37,14 @@ export interface Dock {
   gradeEvery: boolean;
   /** Rulers along the top and the left of the canvas, with the guides pulled out of them. */
   rulers: boolean;
+  /** The timeline takes the whole window below the top bar, for a closer look. Never kept between runs. */
+  timeMax: boolean;
 }
 
 const KEY = "duet:layout";
 export const MIN_W = 180;
 export const MAX_W = 460;
-export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false, homeChatW: 0, gradeEvery: false, rulers: false });
+export const defaults = (): Dock => ({ leftW: 232, rightW: 248, leftHidden: false, rightHidden: false, swapped: false, mode: "design", space: "edit", chat: { corner: "br" }, chatW: 320, chatH: 340, timeLook: "layers", keysOpen: false, timeH: 170, historyLine: false, homeChatW: 0, gradeEvery: false, rulers: false, timeMax: false });
 export const CHAT_MIN = { w: 280, h: 140 };
 export const TIME_MIN_H = 72;
 
@@ -53,7 +55,7 @@ function load(): Dock {
       const mode: Mode = raw.mode === "motion" || raw.mode === "color" ? raw.mode : "design";
       const timeLook: TimeLook = raw.timeLook === "cut" ? "cut" : "layers";
       const space: Space = raw.space === "chat" ? "chat" : "edit";
-      return { ...defaults(), ...raw, mode, space, timeLook };
+      return { ...defaults(), ...raw, mode, space, timeLook, timeMax: false };
     }
   } catch {
     /* start fresh */

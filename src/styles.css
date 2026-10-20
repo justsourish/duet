@@ -5920,3 +5920,21 @@ input.chathome-name.rename {
   gap: 10px;
   color: var(--muted);
 }
+
+/* the timeline maximised: everything between the top bar and the history line is the timeline */
+.app.time-max .tabbar,
+.app.time-max .left,
+.app.time-max .right,
+.app.time-max main.canvas {
+  display: none;
+}
+.app.time-max .time {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.app.time-max .time-lanes {
+  flex: 1;
+  height: auto !important;
+  min-height: 0;
+}

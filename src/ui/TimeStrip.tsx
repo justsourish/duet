@@ -13,7 +13,7 @@ import { QUALITIES, SIZES, addMedia, clipKind, defaultChoice, dropClips, exportS
 import { droppedPaths } from "../canvas/CanvasView";
 import type { ExportChoice } from "../video/scene";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { TIME_MIN_H, setLayout, useLayout } from "./layout";
+import { TIME_MIN_H, getLayout, setLayout, useLayout } from "./layout";
 import { useDismiss } from "./useDismiss";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
@@ -117,6 +117,24 @@ export default function TimeStrip() {
     see.observe(el);
     return () => see.disconnect();
   }, [plays, mode, sceneId]);
+
+  // the tilde key, or the one beside 1, makes the timeline fill the window and brings it back; Escape too
+  useEffect(() => {
+    if (mode === "design") return;
+    const key = (e: KeyboardEvent) => {
+      const on = document.activeElement as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
+      if (e.key === "`" || e.key === "~") {
+        e.preventDefault();
+        e.stopPropagation();
+        setLayout({ timeMax: !getLayout().timeMax });
+      } else if (e.key === "Escape" && getLayout().timeMax) {
+        setLayout({ timeMax: false });
+      }
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [mode]);
 
   // cutting keys, the ones video editors already have in their hands
   useEffect(() => {
@@ -369,6 +387,8 @@ export default function TimeStrip() {
 
 
   const scrub = (e: React.PointerEvent) => {
+    // only the left button moves the playhead: the middle one drags the timeline and the right one opens the menu
+    if (e.button !== 0) return;
     const box = e.currentTarget.getBoundingClientRect();
     const at = (clientX: number) => seek((clientX - box.left) / pps);
     pause();
@@ -1046,6 +1066,13 @@ export default function TimeStrip() {
         className="time-lanes"
         ref={lanes}
         style={{ height: growing ?? timeH, maxHeight: "none" }}
+        // a click on empty room in the timeline lets go of what is picked
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          const t = e.target as HTMLElement;
+          const empty = t === e.currentTarget || t.classList.contains("time-inner") || (t.classList.contains("time-lane") && !t.closest(".ruler"));
+          if (empty && getState().selection.length) select([]);
+        }}
         // video and sound dropped from the computer land at the moment under the pointer
         onDragOver={(e) => {
           if (!Array.from(e.dataTransfer.types).includes("Files")) return;
