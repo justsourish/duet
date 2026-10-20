@@ -141,7 +141,7 @@ export default function TimeStrip() {
         return;
       }
       const k = e.key.toLowerCase();
-      if (!["s", "d", "q", "w", "k", "l", " "].includes(k)) return;
+      if (!["s", "c", "d", "k", "l", " "].includes(k)) return;
       e.preventDefault();
       e.stopPropagation();
       // the canvas listens on the window too, and must not take the spacebar for the hand tool
@@ -150,7 +150,8 @@ export default function TimeStrip() {
       if (k === " ") return e.repeat ? undefined : togglePlay();
       if (k === "l") return play();
       if (k === "k") return pause();
-      cutNow(k === "s" ? "split" : k === "d" ? "remove" : k === "q" ? "before" : "after");
+      // S or C splits at the playhead, as the razor does in other video editors; D takes the clip away and closes the gap
+      cutNow(k === "d" ? "remove" : "split");
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
@@ -1070,7 +1071,7 @@ export default function TimeStrip() {
             }}
           >
             <span>Cut here</span>
-            <kbd>S</kbd>
+            <kbd>C</kbd>
           </div>
           <div
             className="ctx-item"

@@ -2505,6 +2505,10 @@ body.eyedropping * {
   overflow: hidden;
 }
 
+/* on a Mac the window buttons sit at the top left, so Back starts after them */
+.settings-bar.mac {
+  padding-left: 88px;
+}
 .settings-bar {
   display: flex;
   align-items: center;

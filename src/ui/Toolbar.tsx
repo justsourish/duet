@@ -24,11 +24,11 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: IconName }[] = [
   { tool: "zoom", label: "Zoom", key: "Z", icon: "zoom" },
 ];
 
-const CUTS: { kind: CutKind; label: string; key: string; icon: IconName }[] = [
-  { kind: "split", label: "Cut here", key: "S", icon: "cut-here" },
+const CUTS: { kind: CutKind; label: string; key?: string; icon: IconName }[] = [
+  { kind: "split", label: "Cut here", key: "C", icon: "cut-here" },
   { kind: "remove", label: "Delete and close the gap", key: "D", icon: "cut-close" },
-  { kind: "before", label: "Cut away what comes before", key: "Q", icon: "cut-before" },
-  { kind: "after", label: "Cut away what comes after", key: "W", icon: "cut-after" },
+  { kind: "before", label: "Cut away what comes before", icon: "cut-before" },
+  { kind: "after", label: "Cut away what comes after", icon: "cut-after" },
 ];
 
 export function screenCenter(vp = getState().viewport, canvasEl?: Element | null): { x: number; y: number } {
@@ -135,7 +135,7 @@ export default function Toolbar({ row = false }: { row?: boolean }) {
               className="tool"
               data-name={`cut-${c.kind}`}
               disabled={!scene}
-              title={scene ? `${c.label} (${c.key})` : `${c.label}. Select a scene first`}
+              title={scene ? (c.key ? `${c.label} (${c.key})` : c.label) : `${c.label}. Select a scene first`}
               onClick={() => cutNow(c.kind)}
             >
               <Icon name={c.icon} />

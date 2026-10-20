@@ -46,7 +46,7 @@ export default function Settings({ check = false, onClose }: SettingsProps) {
 
   return (
     <div className="settings-screen" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <header className="settings-bar">
+      <header className={`settings-bar ${MAC ? "mac" : ""}`}>
         <button className="pill" onClick={onClose} title="Back (Esc)">
           ← Back
         </button>
