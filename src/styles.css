@@ -4436,6 +4436,18 @@ button.agent-perm {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+input.chathome-name.rename {
+  width: 100%;
+  padding: 1px 4px;
+  margin: -2px -5px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
 .chathome-when {
   font-size: 11px;
   color: var(--muted);

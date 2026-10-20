@@ -66,6 +66,30 @@ fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
+/// Move or rename a project file. Never replaces a file that is already there.
+#[tauri::command]
+fn move_project(from: String, to: String) -> Result<(), String> {
+    let (a, b) = (Path::new(&from), Path::new(&to));
+    if b.exists() {
+        return Err("There is already a file with that name there. Pick another name.".into());
+    }
+    if fs::rename(a, b).is_err() {
+        // another disk cannot be renamed onto, so the file is copied and the old one let go
+        fs::copy(a, b).map_err(|e| format!("Could not move the project: {e}"))?;
+        fs::remove_file(a).map_err(|e| format!("The project was copied, but the old file could not be removed: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Copy a project file. Never replaces a file that is already there.
+#[tauri::command]
+fn copy_project(from: String, to: String) -> Result<(), String> {
+    if Path::new(&to).exists() {
+        return Err("There is already a file with that name there. Pick another name.".into());
+    }
+    fs::copy(&from, &to).map(|_| ()).map_err(|e| format!("Could not copy the project: {e}"))
+}
+
 #[tauri::command]
 fn make_dir(path: String) -> Result<(), String> {
     fs::create_dir_all(&path).map_err(|e| format!("Could not create {path}: {e}"))
@@ -546,6 +570,8 @@ pub fn run() {
             write_text_file,
             write_binary_file,
             path_exists,
+            move_project,
+            copy_project,
             make_dir,
             duet_home,
             check_copy,

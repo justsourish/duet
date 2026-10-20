@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import CanvasView from "../canvas/CanvasView";
 import type { Recent } from "../project/project";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import type { Trashed } from "../project/project";
-import { closeProject, closeTab, getTabs, listedProjects, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
+import { closeProject, closeTab, copyProject, getTabs, listedProjects, moveProjectTo, renameProject, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
 import { getState, setViewport, useStore } from "../state/store";
 import { closeTask, readyToLeave } from "../ai/agent";
 import { AGENTS, showThread, useChat } from "../ai/chat";
@@ -100,13 +100,26 @@ function ProjectTile({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; 
 }
 
 /** One project in the list: its picture, its name and when it was last opened. A dot says it is open. */
-function ProjectRow({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; open: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
+function ProjectRow({ r, on, open, onOpen, onMenu, renaming, onRenamed }: { r: Recent; on: boolean; open: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void; renaming: boolean; onRenamed: () => void }) {
   const own = usePreview(r.thumb ? "" : r.path);
   const src = r.thumb ?? own;
+  const [name, setName] = useState(r.name);
+  useEffect(() => setName(r.name), [r.name, renaming]);
+  const settled = useRef(false);
+  useEffect(() => void (settled.current = false), [renaming]);
+  // Enter or leaving the box keeps the new name, Escape keeps the old one; only the first of them counts
+  const done = async (keep: boolean) => {
+    if (settled.current) return;
+    settled.current = true;
+    onRenamed();
+    if (!keep || !name.trim() || name.trim() === r.name) return;
+    const why = await renameProject(r.path, name);
+    if (why) await message(why, { title: "Rename", kind: "warning" });
+  };
   return (
     <div
       className={`chathome-row ${on ? "on" : ""} ${on || open ? "" : "shut"}`}
-      onClick={onOpen}
+      onClick={renaming ? undefined : onOpen}
       onContextMenu={(e) => {
         e.preventDefault();
         onMenu(e.clientX, e.clientY);
@@ -115,7 +128,23 @@ function ProjectRow({ r, on, open, onOpen, onMenu }: { r: Recent; on: boolean; o
     >
       <div className="chathome-thumb">{src ? <img src={src} alt="" /> : null}</div>
       <div className="chathome-meta">
-        <div className="chathome-name">{r.name}</div>
+        {renaming ? (
+          <input
+            className="chathome-name rename"
+            autoFocus
+            value={name}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => void done(true)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") void done(false);
+            }}
+          />
+        ) : (
+          <div className="chathome-name">{r.name}</div>
+        )}
         <div className="chathome-when">{on ? "Open now" : open ? "Open" : ago(r.opened)}</div>
       </div>
       <OpenDot on={on} open={open} />
@@ -246,6 +275,8 @@ export default function ChatHome() {
     }
   };
   const [menu, setMenu] = useState<{ x: number; y: number; r: Recent } | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const warn = (title: string) => (why: string | null) => void (why && message(why, { title, kind: "warning" }));
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(null);
@@ -335,7 +366,15 @@ export default function ChatHome() {
           <div className="chathome-list">
             {shown.map((r) => (
               <Fragment key={r.path}>
-                <ProjectRow r={r} on={r.path === current.file} open={tabs.includes(r.path)} onOpen={() => r.path !== current.file && void openProjectAt(r.path)} onMenu={(x, y) => setMenu({ x, y, r })} />
+                <ProjectRow
+                  r={r}
+                  on={r.path === current.file}
+                  open={tabs.includes(r.path)}
+                  onOpen={() => r.path !== current.file && void openProjectAt(r.path)}
+                  onMenu={(x, y) => setMenu({ x, y, r })}
+                  renaming={renaming === r.path}
+                  onRenamed={() => setRenaming(null)}
+                />
                 {r.path === current.file && <TaskList project={r.path} />}
               </Fragment>
             ))}
@@ -352,6 +391,36 @@ export default function ChatHome() {
             }}
           >
             <Icon name="folder" size={15} /> Show in Finder
+          </div>
+          <div
+            onClick={() => {
+              setAll(false);
+              setTyped("");
+              setRenaming(menu.r.path);
+              setMenu(null);
+            }}
+          >
+            <Icon name="pen" size={15} /> Rename
+          </div>
+          <div
+            onClick={() => {
+              const r = menu.r;
+              setMenu(null);
+              void moveProjectTo(r.path).then(warn("Move to"));
+            }}
+            title="Move the file to another folder. Its history and conversation go with it."
+          >
+            <Icon name="move-to" size={15} /> Move to…
+          </div>
+          <div
+            onClick={() => {
+              const r = menu.r;
+              setMenu(null);
+              void copyProject(r.path).then(warn("Save a copy"));
+            }}
+            title="Save a second file somewhere else. This one stays as it is."
+          >
+            <Icon name="copy" size={15} /> Save a copy…
           </div>
           {tabs.includes(menu.r.path) && (
             <div

@@ -1,6 +1,6 @@
 /** One icon set for the whole app: 24 grid, round ends, same stroke weight everywhere. */
 
-export type IconName = "cut-here" | "cut-close" | "cut-before" | "cut-after" | "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "zoom" | "image" | "plus" | "pen" | "mask" | "group" | "lock" | "unlock" | "eye" | "eye-off" | "component" | "instance" | "panel-left" | "panel-right" | "arrow" | "search" | "settings" | "skills" | "new-chat" | "folder" | "trash" | "close" | "unlist" | "restore" | "dots" | "grid" | "list";
+export type IconName = "cut-here" | "cut-close" | "cut-before" | "cut-after" | "move" | "frame" | "rect" | "ellipse" | "text" | "hand" | "zoom" | "image" | "plus" | "pen" | "mask" | "group" | "lock" | "unlock" | "eye" | "eye-off" | "component" | "instance" | "panel-left" | "panel-right" | "arrow" | "search" | "settings" | "skills" | "new-chat" | "folder" | "trash" | "close" | "unlist" | "restore" | "dots" | "grid" | "list" | "copy" | "move-to";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   move: <path d="M5.5 3.5l13 6.3-5.7 1.8-1.8 5.9z" />,
@@ -28,6 +28,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   component: <path d="M12 3.5l6 6-6 6-6-6zM12 15.5l3 3-3 3-3-3z" />,
   instance: <path d="M12 4.5l5.5 5.5-5.5 5.5L6.5 10z" />,
+  copy: (
+    <>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2.5" />
+      <path d="M15.5 8.5V6A1.5 1.5 0 0014 4.5H6A1.5 1.5 0 004.5 6v8A1.5 1.5 0 006 15.5h2.5" />
+    </>
+  ),
+  "move-to": (
+    <>
+      <path d="M3.5 17.5v-11A1.5 1.5 0 015 5h4l2 2h8a1.5 1.5 0 011.5 1.5v2" />
+      <path d="M3.5 17.5A1.5 1.5 0 005 19h7.5M14.5 16.5h6M17.5 13.5l3 3-3 3" />
+    </>
+  ),
   lock: (
     <>
       <rect x="6" y="11" width="12" height="8.5" rx="2" />

@@ -334,6 +334,86 @@ async function writePreview(path: string, doc: Doc) {
   }
 }
 
+// ---- rename, move, copy ----
+
+/** The project file being moved right now, if any. */
+let moving: string | null = null;
+
+/**
+ * Rename or move a project file, open or not. Its history, conversation and tasks go with it.
+ * A project open in another tab comes on screen first. Returns why it could not be done, or null.
+ */
+export async function moveProject(from: string, to: string): Promise<string | null> {
+  if (!inTauri()) return "Projects can be renamed in the desktop app.";
+  const target = withExt(to.trim());
+  if (target === from) return null;
+  if (getChat().busy !== null) return "An AI is still working. Wait for it or stop it first.";
+  if (isParked(from) && !(await openProjectAt(from))) return null;
+  if (getState().project.file === from) await saveNow();
+  return enqueue(async () => {
+    const here = getState().project.file === from;
+    if (here) await packNow();
+    moving = from;
+    try {
+      await invoke("move_project", { from, to: target });
+    } catch (e) {
+      return String(e);
+    } finally {
+      moving = null;
+    }
+    if (getState().project.file === from) {
+      moveConversationTo(target);
+      setProject({ file: target, name: baseName(target) });
+    }
+    if (getTabs().includes(from)) setTabs(getTabs().map((p) => (p === from ? target : p)));
+    try {
+      if (!checkCopy) {
+        const list = getRecents().map((r) => (r.path === from ? { ...r, path: target, name: baseName(target) } : r));
+        localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+        if (localStorage.getItem(LAST_KEY) === from) localStorage.setItem(LAST_KEY, target);
+      }
+    } catch {
+      /* private mode: the list is not kept */
+    }
+    window.dispatchEvent(new Event("duet:recents"));
+    return null;
+  });
+}
+
+/** A new name for a project, in the same folder. */
+export const renameProject = (file: string, name: string) => {
+  const clean = name.replace(/[\\/:*?"<>|]+/g, " ").trim();
+  if (!clean) return Promise.resolve("Give the project a name.");
+  return moveProject(file, join(file.replace(/[\\/][^\\/]*$/, ""), `${clean}.duet`));
+};
+
+/** Ask where to move a project, then move it. */
+export async function moveProjectTo(file: string): Promise<string | null> {
+  const picked = await once(() => save({ title: "Move to", defaultPath: file, filters: [{ name: "Duet project", extensions: ["duet"] }] }));
+  return picked ? moveProject(file, picked) : null;
+}
+
+/**
+ * Save a copy of a project somewhere else. The one on screen opens the Send a copy window, which
+ * asks whether the history and the conversation go too; one that is not open is copied as it is.
+ */
+export async function copyProject(file: string): Promise<string | null> {
+  if (!inTauri()) return "Copies can be saved in the desktop app.";
+  if (isParked(file) && !(await openProjectAt(file))) return null;
+  if (getState().project.file === file) {
+    window.dispatchEvent(new Event("duet:send-copy"));
+    return null;
+  }
+  const picked = await once(() => save({ title: "Save a copy", defaultPath: copyNameFor(file), filters: [{ name: "Duet project", extensions: ["duet"] }] }));
+  if (!picked) return null;
+  try {
+    await invoke("copy_project", { from: file, to: withExt(picked) });
+    return null;
+  } catch (e) {
+    return String(e);
+  }
+}
+
 // ---- one file: the project is packed into its .duet file after every save ----
 let packTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -341,7 +421,8 @@ async function packNow() {
   clearTimeout(packTimer);
   packTimer = undefined;
   const { path, file } = getState().project;
-  if (!path || !file) return;
+  // a file being moved is written again only once it has arrived
+  if (!path || !file || file === moving) return;
   await invoke("pack_project", { dir: path, file });
 }
 
