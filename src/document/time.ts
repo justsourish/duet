@@ -277,7 +277,16 @@ export function settle(real: Doc, posed: Doc, out: Doc, sceneId: string, t: numb
     const was = real.elements[id];
     const shown = posed.elements[id];
     const now = out.elements[id];
-    if (!now || !moves(was)) continue;
+    if (!now) continue;
+    if (!moves(was)) {
+      // the first outline change of a mask's shape, after the moment it appears, starts it moving: it keeps the old shape until now
+      const first = spanOf(was, real.elements[sceneId]).start;
+      if (was.type === "path" && isMaskShape(real, id) && at > first + 0.004 && JSON.stringify(outlineOf(now)) !== JSON.stringify(outlineOf(was))) {
+        const keys = [{ t: first, points: outlineOf(was).map(roundNode), ease: "in-out" as const }, { t: at, points: outlineOf(now).map(roundNode), ease: "in-out" as const }];
+        elements[id] = { ...now, shapeKeys: keys, x: was.x, y: was.y, width: was.width, height: was.height, nodes: was.nodes };
+      }
+      continue;
+    }
     const el = { ...now, keys: { ...now.keys } };
     for (const p of MOVING) {
       if (!was.keys[p]?.length) continue;
@@ -296,6 +305,12 @@ export function settle(real: Doc, posed: Doc, out: Doc, sceneId: string, t: numb
   }
   return { ...out, elements };
 }
+
+/** Is this the shape a mask group shows its contents through? */
+const isMaskShape = (doc: Doc, id: string) => {
+  const parent = doc.elements[doc.elements[id]?.parentId ?? ""];
+  return !!parent?.mask && parent.childIds[0] === id;
+};
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const roundNode = (n: ShapeKey["points"][number]) => ({ x: r2(n.x), y: r2(n.y), ix: r2(n.ix), iy: r2(n.iy), ox: r2(n.ox), oy: r2(n.oy) });

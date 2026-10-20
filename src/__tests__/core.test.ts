@@ -2668,3 +2668,38 @@ describe("shape keys: an outline that changes over time", () => {
     expect(done.elements.p.x).toBe(real.elements.p.x);
   });
 });
+
+describe("roto by hand: editing a mask's points at a moment", () => {
+  const pt = (x: number, y: number) => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0 });
+  const scene = () => {
+    const box = fromAbs([pt(10, 10), pt(50, 10), pt(50, 50), pt(10, 50)]);
+    let d = runCommand(frame("f"), "set_props", { ids: ["f"], props: { duration: 4 } });
+    d = runCommand(d, "create_element", { id: "pic", type: "image", parentId: "f", x: 0, y: 0, width: 100, height: 100 });
+    d = runCommand(d, "create_element", { id: "p", type: "path", parentId: "f", x: box.x, y: box.y, width: box.width, height: box.height, props: { nodes: box.nodes, closed: true } });
+    return runCommand(d, "make_mask", { maskId: "p", ids: ["pic"], groupId: "m" });
+  };
+  const edit = (real: ReturnType<typeof scene>, t: number, dx: number) => {
+    const posed = docAt(real, "f", t);
+    const shape = posed.elements.p;
+    const moved = fromAbs(toAbs(shape, shape.x, shape.y).map((n) => ({ ...n, x: n.x + dx })));
+    const out = { ...posed, elements: { ...posed.elements, p: { ...shape, ...moved } } };
+    return settle(real, posed, out, "f", t);
+  };
+
+  it("keeps the old shape until the moment, and the new one at it", () => {
+    const d = edit(scene(), 2, 20);
+    expect(d.elements.p.shapeKeys.map((k) => k.t)).toEqual([0, 2]);
+    expect(docAt(d, "f", 0).elements.p.x).toBe(scene().elements.p.x);
+    expect(docAt(d, "f", 2).elements.p.x).toBe(scene().elements.p.x + 20);
+    expect(docAt(d, "f", 1).elements.p.x).toBe(scene().elements.p.x + 10);
+  });
+
+  it("adds another key for a second edit, and an edit at the start only reshapes", () => {
+    const d = edit(edit(scene(), 2, 20), 1, 0);
+    expect(d.elements.p.shapeKeys.map((k) => k.t)).toEqual([0, 2]);
+    const second = edit(edit(scene(), 2, 20), 3, -10);
+    expect(second.elements.p.shapeKeys.map((k) => k.t)).toEqual([0, 2, 3]);
+    const atStart = edit(scene(), 0, 5);
+    expect(atStart.elements.p.shapeKeys).toEqual([]);
+  });
+});
