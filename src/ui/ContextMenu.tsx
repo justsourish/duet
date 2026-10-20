@@ -39,6 +39,11 @@ function itemsFor(): Item[] {
   if (one?.type === "instance") out.push({ label: "Detach from the original", hint: "Cmd Option B", run: () => dispatch("detach_instance", { id: one.id }) });
   if (one?.type === "instance") out.push({ label: "Go to the original", run: () => select([one.componentId]) });
 
+  out.push({ label: "Bring forward", hint: "Cmd ]", run: () => dispatch("arrange_elements", { ids, to: "up" }) });
+  out.push({ label: "Bring to front", hint: "Shift Cmd ]", run: () => dispatch("arrange_elements", { ids, to: "top" }) });
+  out.push({ label: "Send backward", hint: "Cmd [", run: () => dispatch("arrange_elements", { ids, to: "down" }) });
+  out.push({ label: "Send to back", hint: "Shift Cmd [", run: () => dispatch("arrange_elements", { ids, to: "bottom" }) });
+
   out.push({
     label: "Group",
     hint: "Cmd G",

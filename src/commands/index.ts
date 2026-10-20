@@ -385,6 +385,44 @@ const reparentElements: CommandDef<ReparentArgs> = {
   },
 };
 
+// ---- arrange_elements ----
+export interface ArrangeArgs {
+  ids: string[];
+  /** Up is one step to the front, top is all the way. Down and bottom go back the same way. */
+  to: "up" | "down" | "top" | "bottom";
+}
+
+/** Move things in front of or behind the others beside them, keeping the order they had among themselves. */
+const arrangeElements: CommandDef<ArrangeArgs> = {
+  label: (a) => ({ up: "Bring forward", down: "Send backward", top: "Bring to front", bottom: "Send to back" })[a.to],
+  run: (doc, a) => {
+    const next = clone(doc);
+    let changed = false;
+    const parents = new Set(a.ids.filter((id) => next.elements[id]).map((id) => next.elements[id].parentId));
+    for (const pid of parents) {
+      const list = pid ? next.elements[pid].childIds : next.rootIds;
+      const moving = new Set(a.ids.filter((id) => next.elements[id]?.parentId === pid));
+      const before = list.join();
+      if (a.to === "top" || a.to === "bottom") {
+        const rest = list.filter((id) => !moving.has(id));
+        const mine = list.filter((id) => moving.has(id));
+        list.splice(0, list.length, ...(a.to === "top" ? [...rest, ...mine] : [...mine, ...rest]));
+      } else if (a.to === "up") {
+        // later in the list is in front: swap each with the one in front of it, front first so they do not leapfrog
+        for (let i = list.length - 2; i >= 0; i--) {
+          if (moving.has(list[i]) && !moving.has(list[i + 1])) [list[i], list[i + 1]] = [list[i + 1], list[i]];
+        }
+      } else {
+        for (let i = 1; i < list.length; i++) {
+          if (moving.has(list[i]) && !moving.has(list[i - 1])) [list[i], list[i - 1]] = [list[i - 1], list[i]];
+        }
+      }
+      if (list.join() !== before) changed = true;
+    }
+    return changed ? next : doc;
+  },
+};
+
 // ---- paste_elements ----
 export interface PasteArgs {
   payload: ClipPayload;
@@ -1292,6 +1330,7 @@ export const commands = {
   set_background: setBackground,
   delete_elements: deleteElements,
   reparent_elements: reparentElements,
+  arrange_elements: arrangeElements,
   paste_elements: pasteElements,
   set_layout: setLayout,
   wrap_in_layout: wrapInLayout,

@@ -874,7 +874,7 @@ export default function TimeStrip() {
           className="ctx"
           style={{
             left: Math.max(10, Math.min(menu.x, window.innerWidth - 230)),
-            top: Math.max(10, Math.min(menu.y, window.innerHeight - 270)),
+            top: Math.max(10, Math.min(menu.y, window.innerHeight - 420)),
           }}
         >
           {menu.mark && (
@@ -917,6 +917,28 @@ export default function TimeStrip() {
             <span>Delete and close the gap</span>
             <kbd>D</kbd>
           </div>
+          <div className="ctx-line" />
+          {(
+            [
+              ["up", "Bring forward", "Cmd ]"],
+              ["top", "Bring to front", "Shift Cmd ]"],
+              ["down", "Send backward", "Cmd ["],
+              ["bottom", "Send to back", "Shift Cmd ["],
+            ] as const
+          ).map(([to, label, hint]) => (
+            <div
+              key={to}
+              className="ctx-item"
+              onClick={() => {
+                const el = menu.el;
+                setMenu(null);
+                dispatch("arrange_elements", { ids: selection.includes(el.id) ? selection : [el.id], to });
+              }}
+            >
+              <span>{label}</span>
+              <kbd>{hint}</kbd>
+            </div>
+          ))}
           <div className="ctx-line" />
           <div
             className="ctx-item"

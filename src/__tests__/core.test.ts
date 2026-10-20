@@ -307,6 +307,34 @@ describe("design file", () => {
   });
 });
 
+describe("arrange_elements", () => {
+  const base = () => {
+    let d = frame();
+    for (const id of ["a", "b", "c", "d"]) d = runCommand(d, "create_element", { id, type: "rect", x: 0, y: 0, width: 10, height: 10, parentId: "f1" });
+    return d;
+  };
+  const order = (to: "up" | "down" | "top" | "bottom", ids: string[]) => runCommand(base(), "arrange_elements", { ids, to }).elements.f1.childIds;
+
+  it("moves one step forward or back", () => {
+    expect(order("up", ["b"])).toEqual(["a", "c", "b", "d"]);
+    expect(order("down", ["c"])).toEqual(["a", "c", "b", "d"]);
+  });
+
+  it("moves all the way to the front or back, keeping their own order", () => {
+    expect(order("top", ["a", "c"])).toEqual(["b", "d", "a", "c"]);
+    expect(order("bottom", ["b", "d"])).toEqual(["b", "d", "a", "c"]);
+  });
+
+  it("moves several side by side together", () => {
+    expect(order("up", ["a", "b"])).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("changes nothing when already at the front", () => {
+    const d = base();
+    expect(runCommand(d, "arrange_elements", { ids: ["d"], to: "up" })).toBe(d);
+  });
+});
+
 describe("reparent_elements", () => {
   const base = () => {
     let d = emptyDoc();

@@ -1118,6 +1118,15 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
         for (const id of s.selection.filter((i) => doc.elements[i]?.type === "instance")) dispatch("detach_instance", { id });
         return;
       }
+      // Cmd ] one step to the front, Cmd [ one step back, with Shift all the way
+      if (mod && !e.altKey && (e.code === "BracketRight" || e.code === "BracketLeft")) {
+        e.preventDefault();
+        if (s.selection.length) {
+          const front = e.code === "BracketRight";
+          dispatch("arrange_elements", { ids: s.selection, to: e.shiftKey ? (front ? "top" : "bottom") : front ? "up" : "down" });
+        }
+        return;
+      }
       if (mod && key === "g") {
         e.preventDefault();
         const doc = workDoc(s);
