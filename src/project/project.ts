@@ -14,7 +14,7 @@ import { stepsLine } from "../memory/steps";
 import { logError } from "../errorLog";
 import { lineTo } from "../state/directions";
 import { keepable, packThread, readThread } from "../memory/thread";
-import { dropParked, getState, isParked, loadDoc, loadTimeline, onParkedChange, parkLive, parkedState, setEntryVersion, setProject, subscribe, unpark } from "../state/store";
+import { dropParked, getState, isParked, parkedFiles, loadDoc, loadTimeline, onParkedChange, parkLive, parkedState, setEntryVersion, setProject, subscribe, unpark } from "../state/store";
 import type { HistoryEntry } from "../state/store";
 
 const FILE = "design.json";
@@ -90,7 +90,7 @@ export function listedProjects(): Recent[] {
   const recents = getRecents();
   const known = new Set(recents.map((r) => r.path));
   const here = getState().project.file;
-  const open = [...new Set([...(here ? [here] : []), ...getTabs()])]
+  const open = [...new Set([...(here ? [here] : []), ...getTabs(), ...parkedFiles()])]
     .filter((p) => !known.has(p) && /\.duet$/i.test(p))
     .map((path) => ({ path, name: baseName(path), opened: Date.now() }));
   return [...open, ...recents];
@@ -188,7 +188,8 @@ let tabs: string[] | null = null;
 export function getTabs(): string[] {
   if (tabs) return tabs;
   try {
-    const raw = checkCopy ? [] : JSON.parse(localStorage.getItem(TABS_KEY) ?? "[]");
+    // Duet dev keeps its own open projects only until it closes, so reloading its code does not lose them
+    const raw = JSON.parse((checkCopy ? sessionStorage : localStorage).getItem(TABS_KEY) ?? "[]");
     tabs = Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string" && /\.duet$/i.test(p)) : [];
   } catch {
     tabs = [];
@@ -200,7 +201,7 @@ function setTabs(next: string[]) {
   tabs = next;
   try {
     // Duet dev shares this storage with the Duet a designer works in, and must leave it alone
-    if (!checkCopy) localStorage.setItem(TABS_KEY, JSON.stringify(next));
+    (checkCopy ? sessionStorage : localStorage).setItem(TABS_KEY, JSON.stringify(next));
   } catch {
     /* private mode: tabs last until Duet closes */
   }
@@ -878,6 +879,7 @@ export async function keepTestDesign(file: string): Promise<string | null> {
     inTest = false;
     setProject({ path: work, file, name: baseName(file), status: "saved", error: null });
     await packNow();
+    remember(file);
     void writePreview(work, doc);
     return null;
   } catch (e) {

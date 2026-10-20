@@ -6,7 +6,7 @@ import type { Recent } from "../project/project";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import type { Trashed } from "../project/project";
 import { closeProject, closeTab, copyProject, getTabs, listedProjects, moveProjectTo, renameProject, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
-import { getState, setViewport, useStore } from "../state/store";
+import { getState, isParked, setViewport, useStore } from "../state/store";
 import { closeTask, readyToLeave } from "../ai/agent";
 import { AGENTS, showThread, useChat } from "../ai/chat";
 import { agentColour } from "../ai/colours";
@@ -323,6 +323,8 @@ export default function ChatHome() {
   const shown = matchProjects(recents, typed);
 
   /** Close a project: its tab goes, and if it was on screen the next one comes up, or none. */
+  // open: on screen, in a tab, or waiting in memory with an AI still at work
+  const isOpen = (path: string) => path === current.file || tabs.includes(path) || isParked(path);
   const leave = async (path: string) => {
     if (!(await readyToLeave(true, path))) return false;
     const next = path === current.file ? getTabs().filter((p) => p !== path).pop() : null;
@@ -393,8 +395,12 @@ export default function ChatHome() {
                 <ProjectRow
                   r={r}
                   on={r.path === current.file}
-                  open={tabs.includes(r.path)}
-                  onOpen={() => r.path !== current.file && void openProjectAt(r.path)}
+                  open={isOpen(r.path)}
+                  onOpen={() => {
+                    // picking a project always shows it, so the all projects view steps aside
+                    setAll(false);
+                    if (r.path !== current.file) void openProjectAt(r.path);
+                  }}
                   onMenu={(x, y) => setMenu({ x, y, r })}
                   renaming={renaming === r.path}
                   onRenamed={() => setRenaming(null)}
@@ -446,7 +452,7 @@ export default function ChatHome() {
           >
             <Icon name="copy" size={15} /> Save a copy…
           </div>
-          {tabs.includes(menu.r.path) && (
+          {isOpen(menu.r.path) && (
             <div
               onClick={() => {
                 void leave(menu.r.path);
@@ -470,7 +476,7 @@ export default function ChatHome() {
             onClick={async () => {
               const r = menu.r;
               setMenu(null);
-              if (tabs.includes(r.path) && !(await leave(r.path))) return;
+              if (isOpen(r.path) && !(await leave(r.path))) return;
               await trashProject(r.path).catch((e) => message(`“${r.name}” could not be moved to the Trash. ${String(e)}`, { title: "Move to Trash", kind: "warning" }));
             }}
             title={`Kept ${TRASH_DAYS} days in the Trash, then cleared out.`}
@@ -502,7 +508,7 @@ export default function ChatHome() {
                 key={r.path}
                 r={r}
                 on={r.path === current.file}
-                open={tabs.includes(r.path)}
+                open={isOpen(r.path)}
                 onOpen={() => {
                   if (r.path !== current.file) void openProjectAt(r.path);
                   setAll(false);

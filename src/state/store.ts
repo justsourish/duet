@@ -164,6 +164,7 @@ export function unpark(file: string): boolean {
 }
 
 export const isParked = (file: string) => parked.has(file);
+export const parkedFiles = () => [...parked.keys()];
 export const parkedState = (file: string): State | undefined => parked.get(file);
 /** A tab was closed: forget its project. */
 export const dropParked = (file: string) => parked.delete(file);
