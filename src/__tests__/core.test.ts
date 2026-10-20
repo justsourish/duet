@@ -459,6 +459,13 @@ describe("copy and paste", () => {
     expect(Object.keys(out.elements).length).toBe(Object.keys(d.elements).length + 3);
   });
 
+  it("puts a duplicate right above its original, not on top of everything", () => {
+    const d = base();
+    const p = extractPayload(d, ["f1"])!;
+    const out = runCommand(d, "paste_elements", { payload: p, parentId: null, dx: 16, dy: 16, idMap: { f1: "new-f1", b: "new-b", t: "new-t" }, above: true });
+    expect(out.rootIds).toEqual(["f1", "new-f1", "f2"]);
+  });
+
   it("does not change the original", () => {
     const d = base();
     const p = extractPayload(d, ["b"])!;

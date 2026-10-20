@@ -152,7 +152,7 @@ export function pastePayload(payload: ClipPayload, duplicate = false) {
   const sameSpot = payload.rootIds.every((id) => doc.elements[id]?.parentId === parentId);
   const dx = pageFrame && sameSpot ? first.width + 40 : sameSpot || duplicate ? 16 : 0;
   const dy = pageFrame && sameSpot ? 0 : sameSpot || duplicate ? 16 : 0;
-  dispatch("paste_elements", { payload, parentId, dx, dy, idMap, label: duplicate ? "Duplicate" : "Paste" });
+  dispatch("paste_elements", { payload, parentId, dx, dy, idMap, above: duplicate, label: duplicate ? "Duplicate" : "Paste" });
   select(payload.rootIds.map((id) => idMap[id]));
 }
 

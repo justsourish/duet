@@ -437,6 +437,8 @@ export interface PasteArgs {
   dy?: number;
   /** New ids for the pasted pieces, if the caller needs to know them. */
   idMap?: Record<string, string>;
+  /** A duplicate: each copy goes right above the piece it came from, not on top of everything. */
+  above?: boolean;
   label?: string;
 }
 
@@ -461,7 +463,9 @@ const pasteElements: CommandDef<PasteArgs> = {
         copy.parentId = a.parentId;
         copy.x = o.x - parentWorld.x + (a.dx ?? 0);
         copy.y = o.y - parentWorld.y + (a.dy ?? 0);
-        list.push(copy.id);
+        const at = a.above ? list.indexOf(oldId) : -1;
+        if (at >= 0) list.splice(at + 1, 0, copy.id);
+        else list.push(copy.id);
       } else {
         copy.parentId = el.parentId ? idMap[el.parentId] : null;
       }
