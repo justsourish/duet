@@ -1699,6 +1699,19 @@ describe("what the AI can ask for", () => {
     expect(currentDoc().elements[a]).toBeTruthy();
   });
 
+  it("tells the AI about a layout problem it just caused, and not about one that was already there", async () => {
+    await callTool("create_element", { type: "frame", x: 0, y: 0, width: 400, height: 300, props: { fill: "#ffffff" } });
+    const fr = currentDoc().rootIds[0];
+    const fine = await callTool("create_element", { type: "text", id: "t1", parentId: fr, x: 40, y: 40, width: 200, height: 40, props: { text: "Hello", fontSize: 24, fill: "#111111" } });
+    expect(fine.text).not.toContain("Layout check");
+    const bad = await callTool("create_element", { type: "text", id: "t2", parentId: fr, x: 350, y: 120, width: 200, height: 40, props: { text: "Sale", fontSize: 24, fill: "#111111" } });
+    expect(bad.text).toContain("Layout check, fix these:");
+    expect(bad.text).toContain("outside the frame");
+    // moving the fine one does not repeat the problem that t2 already had
+    const moved = await callTool("move_elements", { ids: ["t1"], dx: 5, dy: 0 });
+    expect(moved.text).not.toContain("Layout check");
+  });
+
   it("draws a path from an outline, measured from x and y, and can turn it", async () => {
     const res = await callTool("create_element", { type: "path", x: 100, y: 200, d: "M 0 0 C 30 -40 70 -40 100 0 C 70 40 30 40 0 0 Z", props: { fill: "#2f7d4f", stroke: null, rotation: 30 } });
     expect(res.isError).toBeFalsy();

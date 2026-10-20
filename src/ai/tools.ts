@@ -2,6 +2,7 @@ import { outline } from "./outline";
 import { componentsIn } from "../document/components";
 import { lookAtDesign, lookAtImage } from "./vision";
 import { lookAtAttachment } from "./pictures";
+import { checkLayout } from "./designCheck";
 import { checkExport } from "./exportCheck";
 import { commandLabel, newId, runCommand } from "../commands";
 import type { CommandName } from "../commands";
@@ -1363,6 +1364,28 @@ async function answerTool(name: string, raw: unknown, by?: string): Promise<Tool
   const before = R.currentDoc();
   const result = await apply(name, check.args, by);
   const after = R.currentDoc();
-  R.noteAiWork(changedIds(before, after).filter((id) => after.elements[id]), by);
-  return result;
+  const touched = changedIds(before, after).filter((id) => after.elements[id]);
+  R.noteAiWork(touched, by);
+  return result.isError ? result : { ...result, text: result.text + layoutNote(before, after, touched) };
+}
+
+/** The frame a thing is in, or itself when it is one. */
+function frameOf(doc: Doc, id: string): string | null {
+  let el: El | undefined = doc.elements[id];
+  while (el) {
+    if (el.type === "frame") return el.id;
+    el = el.parentId ? doc.elements[el.parentId] : undefined;
+  }
+  return null;
+}
+
+/** After a change, the layout problems it caused in the frames it touched, so the AI fixes them before the designer sees them. */
+function layoutNote(before: Doc, after: Doc, touched: string[]): string {
+  const frames = [...new Set(touched.map((id) => frameOf(after, id)).filter((id): id is string => !!id))].slice(0, 3);
+  const lines: string[] = [];
+  for (const f of frames) {
+    const was = new Set(before.elements[f] ? checkLayout(before, f).map((p) => `${p.id}|${p.kind}`) : []);
+    for (const p of checkLayout(after, f)) if (!was.has(`${p.id}|${p.kind}`)) lines.push(p.message);
+  }
+  return lines.length ? `\n\nLayout check, fix these: ${lines.join(" ")}` : "";
 }
