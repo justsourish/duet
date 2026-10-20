@@ -9,6 +9,7 @@ import { defaultChoice, exportScene } from "../video/scene";
 import { addClip, getCut, emptyCut, setCut, sizeOf } from "../video/cut";
 import type { Info } from "../video/cut";
 import { busyOutside } from "./outside";
+import { bindAi } from "./tools";
 import type { ToolDef, ToolResult } from "./tools";
 
 /**
@@ -343,15 +344,19 @@ export async function callBuilderTool(name: string, raw: unknown, by?: string): 
     if (busy && busy !== by) return fail(`${busy} changed this project less than two minutes ago and may still be working on it. A test design would take the project away from it. Wait, or check in another copy of Duet.`);
     const why = await startTestDesign(a.sample ? sampleDoc() : emptyDoc());
     if (why) return fail(why);
+    // the one asking works in the test design from now on, not in the project it put away
+    if (by) bindAi(by, getState().project.file);
     await settle();
     return { text: `A clean test design is open. Nothing in it is saved.${a.sample ? " It holds a frame (test-frame) with a shape (test-inner) and a group (test-group, holding test-grouped), and a plain shape (test-plain)." : ""} Finish with dev_leave_test_design.` };
   }
   if (name === "dev_keep_test_design") {
     const why = await keepTestDesign(String(a.path ?? ""));
+    if (!why && by) bindAi(by, getState().project.file);
     return why ? fail(why) : { text: `Saved as ${String(a.path)}. Changes from here on are saved into it.` };
   }
   if (name === "dev_leave_test_design") {
     const why = await leaveTestDesign();
+    if (!why && by) bindAi(by, getState().project.file);
     return why ? fail(why) : { text: "The test design is gone and the project is back." };
   }
   if (name === "dev_read_interface") return { text: `${inTestDesign() ? "" : "This is a real project, not a test design.\n"}${readInterface(a.filter, a.max)}` };
