@@ -137,6 +137,7 @@ const createElement: CommandDef<CreateArgs> = {
       shapeKeys: [],
       clipFrom: 0,
       volume: 1,
+      speed: 1,
       childIds: [],
       ...defaults[a.type],
       ...(a.type === "frame" && parent?.layout ? { fill: "#ffffff00" } : {}),
@@ -757,6 +758,7 @@ const wrapInLayout: CommandDef<WrapArgs> = {
       shapeKeys: [],
       clipFrom: 0,
       volume: 1,
+      speed: 1,
       childIds: [],
     };
     next.elements[frame.id] = frame;
@@ -858,6 +860,7 @@ const groupElements: CommandDef<GroupArgs> = {
       shapeKeys: [],
       clipFrom: 0,
       volume: 1,
+      speed: 1,
       childIds: [],
     };
     next.elements[group.id] = group;
@@ -1020,6 +1023,38 @@ const setTiming: CommandDef<SetTimingArgs> = {
       const by = el.start - was;
       if (by) for (const prop of MOVING) if (el.keys[prop]) el.keys[prop] = el.keys[prop]!.map((k) => ({ ...k, t: round(k.t + by) }));
       if (by) el.shapeKeys = el.shapeKeys.map((k) => ({ ...k, t: round(k.t + by) }));
+      changed = true;
+    }
+    return changed ? next : doc;
+  },
+};
+
+// ---- set_speed ----
+export interface SetSpeedArgs {
+  ids: string[];
+  /** How fast the file plays: 1 is normal, 2 twice as fast, 0.5 half. */
+  speed: number;
+}
+
+/** The slowest and fastest a clip can play. */
+export const SPEEDS = { min: 0.1, max: 16 };
+
+/** Play a clip or sound faster or slower. It keeps the same part of its file, so its bar gets shorter or longer to match. */
+const setSpeed: CommandDef<SetSpeedArgs> = {
+  label: (a) => `Speed ${Math.round(a.speed * 100)}%`,
+  run: (doc, a) => {
+    const speed = round(Math.max(SPEEDS.min, Math.min(SPEEDS.max, Number(a.speed) || 1)));
+    const next = clone(doc);
+    let changed = false;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      const scene = sceneOf(next, id);
+      if (!el || !scene || scene.id === id || !playsFile(el) || el.speed === speed) continue;
+      const span = spanOf(el, scene);
+      const was = el.speed || 1;
+      // an end of 0 stays to the end of the frame; otherwise the same part of the file is shown
+      if (el.end) el.end = Math.min(scene.duration, round(span.start + ((span.end - span.start) * was) / speed));
+      el.speed = speed;
       changed = true;
     }
     return changed ? next : doc;
@@ -1425,6 +1460,7 @@ export const commands = {
   reset_overrides: resetOverrides,
   set_duration: setDuration,
   set_timing: setTiming,
+  set_speed: setSpeed,
   set_shape_key: setShapeKey,
   remove_shape_key: removeShapeKey,
   set_key: setKey,

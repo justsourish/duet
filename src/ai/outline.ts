@@ -29,7 +29,7 @@ function describe(doc: Doc, el: El): string {
     if (el.shadow) bits.push("shadow");
   }
   if (el.type === "sound") bits.push(`sound ${el.src}${el.clipFrom ? ` from ${el.clipFrom}s of the file` : ""}${el.volume !== 1 ? ` volume ${el.volume}` : ""} (only heard, its position and size mean nothing)`);
-  if (el.type === "video") bits.push(`clip ${el.src}${el.clipFrom ? ` from ${el.clipFrom}s of the file` : ""}${el.volume !== 1 ? ` volume ${el.volume}` : ""}`);
+  if (el.type === "video") bits.push(`clip ${el.src}${el.clipFrom ? ` from ${el.clipFrom}s of the file` : ""}${el.volume !== 1 ? ` volume ${el.volume}` : ""}${el.speed !== 1 ? ` speed ${el.speed}` : ""}`);
   if (el.grade) bits.push(`colour ${Object.entries(gradeChanges(el.grade)).map(([k, v]) => (k === "look" ? `look ${String(v).split(/[\\/]/).pop()}` : `${k} ${v}`)).join(", ")}`);
   if (el.duration > 0) bits.push(`PLAYS ${el.duration}s`);
   if (el.start || el.end) bits.push(`shows ${el.start}s to ${el.end ? `${el.end}s` : "the end"}`);

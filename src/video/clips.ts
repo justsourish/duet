@@ -183,6 +183,7 @@ export function syncClips(doc: Doc, sceneId: string | null, t: number, playing: 
       const v = player(el.src);
       const at = fileTimeAt(el, start, t);
       v.volume = Math.max(0, Math.min(1, el.volume));
+      v.playbackRate = el.speed || 1;
       if (playing) {
         // while playing, the clip leads the clock (see clockFromClip); only a big gap means a jump
         if (v.paused || Math.abs(v.currentTime - at) > 1) v.currentTime = at;

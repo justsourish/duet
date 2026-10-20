@@ -171,7 +171,7 @@ export async function placeSounds(sceneId: string, paths: string[]): Promise<str
 /** The sound of every clip in a frame: which file, from where in it, when it is heard, and how loud. */
 export function soundsOf(doc: Doc, sceneId: string) {
   const scene = doc.elements[sceneId];
-  const out: { path: string; from: number; at: number; length: number; volume: number }[] = [];
+  const out: { path: string; from: number; at: number; length: number; volume: number; speed: number }[] = [];
   const walk = (id: string, from: number, to: number) => {
     for (const c of doc.elements[id]?.childIds ?? []) {
       const el = doc.elements[c];
@@ -181,7 +181,7 @@ export function soundsOf(doc: Doc, sceneId: string) {
       const start = Math.max(span.start, from);
       const end = Math.min(span.end, to);
       if (end <= start) continue;
-      if (playsFile(el) && el.src && el.volume > 0) out.push({ path: el.src, from: fileTimeAt(el, span.start, start), at: start, length: end - start, volume: el.volume });
+      if (playsFile(el) && el.src && el.volume > 0) out.push({ path: el.src, from: fileTimeAt(el, span.start, start), at: start, length: end - start, volume: el.volume, speed: el.speed || 1 });
       walk(c, start, end);
     }
   };
@@ -259,7 +259,7 @@ async function baseClip(doc: Doc, now: Doc, sceneId: string, t: number, sizes: M
   const { start } = spanOf(doc.elements[el.id], doc.elements[sceneId]);
   const without = { ...now, elements: { ...now.elements, [el.id]: { ...el, hidden: true }, [sceneId]: { ...scene, fill: "#00000000", gradient: null } } };
   return {
-    base: { id: el.id, path: el.src, at: Math.max(0, fileTimeAt(el, start, t)), crop: [cx, cy, cw, ch], matrix: info.height <= 576 ? "bt601" : "bt709", grade: el.grade },
+    base: { id: el.id, path: el.src, speed: el.speed || 1, at: Math.max(0, fileTimeAt(el, start, t)), crop: [cx, cy, cw, ch], matrix: info.height <= 576 ? "bt601" : "bt709", grade: el.grade },
     over: shown.length > 1,
     without,
   };

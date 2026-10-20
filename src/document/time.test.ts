@@ -161,9 +161,30 @@ describe("time", () => {
     let doc = runCommand(scene(), "create_element", { type: "sound", id: "m", parentId: "f", x: 0, y: 0, width: 1, height: 1, props: { src: "/music.mp3", start: 2, end: 8, volume: 0.3 } });
     const back = parseDoc(serializeDoc(doc));
     expect([back.elements.m.src, back.elements.m.volume, back.elements.m.start]).toEqual(["/music.mp3", 0.3, 2]);
-    expect(soundsOf(doc, "f")).toEqual([{ path: "/music.mp3", from: 0, at: 2, length: 6, volume: 0.3 }]);
+    expect(soundsOf(doc, "f")).toEqual([{ path: "/music.mp3", from: 0, at: 2, length: 6, volume: 0.3, speed: 1 }]);
     doc = runCommand(doc, "split_at", { sceneId: "f", t: 5, ids: ["m"], newIds: { m: "m2" } });
-    expect(soundsOf(doc, "f")[1]).toEqual({ path: "/music.mp3", from: 3, at: 5, length: 3, volume: 0.3 });
+    expect(soundsOf(doc, "f")[1]).toEqual({ path: "/music.mp3", from: 3, at: 5, length: 3, volume: 0.3, speed: 1 });
+  });
+
+  it("a faster clip is shorter on the timeline, keeps the same part of its file, and is saved", () => {
+    let doc = runCommand(scene(), "create_element", { type: "sound", id: "m", parentId: "f", x: 0, y: 0, width: 1, height: 1, props: { src: "/a.mp3", start: 2, end: 6, clipFrom: 1 } });
+    doc = runCommand(doc, "set_speed", { ids: ["m"], speed: 2 });
+    expect([doc.elements.m.speed, doc.elements.m.start, doc.elements.m.end]).toEqual([2, 2, 4]);
+    // 2 seconds of the frame now play 4 seconds of the file, from the same place
+    expect(soundsOf(doc, "f")).toEqual([{ path: "/a.mp3", from: 1, at: 2, length: 2, volume: 1, speed: 2 }]);
+    expect(fileTimeAt(doc.elements.m, 2, 3)).toBe(3);
+    expect(frameTimeAt(doc.elements.m, 2, 3)).toBe(3);
+    // splitting a fast clip splits its file at the right second
+    const cut = runCommand(doc, "split_at", { sceneId: "f", t: 3, ids: ["m"], newIds: { m: "m2" } });
+    expect([cut.elements.m2.clipFrom, cut.elements.m2.speed]).toEqual([3, 2]);
+    expect(parseDoc(serializeDoc(doc)).elements.m.speed).toBe(2);
+    // slowing it back down gives the length back, and a normal speed is not written to the file
+    const back = runCommand(doc, "set_speed", { ids: ["m"], speed: 1 });
+    expect(back.elements.m.end).toBe(6);
+    expect(serializeDoc(back)).not.toContain('"speed"');
+    // too fast or too slow is held to what works
+    expect(runCommand(doc, "set_speed", { ids: ["m"], speed: 500 }).elements.m.speed).toBe(16);
+    expect(runCommand(doc, "set_speed", { ids: ["m"], speed: 0.001 }).elements.m.speed).toBe(0.1);
   });
 
   it("a video comes out at the size that was chosen, in even numbers", () => {

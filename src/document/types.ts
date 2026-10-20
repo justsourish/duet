@@ -159,6 +159,8 @@ export interface El {
   /** A video clip or a sound only: the second in its file where playing starts, and how loud it is from 0 to 1. For these, src is where the file is on the computer. A sound has no place on the canvas: it is only heard. */
   clipFrom: number;
   volume: number;
+  /** A video clip or a sound only: how fast its file plays. 1 is normal, 2 is twice as fast, 0.5 is half. The clip's bar is as long as it takes. */
+  speed: number;
   childIds: string[];
 }
 

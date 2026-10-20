@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { dragCancel, dragPreview, getState, workDoc, dispatch, select, useStore } from "../state/store";
+import { playsFile } from "../document/types";
 import type { El, Layout, Moving } from "../document/types";
 import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
@@ -472,6 +473,22 @@ function LengthSection({ el }: { el: El }) {
   );
 }
 
+/** Clips and sounds: how fast the file plays, in percent. 200 is twice as fast. The bar in the timeline gets shorter or longer to match. */
+function PlaySpeedSection({ els }: { els: El[] }) {
+  const same = els.every((e) => (e.speed || 1) === (els[0].speed || 1));
+  return (
+    <div className="sec">
+      <h4>Speed</h4>
+      <NumField
+        label="Speed %"
+        value={same ? Math.round((els[0].speed || 1) * 100) : ""}
+        min={10}
+        onCommit={(n) => dispatch("set_speed", { ids: els.map((e) => e.id), speed: n / 100 })}
+      />
+    </div>
+  );
+}
+
 /** How the move that ends at the keyframe picked in the timeline speeds up and slows down. */
 function SpeedSection({ el }: { el: El }) {
   const focus = useKeyFocus();
@@ -606,6 +623,7 @@ export default function PropertiesPanel() {
       <div className="panel-title">{one ? one.name : `${els.length} selected`}</div>
 
       {mode === "motion" && one && scene && one.id === scene.id && <LengthSection el={one} />}
+      {mode === "motion" && els.length > 0 && els.every(playsFile) && <PlaySpeedSection els={els} />}
       {keyed && <SpeedSection el={keyed} />}
 
       {one && (

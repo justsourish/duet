@@ -251,6 +251,25 @@ pub struct Sound {
     length: f64,
     /// 0 to 1.
     volume: f64,
+    /// How fast the file plays: 2 is twice as fast. `length` is in video time, so the part of the file used is `length * speed`.
+    #[serde(default = "one")]
+    speed: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+/// ffmpeg's atempo only takes 0.5 to 100 at a time; a slower speed is a chain of halvings.
+fn tempo(speed: f64) -> String {
+    let mut left = speed.clamp(0.05, 16.0);
+    let mut parts: Vec<String> = Vec::new();
+    while left < 0.5 {
+        parts.push("atempo=0.5".into());
+        left /= 0.5;
+    }
+    parts.push(format!("atempo={left:.4}"));
+    parts.join(",")
 }
 
 /// A clip read straight from its file, at full quality, one picture at a time, for the frames where
@@ -306,9 +325,10 @@ fn scene_args(fps: u32, seconds: f64, quality: u32, sounds: &[Sound], out: &str,
     args.extend([format!("{width}x{height}"), "-framerate".into(), fps.to_string(), "-i".into(), "-".into()]);
     let mut graph = String::new();
     for (i, s) in sounds.iter().enumerate() {
-        args.extend(["-ss".into(), format!("{:.3}", s.from.max(0.0)), "-t".into(), format!("{:.3}", s.length.max(0.05)), "-i".into(), s.path.clone()]);
+        args.extend(["-ss".into(), format!("{:.3}", s.from.max(0.0)), "-t".into(), format!("{:.3}", s.length.max(0.05) * s.speed), "-i".into(), s.path.clone()]);
         let wait = (s.at.max(0.0) * 1000.0).round() as u64;
-        graph += &format!("[{}:a]aresample=48000,aformat=channel_layouts=stereo,volume={:.3},adelay={wait}:all=1[a{i}];", i + 1, s.volume.clamp(0.0, 1.0));
+        let pace = if (s.speed - 1.0).abs() > 0.0001 { format!("{},", tempo(s.speed)) } else { String::new() };
+        graph += &format!("[{}:a]aresample=48000,aformat=channel_layouts=stereo,{pace}volume={:.3},adelay={wait}:all=1[a{i}];", i + 1, s.volume.clamp(0.0, 1.0));
     }
     args.extend(["-map".into(), "0:v".into()]);
     if !sounds.is_empty() {
@@ -369,6 +389,9 @@ struct Base {
     path: String,
     /// The second in the file this picture shows.
     at: f64,
+    /// How fast the file plays: the next picture is this many times a frame further on in the file.
+    #[serde(default = "one")]
+    speed: f64,
     /// The part of the clip's own picture that fills the video: x, y, width, height, in its pixels.
     crop: [u32; 4],
     /// "bt601" for standard definition video, otherwise Rec.709.
@@ -397,7 +420,7 @@ fn reader_args(b: &Base, width: u32, height: u32, fps: u32) -> Vec<String> {
         "-an".into(),
         "-sn".into(),
         "-vf".into(),
-        format!("fps={fps},crop={w}:{h}:{x}:{y},scale={width}:{height}:flags=lanczos+accurate_rnd+full_chroma_int:in_color_matrix={matrix}:in_range=auto:out_range=full"),
+        format!("setpts=PTS/{:.4},fps={fps},crop={w}:{h}:{x}:{y},scale={width}:{height}:flags=lanczos+accurate_rnd+full_chroma_int:in_color_matrix={matrix}:in_range=auto:out_range=full", b.speed.max(0.05)),
         "-pix_fmt".into(),
         "rgb48le".into(),
         "-f".into(),
@@ -432,7 +455,7 @@ impl Making {
         let reader = self.readers.get_mut(&b.id).ok_or("The clip could not be read.")?;
         let mut bytes = vec![0u8; n * 2];
         let got = reader.out.read_exact(&mut bytes).is_ok();
-        reader.next += step;
+        reader.next += step * b.speed;
         if !got {
             return Ok(vec![0; n]);
         }
@@ -581,7 +604,7 @@ mod tests {
 
     #[test]
     fn a_frame_that_plays_gets_its_pictures_and_each_clip_heard_at_its_moment() {
-        let sounds = vec![Sound { path: "a.mp4".into(), from: 1.0, at: 2.5, length: 3.0, volume: 0.5 }];
+        let sounds = vec![Sound { path: "a.mp4".into(), from: 1.0, at: 2.5, length: 3.0, volume: 0.5, speed: 1.0 }];
         let args = scene_args(30, 10.0, 18, &sounds, "out.mp4", 1920, 1080, false).join(" ");
         assert!(args.contains("-f rawvideo -pix_fmt rgb48le -s 1920x1080 -framerate 30 -i -"));
         assert!(args.contains("format=yuv420p") && args.contains("-color_primaries bt709"));
@@ -595,8 +618,27 @@ mod tests {
     }
 
     #[test]
+    fn a_faster_or_slower_clip_uses_more_or_less_of_its_file_and_its_sound_keeps_pace() {
+        let fast = vec![Sound { path: "a.mp4".into(), from: 1.0, at: 0.0, length: 3.0, volume: 1.0, speed: 2.0 }];
+        let args = scene_args(30, 10.0, 18, &fast, "out.mp4", 1920, 1080, false).join(" ");
+        assert!(args.contains("-ss 1.000 -t 6.000 -i a.mp4"));
+        assert!(args.contains("atempo=2.0000,volume=1.000"));
+        let slow = vec![Sound { path: "a.mp4".into(), from: 0.0, at: 0.0, length: 4.0, volume: 1.0, speed: 0.25 }];
+        let args = scene_args(30, 10.0, 18, &slow, "out.mp4", 1920, 1080, false).join(" ");
+        assert!(args.contains("-t 1.000 -i a.mp4"));
+        assert!(args.contains("atempo=0.5,atempo=0.5000,volume"));
+        assert_eq!(tempo(1.5), "atempo=1.5000");
+    }
+
+    #[test]
+    fn a_clip_playing_at_double_speed_is_read_a_picture_every_two_frames_of_its_file() {
+        let b = Base { id: "v".into(), path: "a.mov".into(), at: 0.0, speed: 2.0, crop: [0, 0, 1920, 1080], matrix: "bt709".into(), grade: None };
+        assert!(reader_args(&b, 1920, 1080, 24).join(" ").contains("setpts=PTS/2.0000,fps=24"));
+    }
+
+    #[test]
     fn a_clip_is_read_at_its_moment_cut_to_the_part_that_fills_the_video() {
-        let b = Base { id: "v".into(), path: "a.mov".into(), at: 2.5, crop: [10, 20, 1900, 1060], matrix: "bt709".into(), grade: None };
+        let b = Base { id: "v".into(), path: "a.mov".into(), at: 2.5, speed: 1.0, crop: [10, 20, 1900, 1060], matrix: "bt709".into(), grade: None };
         let args = reader_args(&b, 1920, 1080, 24).join(" ");
         assert!(args.contains("-ss 2.5000 -i a.mov"));
         assert!(args.contains("fps=24,crop=1900:1060:10:20,scale=1920:1080"));
