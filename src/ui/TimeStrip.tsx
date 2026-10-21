@@ -507,11 +507,26 @@ export default function TimeStrip() {
     // only the left button moves the playhead: the middle one drags the timeline and the right one opens the menu
     if (e.button !== 0) return;
     const box = e.currentTarget.getBoundingClientRect();
-    const at = (clientX: number) => seek((clientX - box.left) / pps);
+    // the playhead snaps to clip edges and markers; Cmd or Ctrl turns that off
+    const targets = getSnapTargets().filter((t) => t !== getState().clock.t);
+    const at = (clientX: number, noSnap: boolean) => {
+      let t = (clientX - box.left) / pps;
+      let snapTime: number | null = null;
+      if (!noSnap) {
+        const s = findSnap(t, targets);
+        if (s) {
+          t = s.time;
+          snapTime = s.time;
+        }
+      }
+      setSnap(snapTime);
+      seek(t);
+    };
     pause();
-    at(e.clientX);
-    const move = (ev: PointerEvent) => at(ev.clientX);
+    at(e.clientX, e.metaKey || e.ctrlKey);
+    const move = (ev: PointerEvent) => at(ev.clientX, ev.metaKey || ev.ctrlKey);
     const up = () => {
+      setSnap(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
