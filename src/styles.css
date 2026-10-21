@@ -2454,6 +2454,12 @@ body.eyedropping * {
   height: 40px;
   overflow: hidden;
 }
+.time.cut .time-row.footage.has-video {
+  height: 80px;
+}
+.time.cut .time-span.video {
+  height: 72px;
+}
 .clip-face {
   position: absolute;
   left: 0;

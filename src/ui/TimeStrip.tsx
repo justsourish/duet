@@ -22,6 +22,8 @@ import { useDismiss } from "./useDismiss";
 const SHORTEST = 0.1;
 /** The height inside a video or sound bar in Edit, where its frames or sound are drawn. */
 const FOOTAGE_BAR = 38;
+/** A video bar is taller: its frames on top and its sound in a strip of its own underneath. */
+const VIDEO_BAR = 70;
 
 /** A keyframe picked in the timeline: Delete takes it away. Without props it is every change at that moment. */
 interface Picked {
@@ -998,7 +1000,7 @@ export default function TimeStrip() {
           setMenu({ x: e.clientX, y: e.clientY, el });
         }}
       >
-        {look === "cut" && playsFile(el) && <ClipFace el={el} from={span.start} pps={pps} width={Math.max(4, (span.end - span.start) * pps) - 2} height={FOOTAGE_BAR} on={isSelected} />}
+        {look === "cut" && playsFile(el) && <ClipFace el={el} from={span.start} pps={pps} width={Math.max(4, (span.end - span.start) * pps) - 2} height={el.type === "video" ? VIDEO_BAR : FOOTAGE_BAR} on={isSelected} />}
         {look === "cut" && (
           <span className="time-span-name">
             {el.name}
@@ -1432,7 +1434,7 @@ export default function TimeStrip() {
           <Fragment key={row.key}>
             <div
               data-row={ri}
-              className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${look === "cut" && row.items.some(playsFile) ? "footage" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""} ${rowDrop === ri ? "drop-above" : ""} ${rowDrop === displayRows.length && ri === displayRows.length - 1 ? "drop-below" : ""}`}
+              className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${look === "cut" && row.items.some(playsFile) ? "footage" : ""} ${look === "cut" && row.items.some((el) => el.type === "video") ? "has-video" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""} ${rowDrop === ri ? "drop-above" : ""} ${rowDrop === displayRows.length && ri === displayRows.length - 1 ? "drop-below" : ""}`}
             >
               <span
                 className="time-name"
