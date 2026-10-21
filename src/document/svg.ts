@@ -42,7 +42,7 @@ export function toSvg(doc: Doc, id: string): string {
   const shape = (el: El, dx: number, dy: number): string => {
     const x = dx + el.x;
     const y = dy + el.y;
-    const op = el.opacity < 1 ? ` opacity="${num(el.opacity)}"` : "";
+    const op = (el.opacity < 1 ? ` opacity="${num(el.opacity)}"` : "") + (el.blend && el.blend !== "normal" ? ` style="mix-blend-mode:${el.blend === "add" ? "plus-lighter" : el.blend}"` : "");
 
     if (el.type === "text") {
       const { lines } = layoutText(el);

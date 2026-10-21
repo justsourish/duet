@@ -2820,3 +2820,17 @@ describe("moving a layer's timing at a moment", () => {
     expect(moved.elements.a.keys.opacity!.map((k) => k.t)).toEqual([5, 6]);
   });
 });
+
+describe("blend modes", () => {
+  it("sets a blend, saves it, and opens old files as normal", () => {
+    let d = runCommand(emptyDoc(), "create_element", { type: "rect", x: 0, y: 0, width: 10, height: 10 });
+    const id = Object.keys(d.elements)[0];
+    expect(d.elements[id].blend).toBe("normal");
+    d = runCommand(d, "set_props", { ids: [id], props: { blend: "screen" } });
+    expect(d.elements[id].blend).toBe("screen");
+    expect(parseDoc(serializeDoc(d)).elements[id].blend).toBe("screen");
+    const plain = runCommand(d, "set_props", { ids: [id], props: { blend: "normal" } });
+    expect(serializeDoc(plain)).not.toContain("blend");
+    expect(parseDoc(serializeDoc(plain)).elements[id].blend).toBe("normal");
+  });
+});

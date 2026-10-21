@@ -78,6 +78,9 @@ export interface ShapeKey {
 export const playsFile = (el: { type: ElementType }) => el.type === "video" || el.type === "sound";
 
 /** The properties that can change over time. */
+export const BLENDS = ["normal", "multiply", "screen", "overlay", "soft-light", "darken", "lighten", "add"] as const;
+export type Blend = (typeof BLENDS)[number];
+
 export const MOVING = ["x", "y", "width", "height", "opacity", "rotation"] as const;
 export type Moving = (typeof MOVING)[number];
 
@@ -96,6 +99,8 @@ export interface El {
   strokeWidth: number;
   radius: number;
   opacity: number;
+  /** How it mixes with what is under it. Screen makes black clear, so a black and white mist clip can sit over a scene. */
+  blend: Blend;
   /** How far it is turned, in degrees, clockwise, around its own centre. Frames and copies of components stay upright. A group turns what is inside it and only remembers the angle. */
   rotation: number;
   text: string;

@@ -239,7 +239,7 @@ async function baseClip(doc: Doc, now: Doc, sceneId: string, t: number, sizes: M
   const scene = now.elements[sceneId];
   const shown = scene.childIds.map((id) => now.elements[id]).filter((e) => e && !e.hidden && e.type !== "sound");
   const el = shown[0];
-  if (!el || el.type !== "video" || el.rotation || el.opacity < 0.999 || el.radius || el.mask) return null;
+  if (!el || el.type !== "video" || el.rotation || el.opacity < 0.999 || (el.blend ?? "normal") !== "normal" || el.radius || el.mask) return null;
   if (el.x > 0.01 || el.y > 0.01 || el.x + el.width < scene.width - 0.01 || el.y + el.height < scene.height - 0.01) return null;
   let info = sizes.get(el.src);
   if (!info) {

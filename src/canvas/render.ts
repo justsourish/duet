@@ -1,6 +1,6 @@
 import { ancestors, maskOf, turnOf, turnPoint, turnVector, worldBounds, worldRect } from "../document/geometry";
 import { toAbs, trace } from "../document/path";
-import type { Doc, El, Rect } from "../document/types";
+import type { Blend, Doc, El, Rect } from "../document/types";
 import { seenDoc } from "../state/store";
 import type { State } from "../state/store";
 import { logError } from "../errorLog";
@@ -343,6 +343,18 @@ function drawSoftMask(ctx: CanvasRenderingContext2D, doc: Doc, group: El, mask: 
   }
 }
 
+/** What each blend mode is called to the canvas. */
+const BLEND_OP: Record<Blend, GlobalCompositeOperation> = {
+  normal: "source-over",
+  multiply: "multiply",
+  screen: "screen",
+  overlay: "overlay",
+  "soft-light": "soft-light",
+  darken: "darken",
+  lighten: "lighten",
+  add: "lighter",
+};
+
 /** The text being typed into right now on the canvas, if any. Set only while the editor's canvas is painted. */
 let typingId: string | null = null;
 
@@ -354,6 +366,7 @@ export function drawElement(ctx: CanvasRenderingContext2D, doc: Doc, el: El, ox:
   const y = oy + el.y;
   ctx.save();
   ctx.globalAlpha *= el.opacity;
+  if (el.blend && el.blend !== "normal") ctx.globalCompositeOperation = BLEND_OP[el.blend];
   const turn = turnOf(el);
   if (turn) {
     ctx.translate(x + el.width / 2, y + el.height / 2);

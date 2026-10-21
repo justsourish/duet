@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { dragCancel, dragPreview, getState, workDoc, dispatch, select, useStore } from "../state/store";
 import { playsFile } from "../document/types";
-import type { El, Layout, Moving } from "../document/types";
+import { BLENDS } from "../document/types";
+import type { Blend, El, Layout, Moving } from "../document/types";
 import { canBeComponent, isLooseCopy } from "../document/components";
 import { canTurn } from "../document/geometry";
 import { defaultLayout } from "../document/layout";
@@ -228,6 +229,8 @@ interface KeyMark {
   state: "none" | "animated" | "here";
   toggle: () => void;
 }
+
+const BLEND_NAMES: Record<Blend, string> = { normal: "Normal", multiply: "Multiply", screen: "Screen", overlay: "Overlay", "soft-light": "Soft light", darken: "Darken", lighten: "Lighten", add: "Add" };
 
 const KEY_NAMES: Record<Moving, string> = { x: "X", y: "Y", width: "width", height: "height", rotation: "rotation", opacity: "opacity" };
 
@@ -806,6 +809,13 @@ export default function PropertiesPanel() {
       <div className="sec">
         <h4>Opacity</h4>
         <NumField label="%" mark={mark("opacity")} value={Math.round(first.opacity * 100)} min={0} onCommit={(n) => set({ opacity: Math.min(100, n) / 100 }, "Change opacity")} onDrag={(n) => preview({ opacity: Math.min(100, n) / 100 })} />
+        <select value={first.blend ?? "normal"} title="How it mixes with what is under it. Screen makes black clear." onChange={(e) => set({ blend: e.target.value as Blend }, "Change blend")}>
+          {BLENDS.map((b) => (
+            <option key={b} value={b}>
+              {BLEND_NAMES[b]}
+            </option>
+          ))}
+        </select>
       </div>
 
       {one?.mask && (
