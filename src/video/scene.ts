@@ -5,7 +5,7 @@ import { docAt, fileTimeAt, spanOf } from "../document/time";
 import { playsFile } from "../document/types";
 import type { Doc } from "../document/types";
 import { currentDoc, dispatch, getState, select } from "../state/store";
-import { clipsIn, fileLength, holdClips, setMadePicture } from "./clips";
+import { clipsIn, drawingMade, fileLength, holdClips, setMadePicture } from "./clips";
 import { pause } from "./play";
 
 /** A frame that plays: bringing clips into it, and making one video file out of it. */
@@ -356,7 +356,7 @@ export async function exportScene(sceneId: string, progress: (done: number) => v
         // the scene is drawn at the size asked for, sharp at any size because it is drawn, not stretched
         ctx.setTransform(scale, 0, 0, height / scene.height, 0, 0);
         const el = now.elements[sceneId];
-        drawElement(ctx, now, el, -el.x, -el.y);
+        drawingMade(() => drawElement(ctx, now, el, -el.x, -el.y));
         body = new Uint8Array(ctx.getImageData(0, 0, width, height).data.buffer);
       }
       await invoke("scene_export_frame", body, { headers: { "x-duet-frame": JSON.stringify({ base: base?.base ?? null, drawn }) } });

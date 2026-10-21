@@ -92,12 +92,12 @@ function askPreview(src: string, v: HTMLMediaElement) {
 
 /**
  * The picture a clip is on right now, or null while it is not ready. With an id, the clip's player on its
- * original file, once seekClips has moved it. While a video is made the canvas draws madePicture instead,
- * so no player is woken for it.
+ * original file, once seekClips has moved it. While a video is made, the canvas on screen keeps showing
+ * its own light players where they were.
  */
 export function clipPicture(src: string, id?: string): HTMLVideoElement | null {
   if (!src) return null;
-  const v = id ? fullPlayers.get(id) : held ? null : player(src);
+  const v = id ? fullPlayers.get(id) : player(src);
   return v instanceof HTMLVideoElement && v.readyState >= 2 ? v : null;
 }
 
@@ -270,8 +270,24 @@ export async function seekClips(doc: Doc, sceneId: string, t: number) {
 /** While a video is made: each clip's picture for the moment being made, read from its file by the export engine. */
 const madePictures = new Map<string, HTMLCanvasElement>();
 
-/** The picture the export engine read for this clip, while a video is made. */
-export const madePicture = (id: string): HTMLCanvasElement | null => (held ? (madePictures.get(id) ?? null) : null);
+/** True only while a picture of the video is being drawn, so the canvas on screen keeps its own players. */
+let drawingVideo = false;
+
+/** Draw one picture of the video with the clips' pictures from the export engine. */
+export function drawingMade(draw: () => void) {
+  drawingVideo = true;
+  try {
+    draw();
+  } finally {
+    drawingVideo = false;
+  }
+}
+
+/** Whether a picture of the video is being drawn right now. */
+export const drawingVideoNow = () => drawingVideo;
+
+/** The picture the export engine read for this clip, while a picture of the video is drawn. */
+export const madePicture = (id: string): HTMLCanvasElement | null => (drawingVideo ? (madePictures.get(id) ?? null) : null);
 
 /** Keep the picture the export engine read for a clip, or forget it when the clip has none at this moment. */
 export function setMadePicture(id: string, w: number, h: number, rgba: Uint8ClampedArray<ArrayBuffer> | null) {
