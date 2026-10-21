@@ -5,7 +5,7 @@ import CanvasView from "../canvas/CanvasView";
 import type { Recent } from "../project/project";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import type { Trashed } from "../project/project";
-import { closeProject, closeTab, copyProject, getTabs, listedProjects, moveProjectTo, renameProject, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
+import { checkListed, closeProject, closeTab, copyProject, getTabs, listedProjects, moveProjectTo, renameProject, inTauri, newProject, openProjectAt, removeRecent, TRASH_DAYS, trashDelete, trashList, trashProject, trashRestore } from "../project/project";
 import { getState, isParked, setViewport, useStore } from "../state/store";
 import { closeTask, readyToLeave } from "../ai/agent";
 import { AGENTS, showThread, useChat } from "../ai/chat";
@@ -277,9 +277,14 @@ export default function ChatHome() {
     const redo = () => again((n) => n + 1);
     window.addEventListener("duet:tabs", redo);
     window.addEventListener("duet:recents", redo);
+    // a file moved or deleted outside Duet leaves the list when Duet is looked at again
+    const look = () => void checkListed();
+    look();
+    window.addEventListener("focus", look);
     return () => {
       window.removeEventListener("duet:tabs", redo);
       window.removeEventListener("duet:recents", redo);
+      window.removeEventListener("focus", look);
     };
   }, []);
   const recents = listedProjects();

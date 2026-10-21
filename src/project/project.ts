@@ -86,8 +86,28 @@ export interface Recent {
  * The projects to list: every open one, even one not on the list yet (a new project in Duet dev,
  * which never writes to the list), then the rest as they are kept.
  */
+/** Listed files found missing on the last look, such as one moved to the Trash in Finder. They come back if the file does. */
+const missing = new Set<string>();
+
+/** Look again at which listed files are still there, and redraw the list if that changed. */
+export async function checkListed() {
+  if (!inTauri()) return;
+  let changed = false;
+  for (const r of getRecents()) {
+    const there = (await invoke<boolean>("path_exists", { path: r.path }).catch(() => true)) === true;
+    if (there === missing.has(r.path)) {
+      if (there) missing.delete(r.path);
+      else missing.add(r.path);
+      changed = true;
+    }
+  }
+  if (changed) window.dispatchEvent(new Event("duet:recents"));
+}
+
 export function listedProjects(): Recent[] {
-  const recents = getRecents();
+  const tabs = new Set(getTabs());
+  // a project open in a tab stays listed even when its file has gone: what is in it is still here
+  const recents = getRecents().filter((r) => !missing.has(r.path) || tabs.has(r.path));
   const known = new Set(recents.map((r) => r.path));
   const here = getState().project.file;
   const open = [...new Set([...(here ? [here] : []), ...getTabs(), ...parkedFiles()])]
@@ -148,7 +168,8 @@ export const TRASH_DAYS = 30;
 
 /** Move a project to Duet's trash. It leaves the list and can be put back for 30 days. */
 export async function trashProject(path: string) {
-  await invoke("trash_project", { path });
+  // already gone from its folder: there is nothing to move, so it only leaves the list
+  if ((await invoke<boolean>("path_exists", { path })) === true) await invoke("trash_project", { path });
   removeRecent(path);
   closeTab(path);
 }
