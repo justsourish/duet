@@ -54,6 +54,8 @@ export default function TimeStrip() {
   const selection = useStore((s) => s.selection);
   const clock = useStore((s) => s.clock);
   const lanes = useRef<HTMLDivElement>(null);
+  // the rows as last drawn, for the keys that pick the clip before or after
+  const rowsRef = useRef<{ items: El[] }[]>([]);
   const [wide, setWide] = useState(600);
   const [zoom, setZoom] = useState(1);
   const [making, setMaking] = useState<number | null>(null);
@@ -136,12 +138,39 @@ export default function TimeStrip() {
     return () => see.disconnect();
   }, [plays, mode, sceneId, NAMES]);
 
-  // Cmd or Ctrl with the left and right arrows step the playhead one frame at a time; with Shift, ten frames
+  // Cmd or Ctrl with the left and right arrows step the playhead one frame at a time; with Shift, ten frames.
+  // With up and down, the clip before or after is picked: the one beside the picked clip on its row, or with
+  // nothing picked, the one that ends at the playhead or starts there. So S, Cmd up and D cut away what was before.
   useEffect(() => {
     if (!sceneId) return;
     const key = (e: KeyboardEvent) => {
       const on = document.activeElement as HTMLElement | null;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable))) return;
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        if (e.shiftKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const s = getState();
+        const d = currentDoc(s);
+        const scene = d.elements[sceneId];
+        if (!scene) return;
+        const back = e.key === "ArrowUp";
+        const rows = rowsRef.current.map((r) => r.items.map((el) => ({ id: el.id, ...spanOf(el, scene) })).sort((a, b) => a.start - b.start));
+        const picked = s.selection.find((id) => rows.some((r) => r.some((c) => c.id === id)));
+        let next: string | undefined;
+        if (picked) {
+          const row = rows.find((r) => r.some((c) => c.id === picked))!;
+          next = row[row.findIndex((c) => c.id === picked) + (back ? -1 : 1)]?.id;
+        } else {
+          const t = s.clock.t;
+          const all = rows.flat();
+          const near = back ? all.filter((c) => c.end <= t + 0.01).sort((a, b) => b.end - a.end) : all.filter((c) => c.start >= t - 0.01).sort((a, b) => a.start - b.start);
+          next = near[0]?.id;
+        }
+        if (next) select([next]);
+        return;
+      }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       e.preventDefault();
       e.stopPropagation();
@@ -503,6 +532,7 @@ export default function TimeStrip() {
             items,
           })),
         ];
+  rowsRef.current = displayRows;
 
 
   const scrub = (e: React.PointerEvent) => {
