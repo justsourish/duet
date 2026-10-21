@@ -168,7 +168,8 @@ export function parseDoc(text: string): Doc {
   for (const [id, value] of Object.entries(r.elements)) {
     const v = value as Partial<El>;
     if (!v || !TYPES.has(v.type as string)) throw new DesignFileError(`Element ${id} has an unknown type.`);
-    elements[id] = { ...FALLBACK, ...v, id, type: v.type as El["type"] };
+    // its own copy of the empty lists, so a change to one thing's keys or children never reaches another's
+    elements[id] = { ...structuredClone(FALLBACK), ...v, id, type: v.type as El["type"] };
   }
   for (const id of r.rootIds) if (!elements[id]) throw new DesignFileError(`Page lists ${id}, but it does not exist.`);
   for (const el of Object.values(elements)) {
