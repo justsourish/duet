@@ -209,6 +209,9 @@ function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) 
 }
 
 /** A video clip, at the moment its player is on. It fills its box and what does not fit is cut off. */
+/** Where a clip with a blend is copied before it is drawn. */
+let blendSheet: HTMLCanvasElement | null = null;
+
 function drawClip(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
   const pic = clipPicture(el.src);
   ctx.save();
@@ -221,7 +224,25 @@ function drawClip(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
       const k = Math.max(el.width / pic.videoWidth, el.height / pic.videoHeight);
       const w = pic.videoWidth * k;
       const h = pic.videoHeight * k;
-      ctx.drawImage(coloured(pic, el, null), x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+      const frame = coloured(pic, el, null);
+      if (ctx.globalCompositeOperation === "source-over") {
+        ctx.drawImage(frame, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);
+      } else {
+        // the web view ignores a blend when a video's picture is drawn straight in, so the picture is copied to a canvas first
+        const sheet = blendSheet ?? (blendSheet = document.createElement("canvas"));
+        const cw = Math.max(1, Math.ceil(el.width));
+        const ch = Math.max(1, Math.ceil(el.height));
+        if (sheet.width !== cw || sheet.height !== ch) {
+          sheet.width = cw;
+          sheet.height = ch;
+        }
+        const bctx = sheet.getContext("2d");
+        if (bctx) {
+          bctx.clearRect(0, 0, cw, ch);
+          bctx.drawImage(frame, (el.width - w) / 2, (el.height - h) / 2, w, h);
+          ctx.drawImage(sheet, x, y, el.width, el.height);
+        }
+      }
     } catch (e) {
       logError("draw clip", e);
     }
