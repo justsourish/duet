@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { playsFile } from "../document/types";
+import { logError } from "../errorLog";
 import { pastePayload } from "../canvas/CanvasView";
 import { newId } from "../commands";
 import { defaultLayout } from "../document/layout";
@@ -32,6 +35,9 @@ function itemsFor(): Item[] {
       if (p) pastePayload(p, true);
     },
   });
+
+  // a clip or a sound is kept where it is on the computer, so it can be shown there; pictures are saved inside the file
+  if (one && playsFile(one) && one.src) out.push({ label: "Show in Finder", run: () => void revealItemInDir(one.src).catch((e) => logError("show in finder", e)) });
 
   if (canBeComponent(one ?? undefined)) {
     out.push({ label: "Make a component", hint: "Cmd Option K", run: () => dispatch("create_component", { id: one!.id }) });
