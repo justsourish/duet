@@ -6088,3 +6088,27 @@ input.chathome-name.rename {
   border: 1px solid var(--accent);
   background: var(--accent-soft);
 }
+
+/* Edit: the track picked by its name is lit; what is pasted goes on it */
+.time-row.picked .time-name {
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--text);
+}
+.time-row.picked .time-lane {
+  background: var(--accent-soft);
+}
+.time-name-text .track-paste {
+  display: block;
+  font-size: 10px;
+  color: var(--accent);
+}
+.time.cut .time-row.track-add-row {
+  height: 40px;
+}
+.track-add {
+  font-size: 11px;
+}
+.ctx-item.danger {
+  color: #ff7a6e;
+}

@@ -19,6 +19,9 @@ import type { ExportChoice } from "../video/scene";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { TIME_MIN_H, getLayout, setLayout, useLayout } from "./layout";
 import { useDismiss } from "./useDismiss";
+import { trackKind, trackRows } from "../document/tracks";
+import type { TrackKind } from "../document/tracks";
+import { getPickedTrack, pickTrack, usePickedTrack } from "./pickedTrack";
 
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
 
@@ -58,7 +61,7 @@ export default function TimeStrip() {
   const clock = useStore((s) => s.clock);
   const lanes = useRef<HTMLDivElement>(null);
   // the rows as last drawn, for the keys that pick the clip before or after
-  const rowsRef = useRef<{ items: El[] }[]>([]);
+  const rowsRef = useRef<{ items: El[]; track?: { kind: TrackKind; index: number } }[]>([]);
   const [wide, setWide] = useState(600);
   const [zoom, setZoom] = useState(1);
   const [making, setMaking] = useState<number | null>(null);
@@ -79,6 +82,10 @@ export default function TimeStrip() {
   const stretching = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; el: El; mark?: Picked } | null>(null);
   useDismiss(!!menu, () => setMenu(null), ".ctx");
+  // the track picked by its name, which paste puts clips on, and the menu of a track's name
+  const trackPick = usePickedTrack();
+  const [trackMenu, setTrackMenu] = useState<{ x: number; y: number; kind: TrackKind; index: number; name: string; key: string } | null>(null);
+  useDismiss(!!trackMenu, () => setTrackMenu(null), ".ctx");
   const [markerMenu, setMarkerMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   useDismiss(!!markerMenu, () => setMarkerMenu(null), ".ctx");
   useDismiss(hushing, () => setHushing(false), ".hush-anchor");
@@ -503,8 +510,6 @@ export default function TimeStrip() {
 
   const things = frame.childIds.map((id) => doc.elements[id]).filter(Boolean).reverse();
   const nonVideos = things.filter((el) => !playsFile(el));
-  const sounds = things.filter((el) => el.type === "sound");
-  const videoClips = things.filter((el) => el.type === "video");
 
   const packTracks = (list: El[]) => {
     const res: El[][] = [];
@@ -532,7 +537,23 @@ export default function TimeStrip() {
     name: string;
     items: El[];
     onClick?: (e: React.MouseEvent) => void;
+    /** A row of clips or sounds in Edit: a track, by its place among the tracks of its kind. */
+    track?: { kind: TrackKind; index: number };
   }
+
+  const trackRow = (kind: TrackKind) =>
+    trackRows(doc, frame, kind).map((r) => ({
+      key: `${kind}-${r.index}`,
+      name: r.name,
+      items: r.items,
+      track: { kind, index: r.index },
+      onClick: () => {
+        // picking a track picks its scene too, so what is pasted next goes into it
+        const on = trackPick?.frameId === frame.id && trackPick.kind === kind && trackPick.index === r.index;
+        pickTrack(on ? null : { frameId: frame.id, kind, index: r.index });
+        select([frame.id]);
+      },
+    }));
 
   const displayRows: DisplayRow[] =
     look === "layers"
@@ -548,18 +569,12 @@ export default function TimeStrip() {
             name: `Track ${i + 1}`,
             items,
           })),
-          ...packTracks(videoClips).map((items, i) => ({
-            key: `clips-${i + 1}`,
-            name: `Clips ${i + 1}`,
-            items,
-          })),
-          ...packTracks(sounds).map((items, i) => ({
-            key: `sound-${i + 1}`,
-            name: `Sound ${i + 1}`,
-            items,
-          })),
+          ...trackRow("clips"),
+          ...trackRow("sound"),
         ];
   rowsRef.current = displayRows;
+  const allHidden = (row: DisplayRow) => row.items.length > 0 && row.items.every((el) => el.hidden);
+  const trackPicked = (row: DisplayRow) => !!row.track && trackPick?.frameId === frame.id && trackPick.kind === row.track.kind && trackPick.index === row.track.index;
 
 
   const scrub = (e: React.PointerEvent) => {
@@ -690,6 +705,7 @@ export default function TimeStrip() {
     if (!now.includes(el.id) || part !== "all") select([el.id]);
     const others = group.filter((id) => id !== el.id).map((id) => ({ id, span: spanOf(doc.elements[id], frame) }));
     const from = e.clientX;
+    const fromY = e.clientY;
     const span = spanOf(el, frame);
     const long = span.end - span.start;
     // a clip cannot show more than its file holds
@@ -700,7 +716,7 @@ export default function TimeStrip() {
     let moved = false;
     const move = (ev: PointerEvent) => {
       const by = (ev.clientX - from) / pps;
-      if (Math.abs(ev.clientX - from) < 2 && !moved) return;
+      if (Math.abs(ev.clientX - from) < 2 && (part !== "all" || Math.abs(ev.clientY - fromY) < 6) && !moved) return;
       moved = true;
       const noSnap = ev.metaKey || ev.ctrlKey;
       if (part === "all") {
@@ -740,6 +756,14 @@ export default function TimeStrip() {
         let next = last > length ? runCommand(dragBase(), "set_duration", { id: frame.id, seconds: last }) : dragBase();
         next = runCommand(next, "set_timing", { ids: [el.id], start, end: start + long });
         for (const o of others) next = runCommand(next, "set_timing", { ids: [o.id], start: o.span.start + shift, end: o.span.end + shift });
+        // over another track of its kind, it goes on that track, with the clips moving with it
+        const kind = trackKind(el);
+        const over = Array.from(lanes.current?.querySelectorAll<HTMLElement>("[data-row]") ?? []).find((r) => {
+          const b = r.getBoundingClientRect();
+          return ev.clientY >= b.top && ev.clientY < b.bottom;
+        });
+        const row = over ? rowsRef.current[Number(over.dataset.row)] : undefined;
+        if (kind && look === "cut" && row?.track?.kind === kind) next = runCommand(next, "set_track", { ids: [el.id, ...others.map((o) => o.id)], track: row.track });
         dragPreviewDoc(next);
       } else if (stretch) {
         const raw = (part === "start" ? span.start : span.end) + by;
@@ -1544,29 +1568,39 @@ export default function TimeStrip() {
           <Fragment key={row.key}>
             <div
               data-row={ri}
-              className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${look === "cut" && row.items.some(playsFile) ? "footage" : ""} ${look === "cut" && row.items.some((el) => el.type === "video") ? "has-video" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""} ${rowDrop === ri ? "drop-above" : ""} ${rowDrop === displayRows.length && ri === displayRows.length - 1 ? "drop-below" : ""}`}
+              className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${look === "cut" && (row.track || row.items.some(playsFile)) ? "footage" : ""} ${look === "cut" && (row.track?.kind === "clips" || row.items.some((el) => el.type === "video")) ? "has-video" : ""} ${allHidden(row) ? "is-hidden" : ""} ${trackPicked(row) ? "picked" : ""} ${rowDrop === ri ? "drop-above" : ""} ${rowDrop === displayRows.length && ri === displayRows.length - 1 ? "drop-below" : ""}`}
             >
               <span
                 className="time-name"
-                onPointerDown={(e) => look === "layers" && renaming !== row.items[0].id && pullRow(e, row.items[0])}
+                onPointerDown={(e) => look === "layers" && renaming !== row.key && pullRow(e, row.items[0])}
                 onClick={(e) => {
                   if (pulled.current) return void (pulled.current = false);
+                  // the second click of a double click is the one that renames, so it picks nothing
+                  if (renaming === row.key || (row.track && e.detail > 1)) return;
                   row.onClick?.(e);
                 }}
-                onDoubleClick={() => look === "layers" && setRenaming(row.items[0].id)}
-                title={look === "layers" ? `${row.name}. Double-click to rename, drag up or down to reorder` : row.name}
+                onDoubleClick={() => (look === "layers" || row.track) && setRenaming(row.key)}
+                onContextMenu={(e) => {
+                  if (!row.track) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMenu(null);
+                  setTrackMenu({ x: e.clientX, y: e.clientY, ...row.track, name: row.name, key: row.key });
+                }}
+                title={look === "layers" ? `${row.name}. Double-click to rename, drag up or down to reorder` : row.track ? `${row.name}. Click to paste onto it, double-click to rename, right click for more` : row.name}
               >
                 <button
-                  className={`time-eye ${row.items.every((el) => el.hidden) ? "off" : ""}`}
+                  className={`time-eye ${allHidden(row) ? "off" : ""}`}
                   data-name={`eye-${row.name}`}
-                  title={row.items.every((el) => el.hidden) ? "Show" : "Hide, so it is not drawn or exported"}
+                  disabled={!row.items.length}
+                  title={!row.items.length ? "Nothing on it yet" : allHidden(row) ? "Show" : "Hide, so it is not drawn or exported"}
                   onClick={(e) => {
                     e.stopPropagation();
-                    const show = row.items.every((el) => el.hidden);
+                    const show = allHidden(row);
                     dispatch("set_props", { ids: row.items.map((el) => el.id), props: { hidden: !show }, label: show ? "Show" : "Hide" });
                   }}
                 >
-                  <Icon name={row.items.every((el) => el.hidden) ? "eye-off" : "eye"} size={12} />
+                  <Icon name={allHidden(row) ? "eye-off" : "eye"} size={12} />
                 </button>
                 {row.items.some(playsFile) && (
                   <button
@@ -1608,7 +1642,7 @@ export default function TimeStrip() {
                     )}
                   </span>
                 )}
-                {renaming === row.items[0].id ? (
+                {renaming === row.key ? (
                   <input
                     className="rename time-rename"
                     autoFocus
@@ -1619,7 +1653,9 @@ export default function TimeStrip() {
                     onBlur={(e) => {
                       const name = e.currentTarget.value.trim();
                       setRenaming(null);
-                      if (name && name !== row.name) dispatch("set_props", { ids: [row.items[0].id], props: { name }, label: "Rename" });
+                      if (!name || name === row.name) return;
+                      if (row.track) dispatch("rename_track", { id: frame.id, track: row.track, name });
+                      else dispatch("set_props", { ids: [row.items[0].id], props: { name }, label: "Rename" });
                     }}
                     onKeyDown={(e) => {
                       e.stopPropagation();
@@ -1628,7 +1664,10 @@ export default function TimeStrip() {
                     }}
                   />
                 ) : (
-                  <span className="time-name-text">{row.name}</span>
+                  <span className="time-name-text">
+                    {row.name}
+                    {trackPicked(row) && <small className="track-paste">Paste lands here</small>}
+                  </span>
                 )}
                 <i className="names-grip" onPointerDown={pullNames} title="Pull to make the names wider or narrower" />
               </span>
@@ -1639,6 +1678,24 @@ export default function TimeStrip() {
             {look === "layers" && row.items.filter(opened).map((el) => renderKindRows(el))}
           </Fragment>
         ))}
+        {look === "cut" && (
+          <div className="time-row track-add-row">
+            <span className="time-name">
+              <button
+                className="pill track-add"
+                data-name="new-track"
+                title="A new track on top of the others, picked, so what you paste goes on it"
+                onClick={() => {
+                  dispatch("add_track", { id: frame.id, kind: "clips", index: 0 });
+                  pickTrack({ frameId: frame.id, kind: "clips", index: 0 });
+                  select([frame.id]);
+                }}
+              >
+                + New track
+              </button>
+            </span>
+          </div>
+        )}
         {frame.workArea && (
           <>
             <div className="time-work-dim" style={{ left: NAMES, width: frame.workArea.start * pps }} />
@@ -1707,6 +1764,48 @@ export default function TimeStrip() {
           </div>
             </>
           )}
+        </div>
+      )}
+      {trackMenu && (
+        <div className="ctx" data-name="track-menu" style={{ left: Math.max(10, Math.min(trackMenu.x, window.innerWidth - 230)), top: Math.max(10, Math.min(trackMenu.y, window.innerHeight - 200)) }}>
+          <div
+            className="ctx-item"
+            onClick={() => {
+              setRenaming(trackMenu.key);
+              setTrackMenu(null);
+            }}
+          >
+            <span>Rename</span>
+          </div>
+          {([["New track above", 0], ["New track below", 1]] as const).map(([label, by]) => (
+            <div
+              key={label}
+              className="ctx-item"
+              onClick={() => {
+                const { kind, index } = trackMenu;
+                setTrackMenu(null);
+                dispatch("add_track", { id: frame.id, kind, index: index + by });
+                pickTrack({ frameId: frame.id, kind, index: index + by });
+                select([frame.id]);
+              }}
+            >
+              <span>{label}</span>
+            </div>
+          ))}
+          <div className="ctx-line" />
+          <div
+            className="ctx-item danger"
+            onClick={() => {
+              const { kind, index } = trackMenu;
+              setTrackMenu(null);
+              dispatch("delete_track", { id: frame.id, track: { kind, index } });
+              // the picked track keeps pointing at the same one
+              const was = getPickedTrack();
+              if (was?.frameId === frame.id && was.kind === kind) pickTrack(was.index === index ? null : was.index > index ? { ...was, index: was.index - 1 } : was);
+            }}
+          >
+            <span>Delete track</span>
+          </div>
         </div>
       )}
       {menu && (

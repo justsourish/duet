@@ -74,6 +74,7 @@ import { defaultLayout } from "../document/layout";
 import { penActive, penBack, penCancel, penDown, penDrag, penFinish, penHover } from "./pen";
 import { draw, labelRect, screenRect, setQuietCanvas, setSceneOnly, shownOn } from "./render";
 import { fontCss, layoutText, lineStep, textLift } from "./text";
+import { getPickedTrack } from "../ui/pickedTrack";
 
 let atNow: { doc: Doc; scene: string; t: number; out: Doc } | null = null;
 /** The design with only what plays at the moment the clock is on, so a click finds what is seen. */
@@ -155,7 +156,10 @@ export function pastePayload(payload: ClipPayload, duplicate = false) {
   const sameSpot = payload.rootIds.every((id) => doc.elements[id]?.parentId === parentId);
   const dx = pageFrame && sameSpot ? first.width + 40 : sameSpot || duplicate ? 16 : 0;
   const dy = pageFrame && sameSpot ? 0 : sameSpot || duplicate ? 16 : 0;
-  dispatch("paste_elements", { payload, parentId, dx, dy, idMap, above: duplicate, label: duplicate ? "Duplicate" : "Paste" });
+  // a track picked on the timeline of this frame: clips go on it, the first starting at the playhead
+  const track = getPickedTrack();
+  const onTrack = !duplicate && track && track.frameId === parentId && doc.elements[parentId]?.duration > 0 ? { track: { kind: track.kind, index: track.index }, at: s.clock.t } : {};
+  dispatch("paste_elements", { payload, parentId, dx, dy, idMap, above: duplicate, ...onTrack, label: duplicate ? "Duplicate" : "Paste" });
   select(payload.rootIds.map((id) => idMap[id]));
 }
 

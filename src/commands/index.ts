@@ -9,6 +9,8 @@ import { CURVES, ENTRANCES, entranceKeys, fileTimeAt, outlineOf, sceneOf, spanOf
 import type { CurveName, Entrance } from "../document/time";
 import { canGrade, mergeGrade } from "../document/grade";
 import type { GradeChange } from "../document/grade";
+import { keepTracks, newTrackId, stackByTrack, trackKind } from "../document/tracks";
+import type { TrackKind } from "../document/tracks";
 import type { CreatePresetFrameArgs } from "./presets";
 
 /**
@@ -533,6 +535,9 @@ export interface PasteArgs {
   idMap?: Record<string, string>;
   /** A duplicate: each copy goes right above the piece it came from, not on top of everything. */
   above?: boolean;
+  /** Into a frame that plays: the track the pasted clips go on, and the second the first of them starts at. */
+  track?: TrackRef;
+  at?: number;
   label?: string;
 }
 
@@ -546,6 +551,8 @@ const pasteElements: CommandDef<PasteArgs> = {
     for (const [oldId, el] of Object.entries(a.payload.elements)) if (!isDerived(oldId)) idMap[oldId] ??= newId(el.type);
     const parentWorld = a.parentId ? worldPos(next, a.parentId) : { x: 0, y: 0 };
     const list = a.parentId ? next.elements[a.parentId].childIds : next.rootIds;
+    // the track is found before the copies come in, so no row is made just for them
+    const track = a.track && a.parentId && next.elements[a.parentId].duration > 0 ? findTrack(next, a.parentId, a.track) : null;
     for (const [oldId, el] of Object.entries(a.payload.elements)) {
       if (isDerived(oldId)) continue; // a copy of an instance gets its inside from the component
       const copy: El = structuredClone(el);
@@ -555,8 +562,12 @@ const pasteElements: CommandDef<PasteArgs> = {
       if (a.payload.rootIds.includes(oldId)) {
         const o = a.payload.origins[oldId];
         copy.parentId = a.parentId;
-        copy.x = o.x - parentWorld.x + (a.dx ?? 0);
-        copy.y = o.y - parentWorld.y + (a.dy ?? 0);
+        // clips pasted onto a track keep their place in the picture, not on the page
+        const inPicture = a.track && el.parentId && playsFile(el);
+        copy.x = (inPicture ? el.x : o.x - parentWorld.x) + (a.dx ?? 0);
+        copy.y = (inPicture ? el.y : o.y - parentWorld.y) + (a.dy ?? 0);
+        // a clip copied from another scene names a track that is not here; it goes on the one asked for
+        if (track && trackKind(copy) === track.kind) copy.track = track.id;
         const at = a.above ? list.indexOf(oldId) : -1;
         if (at >= 0) list.splice(at + 1, 0, copy.id);
         else list.push(copy.id);
@@ -565,6 +576,143 @@ const pasteElements: CommandDef<PasteArgs> = {
       }
       next.elements[copy.id] = copy;
     }
+    const frame = a.parentId ? next.elements[a.parentId] : null;
+    if (frame && frame.duration > 0 && (a.track || a.at !== undefined)) {
+      const roots = a.payload.rootIds.filter((id) => !isDerived(id)).map((id) => next.elements[idMap[id]]);
+      // the pasted pieces keep their places in time against each other, and the first starts where asked
+      if (a.at !== undefined && Number.isFinite(a.at)) {
+        const by = round(Math.max(0, a.at) - Math.min(...roots.map((el) => el.start)));
+        for (const el of roots) {
+          el.start = round(el.start + by);
+          if (el.end) el.end = round(el.end + by);
+          for (const prop of MOVING) if (el.keys[prop]) el.keys[prop] = el.keys[prop]!.map((k) => ({ ...k, t: round(k.t + by) }));
+          el.shapeKeys = el.shapeKeys.map((k) => ({ ...k, t: round(k.t + by) }));
+        }
+        const last = Math.max(...roots.map((el) => el.end));
+        if (last > frame.duration) frame.duration = round(last);
+      }
+      if (track) stackByTrack(next, a.parentId!);
+    }
+    return next;
+  },
+};
+
+// ---- tracks ----
+/** A track by its place on a frame's timeline: the rows Duet shows, top first, counted for one kind. */
+export interface TrackRef {
+  kind: TrackKind;
+  index: number;
+}
+
+/** Save the frame's rows as tracks, then find one. Works on a copy that is being changed. */
+function findTrack(doc: Doc, frameId: string, ref: TrackRef) {
+  const tracks = keepTracks(doc, frameId).filter((t) => t.kind === ref.kind);
+  return tracks[ref.index] ?? null;
+}
+
+const scene = (doc: Doc, id: string) => {
+  const f = doc.elements[id];
+  return f && f.type === "frame" && f.duration > 0 ? f : null;
+};
+
+export interface AddTrackArgs {
+  /** The frame that plays. */
+  id: string;
+  kind: TrackKind;
+  /** Its place among the tracks of its kind, top first. Left out puts it on top. */
+  index?: number;
+  name?: string;
+  trackId?: string;
+}
+
+/** A new, empty track for clips or sounds. */
+const addTrack: CommandDef<AddTrackArgs> = {
+  label: () => "New track",
+  run: (doc, a) => {
+    if (!scene(doc, a.id) || (a.kind !== "clips" && a.kind !== "sound")) return doc;
+    const next = clone(doc);
+    const f = next.elements[a.id];
+    const all = keepTracks(next, a.id);
+    const same = all.filter((t) => t.kind === a.kind);
+    const at = Math.max(0, Math.min(same.length, Math.floor(a.index ?? 0)));
+    const base = a.kind === "clips" ? "Clips" : "Sound";
+    let n = same.length + 1;
+    while (all.some((t) => t.name === `${base} ${n}`)) n++;
+    const track = { id: a.trackId ?? newTrackId(), name: a.name?.trim() || `${base} ${n}`, kind: a.kind };
+    // tracks of one kind stay together, in the order they show
+    const place = same.length === 0 ? all.length : at < same.length ? all.indexOf(same[at]) : all.indexOf(same[same.length - 1]) + 1;
+    f.tracks = [...all.slice(0, place), track, ...all.slice(place)];
+    return next;
+  },
+};
+
+export interface RenameTrackArgs {
+  id: string;
+  track: TrackRef;
+  name: string;
+}
+
+const renameTrack: CommandDef<RenameTrackArgs> = {
+  label: () => "Rename track",
+  run: (doc, a) => {
+    const name = String(a.name ?? "").trim();
+    if (!scene(doc, a.id) || !name) return doc;
+    const next = clone(doc);
+    const track = findTrack(next, a.id, a.track);
+    if (!track || track.name === name) return doc;
+    track.name = name;
+    return next;
+  },
+};
+
+export interface DeleteTrackArgs {
+  id: string;
+  track: TrackRef;
+}
+
+/** Take a track away, with every clip on it. */
+const deleteTrack: CommandDef<DeleteTrackArgs> = {
+  label: () => "Delete track",
+  run: (doc, a) => {
+    if (!scene(doc, a.id)) return doc;
+    const next = clone(doc);
+    const track = findTrack(next, a.id, a.track);
+    if (!track) return doc;
+    const f = next.elements[a.id];
+    const gone = f.childIds.filter((id) => next.elements[id]?.track === track.id && trackKind(next.elements[id]) === track.kind);
+    for (const id of gone) for (const d of [id, ...descendants(next, id)]) delete next.elements[d];
+    f.childIds = f.childIds.filter((id) => !gone.includes(id));
+    f.tracks = f.tracks!.filter((t) => t.id !== track.id);
+    if (!f.tracks.length) delete f.tracks;
+    return next;
+  },
+};
+
+export interface SetTrackArgs {
+  /** Clips or sounds in one frame that plays. */
+  ids: string[];
+  track: TrackRef;
+}
+
+/** Move clips onto another track. They keep their time. Things of the other kind stay where they are. */
+const setTrack: CommandDef<SetTrackArgs> = {
+  label: (a) => (a.ids.length > 1 ? `Move ${a.ids.length} clips to another track` : "Move to another track"),
+  run: (doc, a) => {
+    const first = doc.elements[a.ids[0]];
+    const frameId = first?.parentId;
+    if (!frameId || !scene(doc, frameId)) return doc;
+    const next = clone(doc);
+    const track = findTrack(next, frameId, a.track);
+    if (!track) return doc;
+    let changed = false;
+    for (const id of a.ids) {
+      const el = next.elements[id];
+      if (!el || el.parentId !== frameId || trackKind(el) !== track.kind || el.track === track.id) continue;
+      el.track = track.id;
+      changed = true;
+    }
+    if (!changed) return doc;
+    stackByTrack(next, frameId);
     return next;
   },
 };
@@ -1799,6 +1947,10 @@ export const commands = {
   split_at: splitAt,
   ripple_delete: rippleDelete,
   cut_ranges: cutRanges,
+  add_track: addTrack,
+  rename_track: renameTrack,
+  delete_track: deleteTrack,
+  set_track: setTrack,
 } as const;
 
 export type CommandName = keyof typeof commands;

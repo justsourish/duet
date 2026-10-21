@@ -1,3 +1,4 @@
+import { toPng } from "html-to-image";
 import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
 import { inTestDesign, keepTestDesign, leaveTestDesign, startTestDesign } from "../project/project";
@@ -37,6 +38,7 @@ How to check a change:
 3. dev_read_interface says what the panels show, as numbered lines of words. Pass filter to see only lines with a word in them.
 4. dev_press presses something by its name or by its line number. dev_type writes in a box. dev_key presses a key.
 5. Read the interface again to see what changed. Line numbers are only good until the next read.
+5b. dev_look_at_window gives a picture of the whole Duet window, drawn by Duet itself. Use it to see how a change looks, and as the starting point of any mockup: start from what is really there, never from a guess.
 6. dev_history lists the last steps and who made each one. dev_errors lists what went wrong since the last look.
 7. After Duet's code changes, dev_reload loads the interface again. Wait three seconds after it: a call made while it loads is lost. The test design is lost too, so start a new one.
 8. dev_leave_test_design throws the test design away and brings the project back. Always finish with it.
@@ -86,6 +88,11 @@ export const BUILDER_TOOLS: ToolDef[] = [
     name: "dev_video",
     description: "Builder tool. Stand in for the two system windows of the video screen. add: put a video file in the list by its full path. export: make the video at a full path. clear: empty the list. For a frame that plays: frame makes the video of the frame with id at a full path, and clock moves the clock to the second t and says what the canvas shows then.",
     inputSchema: { type: "object", properties: { do: { type: "string", enum: ["add", "export", "clear", "frame", "clock"] }, path: str, id: str, t: { type: "number" } }, required: ["do"] },
+  },
+  {
+    name: "dev_look_at_window",
+    description: "Builder tool. See the whole Duet window as it is right now, drawn by Duet itself like the picture Feedback attaches: only Duet, nothing else on the screen. Use it to check how a change looks, and to start a mockup from what is really there. maxSize is the longest side in pixels (default 1600).",
+    inputSchema: { type: "object", properties: { maxSize: num } },
   },
   { name: "dev_reload", description: "Builder tool. Load the interface again, so a change to Duet's code is surely the one running. A test design does not survive it: the project that was open comes back.", inputSchema: { type: "object", properties: {} } },
   {
@@ -361,6 +368,17 @@ export async function callBuilderTool(name: string, raw: unknown, by?: string): 
   }
   if (name === "dev_read_interface") return { text: `${inTestDesign() ? "" : "This is a real project, not a test design.\n"}${readInterface(a.filter, a.max)}` };
   if (name === "dev_press") return press(a);
+  if (name === "dev_look_at_window") {
+    try {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const most = typeof a.maxSize === "number" && a.maxSize > 0 ? a.maxSize : 1600;
+      const url = await toPng(document.body, { pixelRatio: Math.min(window.devicePixelRatio || 1, most / Math.max(w, h)), width: w, height: h, cacheBust: false, skipFonts: true });
+      return { text: "The Duet window as it is now.", image: { data: url.split(",")[1], mime: "image/png" } };
+    } catch (e) {
+      return fail(`The window could not be drawn: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
   if (name === "dev_type") return type(a);
   if (name === "dev_key") return key(a);
   if (name === "dev_history") {
