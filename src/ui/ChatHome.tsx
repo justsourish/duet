@@ -12,6 +12,7 @@ import { AGENTS, showThread, useChat } from "../ai/chat";
 import { agentColour } from "../ai/colours";
 import ChatPanel from "./ChatPanel";
 import ChatToolbar from "./ChatToolbar";
+import TimeStrip from "./TimeStrip";
 import Icon from "./Icons";
 import { setLayout, useLayout } from "./layout";
 import SkillsPanel from "./SkillsPanel";
@@ -283,6 +284,7 @@ export default function ChatHome() {
   }, []);
   const recents = listedProjects();
   const homeChatW = useLayout((d) => d.homeChatW);
+  const mode = useLayout((d) => d.mode);
   const tabs = getTabs();
   const [skills, setSkills] = useState(false);
   const [trash, setTrash] = useState(false);
@@ -539,9 +541,13 @@ export default function ChatHome() {
         )}
       </section>
       <main className="canvas chathome-canvas">
-        <CanvasView />
-        {/* the tools belong to the canvas, not to the list of all projects laid over it */}
-        {!all && <ChatToolbar />}
+        <div className="chathome-stage">
+          <CanvasView />
+          {/* the tools belong to the canvas, not to the list of all projects laid over it */}
+          {!all && <ChatToolbar />}
+        </div>
+        {/* in Video, the timeline sits under the design, so the basics are here while talking to the AI */}
+        {!all && mode === "motion" && <TimeStrip />}
       </main>
     </div>
   );

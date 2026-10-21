@@ -6033,3 +6033,17 @@ input.chathome-name.rename {
   pointer-events: none;
   z-index: 1;
 }
+
+/* The Project screen's design side: the design above, and in Video its timeline under it */
+.chathome-canvas {
+  display: flex;
+  flex-direction: column;
+}
+.chathome-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.chathome-canvas > .time {
+  flex: none;
+}
