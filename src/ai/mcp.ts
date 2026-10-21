@@ -4,15 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { outsideRules } from "./rules";
 import { outsideWorking } from "./outside";
 import { TOOLS, callTool } from "./tools";
-import { AGENTS, getChat, subscribeChat } from "./chat";
+import { getChat, subscribeChat } from "./chat";
 import { fromChat, OUTSIDE, toolName } from "./who";
-
-/** Whether the chat, or one of its tasks, has this AI tool at work right now. */
-function chatHasAtWork(tool: string): boolean {
-  const c = getChat();
-  const named = (id: string) => AGENTS.find((a) => a.id === id)?.name === tool;
-  return (c.running && named(c.agent)) || c.tasks.some((t) => t.running && named(t.agent));
-}
 
 /** Answers the questions agents ask over MCP. Duet owns the design, so the answers come from here. */
 
@@ -48,12 +41,12 @@ async function answer(rpc: Rpc, client?: string | null): Promise<unknown> {
     case "tools/call": {
       const name = String(rpc.params?.name ?? "");
       const tool = toolName(client);
-      // Antigravity started from the chat does not always say so; while the chat has it at work, it is the chat's
-      const chats = fromChat(client) || (!!tool && chatHasAtWork(tool));
+      // the chat marks the AI it starts, even through the bridge, so the same tool opened in a terminal is told apart
+      const chats = fromChat(client);
       // a step remembers who made it, and whether that AI worked from its own window
       const by = tool && !chats ? tool + OUTSIDE : tool;
-      // only a change counts as working: looking at the design, or a builder tool, does not
-      if (tool && !chats && !/^(get_|look_|select_|dev_)/.test(name)) outsideWorking(tool);
+      // an AI from outside shows as soon as it looks; only a change counts as working, and a builder tool as neither
+      if (tool && !chats && !name.startsWith("dev_")) outsideWorking(tool, /^(get_|look_|select_)/.test(name));
       // a task's AI carries its task after a slash, so its changes are told in that task
       const thread = /\/(task:[\w-]+)$/.exec(client ?? "")?.[1];
       const result = builder?.isBuilderTool(name) ? await builder.callBuilderTool(name, rpc.params?.arguments, by) : await callTool(name, rpc.params?.arguments, by, thread);

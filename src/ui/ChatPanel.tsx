@@ -19,7 +19,7 @@ import Icon from "./Icons";
 import { CHAT_MIN, setLayout, useLayout } from "./layout";
 import type { Corner } from "./layout";
 import { agentColour, whoColour } from "../ai/colours";
-import { busyOutside } from "../ai/outside";
+import { busyOutside, seenOutside } from "../ai/outside";
 import { useDismiss } from "./useDismiss";
 import { pickWaitingLine } from "../ai/waitingLines";
 
@@ -128,6 +128,8 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   const [text, setText] = useState("");
   const [room, setRoom] = useState<number | null>(null);
   const [busyName, setBusyName] = useState<string | null>(() => busyOutside());
+  /** An AI from outside that looked or worked here lately, shown before it has changed anything. */
+  const [seenName, setSeenName] = useState<string | null>(() => seenOutside());
   const [litStep, setLitStep] = useState<string | null>(null);
   const [popOpen, setPopOpen] = useState(false);
   // model and effort stay folded until asked for, so the menu is only who answers
@@ -245,7 +247,10 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
   useEffect(() => setConnecting(false), [messages.length]);
 
   useEffect(() => {
-    const timer = setInterval(() => setBusyName(busyOutside()), 1000);
+    const timer = setInterval(() => {
+      setBusyName(busyOutside());
+      setSeenName(seenOutside());
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -391,6 +396,7 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
       outsideAgents.push(plainName(e.by as string));
     }
   }
+  if (seenName && !outsideAgents.includes(seenName)) outsideAgents.push(seenName);
 
   const members = AGENTS.filter((a) => a.runnable && Boolean(installed[a.id]));
 
@@ -713,15 +719,16 @@ export default function ChatPanel({ docked = false }: { docked?: boolean }) {
               </div>
             );
           })}
-          {outsideAgents.filter((name) => !members.some((m) => m.name === name)).map((name) => (
+          {/* the same tool opened in its own window is another AI, so it gets its own badge, under the tool's name */}
+          {outsideAgents.map((name) => (
             <div
               key={name}
               className={`member-badge outside ${busyName === name ? "answering" : ""}`}
               style={{ backgroundColor: agentColour(name), ["--who" as string]: agentColour(name) }}
-              title={`${nm(name)} · ${name}, from its own window`}
+              title={`${name}, from its own window`}
               onClick={openPicker}
             >
-              {nm(name).charAt(0)}
+              {name.charAt(0)}
             </div>
           ))}
 

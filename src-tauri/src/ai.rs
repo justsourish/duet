@@ -54,6 +54,10 @@ fn respond(req: tiny_http::Request, code: u16, body: &str) {
 
 const CLIENT_HEADER: &str = "X-Duet-Client";
 
+/// Set on an AI tool Duet's own chat starts, holding its run. The tool hands its surroundings on to the
+/// bridge it starts, so the bridge can tell the chat's AI from the same tool opened in a terminal.
+const CHAT_RUN: &str = "DUET_CHAT_RUN";
+
 /// A name that is safe to carry in one header line and to show: plain letters, digits and a few marks.
 fn client_name(raw: &str) -> String {
     raw.chars()
@@ -62,6 +66,15 @@ fn client_name(raw: &str) -> String {
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+/// The name a bridge passes on: marked as the chat's when the chat started the tool, with its task if it has one.
+fn chat_client(said: &str, run: Option<&str>) -> String {
+    match run {
+        Some("chat") => format!("chat:{said}"),
+        Some(task) if !task.is_empty() => client_name(&format!("chat:{said}/{task}")),
+        _ => said.to_string(),
+    }
 }
 
 fn rpc_error(id: &Value, code: i64, message: &str) -> String {
@@ -494,6 +507,7 @@ pub fn agent_run(
         return Err("Duet is already working on something.".to_string());
     }
     let mut cmd = shell_command(&program, &args);
+    cmd.env(CHAT_RUN, &run);
     if let Some(dir) = cwd {
         let _ = std::fs::create_dir_all(&dir);
         cmd.current_dir(dir);
@@ -671,7 +685,7 @@ pub fn bridge() {
         if request["method"] == "initialize" {
             let said = client_name(request["params"]["clientInfo"]["name"].as_str().unwrap_or(""));
             if !said.is_empty() {
-                client = said;
+                client = chat_client(&said, std::env::var(CHAT_RUN).ok().as_deref());
             }
         }
         // making a new file needs no open Duet, so the bridge answers it itself
@@ -769,8 +783,15 @@ fn http_body(raw: &[u8]) -> String {
 
 #[cfg(test)]
 mod bridge_tests {
-    use super::{expand_windows_vars, http_body, offline_answer};
+    use super::{chat_client, expand_windows_vars, http_body, offline_answer};
     use serde_json::{json, Value};
+
+    #[test]
+    fn tells_the_chats_ai_from_one_in_a_terminal() {
+        assert_eq!(chat_client("antigravity", None), "antigravity");
+        assert_eq!(chat_client("antigravity", Some("chat")), "chat:antigravity");
+        assert_eq!(chat_client("antigravity", Some("task:abc1")), "chat:antigravity/task:abc1");
+    }
 
     #[test]
     fn answers_for_duet_while_it_is_closed() {
