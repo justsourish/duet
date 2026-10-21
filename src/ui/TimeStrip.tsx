@@ -8,6 +8,7 @@ import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
 import { openScene, pause, seek, shuttle, togglePlay } from "../video/play";
 import Icon from "./Icons";
+import ClipFace from "./ClipFace";
 import { setKeyFocus } from "./keyFocus";
 import { QUALITIES, SIZES, addMedia, clipKind, defaultChoice, dropClips, exportScene, exportSize, keepDropped, stopExport } from "../video/scene";
 import { droppedPaths } from "../canvas/CanvasView";
@@ -19,6 +20,8 @@ import { useDismiss } from "./useDismiss";
 /** Time under the canvas: a row for each thing in a frame that plays, when it shows, and where the clock is. */
 
 const SHORTEST = 0.1;
+/** The height inside a video or sound bar in Edit, where its frames or sound are drawn. */
+const FOOTAGE_BAR = 38;
 
 /** A keyframe picked in the timeline: Delete takes it away. Without props it is every change at that moment. */
 interface Picked {
@@ -887,6 +890,7 @@ export default function TimeStrip() {
           setMenu({ x: e.clientX, y: e.clientY, el });
         }}
       >
+        {look === "cut" && playsFile(el) && <ClipFace el={el} from={span.start} pps={pps} width={Math.max(4, (span.end - span.start) * pps) - 2} height={FOOTAGE_BAR} on={isSelected} />}
         {look === "cut" && <span className="time-span-name">{el.name}</span>}
         <b className="l" onPointerDown={(e) => drag(e, el, "start")} />
         {keyTimes.map((t) => (
@@ -1309,7 +1313,7 @@ export default function TimeStrip() {
           <Fragment key={row.key}>
             <div
               data-row={ri}
-              className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""} ${rowDrop === ri ? "drop-above" : ""} ${rowDrop === displayRows.length && ri === displayRows.length - 1 ? "drop-below" : ""}`}
+              className={`time-row ${row.items.some((el) => selection.includes(el.id)) ? "on" : ""} ${look === "cut" && row.items.some(playsFile) ? "footage" : ""} ${row.items.every((el) => el.hidden) ? "is-hidden" : ""} ${rowDrop === ri ? "drop-above" : ""} ${rowDrop === displayRows.length && ri === displayRows.length - 1 ? "drop-below" : ""}`}
             >
               <span
                 className="time-name"

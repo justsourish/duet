@@ -583,6 +583,26 @@ mod tests {
         assert_eq!((info.width, info.height, info.sound), (1080, 1920, false));
     }
 
+    #[test]
+    fn a_long_file_gets_fewer_frames_so_its_strip_stays_a_size_a_window_can_show() {
+        assert_eq!(strip_step(30.0), 1.0);
+        assert_eq!(strip_step(1000.0), 10.0);
+    }
+
+    #[test]
+    fn loudness_is_the_loudest_moment_of_each_slice() {
+        let slice = (PEAK_RATE as f64 * PEAK_SLICE) as usize;
+        let mut samples: Vec<u8> = Vec::new();
+        for i in 0..slice * 2 {
+            let v: i16 = if i == slice + 3 { 32767 } else { 0 };
+            samples.extend_from_slice(&v.to_le_bytes());
+        }
+        let peaks = peaks_of(&samples);
+        assert_eq!(peaks.len(), 2);
+        assert_eq!(peaks[0], 0);
+        assert_eq!(peaks[1], 255);
+    }
+
     fn clip(path: &str, start: f64, end: f64) -> Clip {
         Clip { path: path.into(), start, end }
     }
@@ -668,6 +688,103 @@ mod tests {
         assert!(!dir.join("half.part.mp4").exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
+}
+
+#[derive(Serialize)]
+pub struct Strip {
+    /// The picture made of small frames side by side, left to right.
+    path: String,
+    /// Seconds of the file between one frame and the next.
+    step: f64,
+    count: u32,
+    /// One frame's size in the picture.
+    width: u32,
+    height: u32,
+}
+
+const STRIP_HEIGHT: u32 = 48;
+const STRIP_MOST: f64 = 100.0;
+
+/// How a long file is sampled for its strip of frames: one a second, or fewer so the picture stays a size a window can show.
+fn strip_step(duration: f64) -> f64 {
+    (duration / STRIP_MOST).max(1.0)
+}
+
+/// A strip of small frames from a clip, for its bar on the timeline. Made once per file and kept in
+/// Duet's own folder with the light copies. Returns where the picture is and how it is laid out.
+#[tauri::command(async)]
+pub fn clip_strip(path: String) -> Result<Strip, String> {
+    use std::hash::{Hash, Hasher};
+    let info = probe(&path)?;
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut h);
+    meta.len().hash(&mut h);
+    meta.modified().ok().hash(&mut h);
+    let name = format!("{:016x}-strip", h.finish());
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).map_err(|e| e.to_string())?;
+    let dir = PathBuf::from(home).join(crate::duet_dir_name()).join("previews");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let step = strip_step(info.duration);
+    let count = ((info.duration / step).ceil() as u32).max(1);
+    let width = ((STRIP_HEIGHT as f64 * info.width as f64 / info.height.max(1) as f64).round() as u32).max(2) & !1;
+    let strip = Strip { path: String::new(), step, count, width, height: STRIP_HEIGHT };
+    let out = dir.join(format!("{name}.jpg"));
+    if out.is_file() {
+        if let Ok(f) = std::fs::File::options().append(true).open(&out) {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
+        return Ok(Strip { path: out.to_string_lossy().to_string(), ..strip });
+    }
+    let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
+    let part = dir.join(format!("{name}.part.jpg"));
+    let filter = format!("fps=1/{step},scale={width}:{STRIP_HEIGHT},tile={count}x1");
+    let status = crate::quiet_command(&ffmpeg)
+        .args(["-y", "-v", "error", "-i", &path, "-an", "-vf", &filter, "-frames:v", "1", "-q:v", "6"])
+        .arg(&part)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| e.to_string())?;
+    if !status.success() || !part.is_file() {
+        let _ = std::fs::remove_file(&part);
+        return Err("Frames of this clip could not be made.".into());
+    }
+    std::fs::rename(&part, &out).map_err(|e| e.to_string())?;
+    Ok(Strip { path: out.to_string_lossy().to_string(), ..strip })
+}
+
+/// How loud a file is along its length, for drawing its sound: the loudest moment in each slice of
+/// `PEAK_SLICE` seconds, 0 to 255. Empty when the file has no sound.
+const PEAK_SLICE: f64 = 0.05;
+const PEAK_RATE: u32 = 2000;
+
+fn peaks_of(samples: &[u8]) -> Vec<u8> {
+    let per = (PEAK_RATE as f64 * PEAK_SLICE) as usize;
+    samples
+        .chunks(per * 2)
+        .map(|c| {
+            let loudest = c.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]).unsigned_abs()).max().unwrap_or(0);
+            // a gentle curve, so quiet speech still shows
+            ((loudest as f64 / 32768.0).sqrt() * 255.0).round().min(255.0) as u8
+        })
+        .collect()
+}
+
+#[tauri::command(async)]
+pub fn clip_peaks(path: String) -> Result<Vec<u8>, String> {
+    if !has_sound(&path)? {
+        return Ok(Vec::new());
+    }
+    let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
+    let out = crate::quiet_command(&ffmpeg)
+        .args(["-v", "error", "-i", &path, "-vn", "-ac", "1", "-ar", &PEAK_RATE.to_string(), "-f", "s16le", "-"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(peaks_of(&out.stdout))
 }
 
 /// Light copies not played for this long are thrown away. A clip played again later gets a new one.

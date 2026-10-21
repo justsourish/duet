@@ -586,6 +586,8 @@ pub fn run() {
             video::video_ready,
             video::video_info,
             video::clip_preview,
+            video::clip_strip,
+            video::clip_peaks,
             grade::look_keep,
             grade::look_read,
             grade::looks_list,
