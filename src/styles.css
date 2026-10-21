@@ -6031,6 +6031,32 @@ input.chathome-name.rename {
 .time-work .work-r {
   right: -3px;
 }
+/* a pause Cut silences will take away, shown while its settings are open */
+.time-silence {
+  position: absolute;
+  top: 20px;
+  bottom: 0;
+  background: rgba(255, 92, 92, 0.28);
+  border-left: 1px solid rgba(255, 92, 92, 0.8);
+  border-right: 1px solid rgba(255, 92, 92, 0.8);
+  pointer-events: none;
+  z-index: 2;
+}
+.hush-anchor {
+  position: relative;
+}
+.export-pop.hush-pop {
+  left: 0;
+  right: auto;
+}
+.hush-pop input[type="range"] {
+  width: 140px;
+  accent-color: var(--accent);
+}
+.time:has(.hush-pop) {
+  overflow: visible;
+}
+
 .time-work-dim {
   position: absolute;
   top: 20px;

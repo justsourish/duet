@@ -6,6 +6,9 @@ import type { Doc, El, Marker, Moving } from "../document/types";
 import { currentDoc, dispatch, dragBase, dragCancel, dragCommit, dragPreview, dragPreviewDoc, getState, select, useStore } from "../state/store";
 import { clipLength } from "../video/clips";
 import { cutNow } from "../video/edit";
+import { peaksOf } from "../video/faces";
+import { SILENCE_DEFAULT, findSilences } from "../video/silence";
+import type { SilenceChoice } from "../video/silence";
 import { openScene, pause, seek, shuttle, togglePlay } from "../video/play";
 import Icon from "./Icons";
 import ClipFace from "./ClipFace";
@@ -62,6 +65,10 @@ export default function TimeStrip() {
   const [note, setNote] = useState("");
   // how the video is made, chosen before it is made, and where the last one went
   const [choosing, setChoosing] = useState(false);
+  // Cut silences: open while its settings show, with each file's loudness once it has been read
+  const [hushing, setHushing] = useState(false);
+  const [hush, setHush] = useState<SilenceChoice>(SILENCE_DEFAULT);
+  const [hushPeaks, setHushPeaks] = useState<Map<string, Uint8Array> | null>(null);
   const [choice, setChoice] = useState<ExportChoice>(defaultChoice);
   const [made, setMade] = useState<string | null>(null);
   // set while a keyframe mark is being dragged, so letting go is not taken for a click
@@ -74,6 +81,7 @@ export default function TimeStrip() {
   useDismiss(!!menu, () => setMenu(null), ".ctx");
   const [markerMenu, setMarkerMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   useDismiss(!!markerMenu, () => setMarkerMenu(null), ".ctx");
+  useDismiss(hushing, () => setHushing(false), ".hush-anchor");
   const [markerEdit, setMarkerEdit] = useState<string | null>(null);
   const draggedMarker = useRef(false);
   const [picked, setPicked] = useState<Picked[]>([]);
@@ -126,6 +134,25 @@ export default function TimeStrip() {
   const plays = !!frame && frame.duration > 0;
   const sceneId = mode !== "design" && plays ? frame.id : null;
   useEffect(() => openScene(sceneId), [sceneId]);
+
+  // Cut silences listens to the picked clips, or to every clip with sound when none is picked
+  const heard = sceneId && doc.elements[sceneId] ? doc.elements[sceneId].childIds.map((id) => doc.elements[id]).filter((el) => el && playsFile(el)) : [];
+  const pickedHeard = heard.filter((el) => selection.includes(el.id)).map((el) => el.id);
+  const hushIds = pickedHeard.length ? pickedHeard : undefined;
+  const heardKey = heard.map((el) => el.src).join("|");
+  useEffect(() => {
+    if (!hushing) return;
+    let live = true;
+    setHushPeaks(null);
+    const srcs = [...new Set(heardKey.split("|").filter(Boolean))];
+    void Promise.all(srcs.map((src) => peaksOf(src).then((p) => [src, p] as const))).then((all) => {
+      if (live) setHushPeaks(new Map(all.filter((a): a is readonly [string, Uint8Array] => !!a[1]).map(([k, v]) => [k, v])));
+    });
+    return () => {
+      live = false;
+    };
+  }, [hushing, heardKey]);
+  const silences = hushing && hushPeaks && sceneId ? findSilences(doc, sceneId, hushPeaks, hush, hushIds) : [];
 
   // the room the timeline has is the panel's own width, measured on the panel so it never depends on what is inside it
   useEffect(() => {
@@ -1234,6 +1261,59 @@ export default function TimeStrip() {
         <button className="pill" data-name="add-media" onClick={() => void bring()} title="Bring in video, music or a voice, at the moment the clock is on">
           Add
         </button>
+        {look === "cut" && (
+          <div className="hush-anchor">
+            <button className={`pill ${hushing ? "active" : ""}`} data-name="cut-silences" onClick={() => setHushing(!hushing)} title="Find the pauses where nobody speaks and cut them away">
+              Cut silences
+            </button>
+            {hushing && (
+              <div className="export-pop hush-pop" data-name="silence-settings">
+                <label>
+                  Quieter than
+                  <input type="range" min={5} max={120} value={hush.quiet} onChange={(e) => setHush({ ...hush, quiet: Number(e.target.value) })} />
+                </label>
+                <label>
+                  Pauses longer than
+                  <select value={hush.shortest} onChange={(e) => setHush({ ...hush, shortest: Number(e.target.value) })}>
+                    {[0.3, 0.5, 0.75, 1, 1.5, 2].map((n) => (
+                      <option key={n} value={n}>
+                        {n} s
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Keep around words
+                  <select value={hush.keep} onChange={(e) => setHush({ ...hush, keep: Number(e.target.value) })}>
+                    {[0, 0.05, 0.1, 0.2, 0.3].map((n) => (
+                      <option key={n} value={n}>
+                        {n} s
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="time-quiet">
+                  {!hushPeaks
+                    ? "Listening…"
+                    : !silences.length
+                      ? "No pauses found. Try a higher quiet level."
+                      : `${silences.length} ${silences.length === 1 ? "pause" : "pauses"}, ${Math.round(silences.reduce((t, r) => t + r.end - r.start, 0) * 10) / 10} s, marked on the timeline.${hushIds ? " Only the picked clips are listened to." : ""}`}
+                </div>
+                <button
+                  className="pill primary"
+                  data-name="cut-silences-go"
+                  disabled={!silences.length}
+                  onClick={() => {
+                    dispatch("cut_ranges", { sceneId: frame.id, ranges: silences });
+                    setHushing(false);
+                  }}
+                >
+                  Cut them
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {mode === "color" && (
           <div className="pill time-look grade-every" title="Where a colour change goes">
             <button className={gradeEvery ? "" : "active"} data-name="grade-this" onClick={() => setLayout({ gradeEvery: false })} title="Change only the picked clips">
@@ -1565,6 +1645,8 @@ export default function TimeStrip() {
             <div className="time-work-dim" style={{ left: NAMES + frame.workArea.end * pps, width: Math.max(0, (length - frame.workArea.end) * pps) }} />
           </>
         )}
+        {hushing &&
+          silences.map((r) => <div key={r.start} className="time-silence" style={{ left: NAMES + r.start * pps, width: Math.max(1, (r.end - r.start) * pps) }} />)}
         {(frame.markers ?? []).map((m) => (
           <div key={m.id} className="time-marker-line" style={{ left: NAMES + m.t * pps, "--marker": m.color } as React.CSSProperties} />
         ))}

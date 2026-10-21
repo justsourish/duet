@@ -1622,6 +1622,36 @@ const rippleDelete: CommandDef<RippleDeleteArgs> = {
   },
 };
 
+// ---- cut_ranges ----
+export interface CutRangesArgs {
+  /** The frame that plays. */
+  sceneId: string;
+  /** Stretches of its time to take out, such as the pauses in a voice. Everything showing then goes. */
+  ranges: { start: number; end: number }[];
+}
+
+const cutRanges: CommandDef<CutRangesArgs> = {
+  label: (a) => (a.ranges.length === 1 ? "Cut away one pause" : `Cut away ${a.ranges.length} pauses`),
+  run: (doc, a) => {
+    const scene = doc.elements[a.sceneId];
+    if (!scene || !(scene.duration > 0)) return doc;
+    // the last first, so a cut never moves the time of one still to come
+    const ranges = a.ranges.filter((r) => r.end - r.start > 0.01).sort((x, y) => y.start - x.start);
+    let next = doc;
+    for (const r of ranges) {
+      next = splitAt.run(next, { sceneId: a.sceneId, t: r.end });
+      next = splitAt.run(next, { sceneId: a.sceneId, t: r.start });
+      const frame = next.elements[a.sceneId];
+      const inside = frame.childIds.filter((id) => {
+        const span = spanOf(next.elements[id], frame);
+        return span.start >= r.start - 0.004 && span.end <= r.end + 0.004;
+      });
+      if (inside.length) next = rippleDelete.run(next, { ids: inside });
+    }
+    return next;
+  },
+};
+
 // ---- set_entrance ----
 export interface SetEntranceArgs {
   ids: string[];
@@ -1768,6 +1798,7 @@ export const commands = {
   set_entrance: setEntrance,
   split_at: splitAt,
   ripple_delete: rippleDelete,
+  cut_ranges: cutRanges,
 } as const;
 
 export type CommandName = keyof typeof commands;
