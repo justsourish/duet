@@ -72,7 +72,9 @@ export default function TimeStrip() {
   useDismiss(!!markerMenu, () => setMarkerMenu(null), ".ctx");
   const [markerEdit, setMarkerEdit] = useState<string | null>(null);
   const draggedMarker = useRef(false);
-  const [picked, setPicked] = useState<Picked | null>(null);
+  const [picked, setPicked] = useState<Picked[]>([]);
+  // the box being drawn over empty room in Motion to pick keyframes, in screen pixels
+  const [sweepBox, setSweepBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const anchor = useRef<string | null>(null);
   const pulled = useRef(false);
   const [rowDrop, setRowDrop] = useState<number | null>(null);
@@ -81,21 +83,28 @@ export default function TimeStrip() {
   const [folds, setFolds] = useState<Record<string, boolean>>({});
   useEffect(() => setFolds({}), [keysOpen]);
   useEffect(() => {
-    if (picked && !selection.includes(picked.id)) setPicked(null);
+    if (picked.some((p) => !selection.includes(p.id))) setPicked((ps) => ps.filter((p) => selection.includes(p.id)));
   }, [picked, selection]);
 
   // Delete takes away the keyframe picked, and not the thing it belongs to
   useEffect(() => {
-    if (!picked) return;
+    if (!picked.length) return;
     const key = (e: KeyboardEvent) => {
       const on = document.activeElement as HTMLElement | null;
       if (on && (on.tagName === "INPUT" || on.tagName === "TEXTAREA" || on.tagName === "SELECT" || on.isContentEditable)) return;
-      if (e.key === "Escape") return setPicked(null);
+      if (e.key === "Escape") return setPicked([]);
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      dispatch("remove_key", { ids: [picked.id], props: picked.props, t: picked.t });
-      setPicked(null);
+      if (picked.length === 1) dispatch("remove_key", { ids: [picked[0].id], props: picked[0].props, t: picked[0].t });
+      else {
+        // all of them in one step, so one undo brings them back
+        let next = dragBase();
+        for (const p of picked) next = runCommand(next, "remove_key", { ids: [p.id], props: p.props, t: p.t });
+        dragPreviewDoc(next);
+        dragCommit(`Remove ${picked.length} keyframes`);
+      }
+      setPicked([]);
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
@@ -753,7 +762,11 @@ export default function TimeStrip() {
   const dragMark = (e: React.PointerEvent, el: El, t: number, props?: Moving[]) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    select([el.id]);
+    // a keyframe that is one of several picked moves with all of them
+    const together = picked.length > 1 && picked.some((p) => p.id === el.id && p.t === t && p.props === props) ? picked : null;
+    if (!together) select([el.id]);
+    const adding = e.shiftKey || e.metaKey || e.ctrlKey;
+    let shifted = 0;
     const from = e.clientX;
     const targets = getSnapTargets(el.id);
     let moved = false;
@@ -774,18 +787,28 @@ export default function TimeStrip() {
         }
       }
       setSnap(snapTime);
-      dragPreview("move_key", { id: el.id, from: t, to, props });
+      if (together) {
+        shifted = Math.max(-Math.min(...together.map((p) => p.t)), to - t);
+        // the ones ahead go first, so none lands on another that has not moved yet
+        const order = [...together].sort((a, b) => (shifted > 0 ? b.t - a.t : a.t - b.t));
+        let next = dragBase();
+        for (const p of order) next = runCommand(next, "move_key", { id: p.id, from: p.t, to: Math.max(0, p.t + shifted), props: p.props });
+        dragPreviewDoc(next);
+      } else dragPreview("move_key", { id: el.id, from: t, to, props });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       setSnap(null);
       if (moved) {
-        dragCommit("Move a moment");
-        setPicked(null);
+        dragCommit(together ? `Move ${together.length} keyframes` : "Move a moment");
+        setPicked(together ? together.map((p) => ({ ...p, t: Math.max(0, Math.round((p.t + shifted) * 1000) / 1000) })) : []);
       } else {
         setKeyFocus({ id: el.id, t });
-        setPicked({ id: el.id, t, props });
+        const mine = { id: el.id, t, props };
+        const has = picked.some((p) => p.id === el.id && p.t === t && p.props === props);
+        // Shift or Cmd adds a keyframe to the picked ones, or takes it away
+        setPicked(adding ? (has ? picked.filter((p) => !(p.id === el.id && p.t === t && p.props === props)) : [...picked, mine]) : [mine]);
         seek(t);
       }
     };
@@ -861,12 +884,49 @@ export default function TimeStrip() {
   const moves = (el: El) => MOVING.some((p) => (el.keys[p]?.length ?? 0) > 0);
   // Option U opens everything that moves; the arrow opens any layer, moving or not
   const opened = (el: El) => folds[el.id] ?? (keysOpen && moves(el));
-  const isPicked = (el: El, t: number, props?: Moving[]) => picked?.id === el.id && picked.t === t && picked.props === props;
+  const isPicked = (el: El, t: number, props?: Moving[]) => picked.some((p) => p.id === el.id && p.t === t && p.props === props);
+
+  /**
+   * As in After Effects: pulling across empty room in Motion draws a box and picks the keyframes it
+   * touches, and a plain click there lets go of them. The playhead moves only from the ruler.
+   */
+  const sweep = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const keep = e.shiftKey || e.metaKey || e.ctrlKey ? picked : [];
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 4 && Math.abs(ev.clientY - y0) < 4) return;
+      moved = true;
+      const box = { x: Math.min(x0, ev.clientX), y: Math.min(y0, ev.clientY), w: Math.abs(ev.clientX - x0), h: Math.abs(ev.clientY - y0) };
+      setSweepBox(box);
+      const hits: Picked[] = [...keep];
+      lanes.current?.querySelectorAll<HTMLElement>("[data-key-id]").forEach((n) => {
+        const r = n.getBoundingClientRect();
+        if (r.right < box.x || r.left > box.x + box.w || r.bottom < box.y || r.top > box.y + box.h) return;
+        const id = n.dataset.keyId!;
+        const t = Number(n.dataset.keyT);
+        const props = KEY_GROUPS.find((g) => g.name === n.dataset.keyGroup)?.props;
+        if (!hits.some((p) => p.id === id && p.t === t && p.props === props)) hits.push({ id, t, props });
+      });
+      setPicked(hits);
+      select([...new Set(hits.map((p) => p.id))]);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setSweepBox(null);
+      if (!moved && !keep.length) setPicked([]);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const markMenu = (e: React.MouseEvent, el: El, t: number, props?: Moving[]) => {
     e.preventDefault();
     e.stopPropagation();
     select([el.id]);
-    setPicked({ id: el.id, t, props });
+    setPicked([{ id: el.id, t, props }]);
     setMenu({ x: e.clientX, y: e.clientY, el, mark: { id: el.id, t, props } });
   };
 
@@ -936,6 +996,8 @@ export default function TimeStrip() {
             key={t}
             className={isPicked(el, t) ? "picked" : ""}
             data-name="mark"
+            data-key-id={el.id}
+            data-key-t={t}
             title={`${clockText(t)}. Click to pick, Delete to remove`}
             onContextMenu={(e) => markMenu(e, el, t)}
             style={{ left: (t - span.start) * pps, cursor: "ew-resize" }}
@@ -986,13 +1048,16 @@ export default function TimeStrip() {
             </button>
             {g.name}
           </span>
-          <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
+          <div className="time-lane" style={{ width: laneWidth }} onPointerDown={sweep}>
             <div className="time-kindspan" style={{ left: first * pps, width: Math.max(0, (last - first) * pps) }} />
             {times.map((t) => (
               <u
                 key={t}
                 className={`kind-mark ${isPicked(el, t, g.props) ? "picked" : ""}`}
                 data-name="mark"
+                data-key-id={el.id}
+                data-key-t={t}
+                data-key-group={g.name}
                 title={`${g.name}, ${clockText(t)}. Click to pick, Delete to remove`}
                 onContextMenu={(e) => markMenu(e, el, t, g.props)}
                 style={{ left: t * pps, cursor: "ew-resize" }}
@@ -1235,6 +1300,7 @@ export default function TimeStrip() {
         )}
       </div>
 
+      {sweepBox && <div className="time-sweep" style={{ left: sweepBox.x, top: sweepBox.y, width: sweepBox.w, height: sweepBox.h }} />}
       <div className="time-grip" data-name="timeline-height" onPointerDown={grow} title="Pull to make the timeline taller or shorter" />
       <div
         className="time-lanes"
@@ -1439,7 +1505,7 @@ export default function TimeStrip() {
                 )}
                 <i className="names-grip" onPointerDown={pullNames} title="Pull to make the names wider or narrower" />
               </span>
-              <div className="time-lane" style={{ width: laneWidth }} onPointerDown={scrub}>
+              <div className="time-lane" style={{ width: laneWidth }} onPointerDown={look === "layers" ? sweep : scrub}>
                 {row.items.map(renderBar)}
               </div>
             </div>
@@ -1530,7 +1596,7 @@ export default function TimeStrip() {
                 onClick={() => {
                   const m = menu.mark!;
                   setMenu(null);
-                  setPicked(null);
+                  setPicked([]);
                   dispatch("remove_key", { ids: [m.id], props: m.props, t: m.t });
                 }}
               >

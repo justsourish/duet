@@ -6047,3 +6047,12 @@ input.chathome-name.rename {
 .chathome-canvas > .time {
   flex: none;
 }
+
+/* The box drawn over the timeline to pick keyframes */
+.time-sweep {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+}
