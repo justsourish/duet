@@ -187,6 +187,27 @@ describe("time", () => {
     expect(runCommand(doc, "set_speed", { ids: ["m"], speed: 0.001 }).elements.m.speed).toBe(0.1);
   });
 
+  it("pulling the end of a clip stretches it: the same part of the file plays slower or faster", () => {
+    let doc = runCommand(scene(), "create_element", { type: "sound", id: "m", parentId: "f", x: 0, y: 0, width: 1, height: 1, props: { src: "/a.mp3", start: 2, end: 6, clipFrom: 1 } });
+    // twice as long on the timeline: half speed, same file part, same start
+    const slow = runCommand(doc, "stretch_clip", { id: "m", edge: "end", to: 10 });
+    expect([slow.elements.m.speed, slow.elements.m.start, slow.elements.m.end, slow.elements.m.clipFrom]).toEqual([0.5, 2, 10, 1]);
+    // half as long: twice the speed
+    const fast = runCommand(doc, "stretch_clip", { id: "m", edge: "end", to: 4 });
+    expect([fast.elements.m.speed, fast.elements.m.end]).toEqual([2, 4]);
+    // the start pulled: the end stays, the file still begins where it did
+    const early = runCommand(doc, "stretch_clip", { id: "m", edge: "start", to: 0 });
+    expect([early.elements.m.start, early.elements.m.end, early.elements.m.clipFrom]).toEqual([0, 6, 1]);
+    expect(early.elements.m.speed).toBeCloseTo(4 / 6, 2);
+    // squeezed too far is held to the fastest speed, and the end stops where that puts it
+    const squeezed = runCommand(doc, "stretch_clip", { id: "m", edge: "end", to: 2.1 });
+    expect([squeezed.elements.m.speed, squeezed.elements.m.end]).toEqual([16, 2.25]);
+    // the frame is as long as it is: it cannot be stretched past its end
+    expect(runCommand(doc, "stretch_clip", { id: "m", edge: "end", to: 9999 }).elements.m.end).toBe(10);
+    // an undo-able change, and pulling to where it already is changes nothing
+    expect(runCommand(doc, "stretch_clip", { id: "m", edge: "end", to: 6 })).toBe(doc);
+  });
+
   it("a video comes out at the size that was chosen, in even numbers", () => {
     expect(exportSize({ width: 1920, height: 1080 }, 0)).toEqual([1920, 1080]);
     expect(exportSize({ width: 1920, height: 1080 }, 1280)).toEqual([1280, 720]);

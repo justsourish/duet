@@ -1128,6 +1128,50 @@ const setTiming: CommandDef<SetTimingArgs> = {
   },
 };
 
+// ---- stretch_clip ----
+export interface StretchClipArgs {
+  id: string;
+  /** Which end of the bar is being pulled. */
+  edge: "start" | "end";
+  /** The second of the frame it is pulled to. */
+  to: number;
+}
+
+/**
+ * Pull one end of a clip or sound to make it longer or shorter on the timeline while it still shows the
+ * same part of its file: so it plays slower or faster. The other end stays where it is.
+ */
+const stretchClip: CommandDef<StretchClipArgs> = {
+  label: () => "Stretch to change speed",
+  run: (doc, a) => {
+    const el = doc.elements[a.id];
+    const scene = sceneOf(doc, a.id);
+    if (!el || !scene || scene.id === a.id || !playsFile(el)) return doc;
+    const span = spanOf(el, scene);
+    const was = el.speed || 1;
+    // the part of the file the bar shows, which stays the same
+    const shown = (span.end - span.start) * was;
+    const to = a.edge === "end" ? Math.min(scene.duration, Number(a.to) || 0) : Math.max(0, Number(a.to) || 0);
+    const long = a.edge === "end" ? to - span.start : span.end - to;
+    if (long <= 0) return doc;
+    const speed = round(Math.max(SPEEDS.min, Math.min(SPEEDS.max, shown / long)));
+    if (speed === was && to === (a.edge === "end" ? span.end : span.start)) return doc;
+    const next = clone(doc);
+    const e = next.elements[a.id];
+    // the end lands where it was pulled to, unless that speed is too slow or too fast: then where the limit puts it
+    const held = speed <= SPEEDS.min || speed >= SPEEDS.max;
+    const length = held ? round(shown / speed) : long;
+    if (a.edge === "end") {
+      e.end = Math.min(scene.duration, round(span.start + length));
+    } else {
+      e.start = Math.max(0, round(span.end - length));
+      e.end = span.end;
+    }
+    e.speed = speed;
+    return next;
+  },
+};
+
 // ---- ruler guides ----
 export interface GuideArgs {
   /** "x" is a vertical line at that page pixel from the left, "y" a horizontal one. */
@@ -1704,6 +1748,7 @@ export const commands = {
   set_duration: setDuration,
   set_timing: setTiming,
   set_speed: setSpeed,
+  stretch_clip: stretchClip,
   align_elements: alignElements,
   add_guide: addGuide,
   move_guide: moveGuide,

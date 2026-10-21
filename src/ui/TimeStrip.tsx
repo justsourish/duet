@@ -63,6 +63,9 @@ export default function TimeStrip() {
   // set while a keyframe mark is being dragged, so letting go is not taken for a click
   const draggedMark = useRef(false);
   const [snap, setSnap] = useState<number | null>(null);
+  // the stretch tool (R): pulling the end of a clip changes its speed instead of cutting it shorter
+  const [stretchTool, setStretchTool] = useState(false);
+  const stretching = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; el: El; mark?: Picked } | null>(null);
   useDismiss(!!menu, () => setMenu(null), ".ctx");
   const [markerMenu, setMarkerMenu] = useState<{ x: number; y: number; id: string } | null>(null);
@@ -247,6 +250,19 @@ export default function TimeStrip() {
         const now = Math.round(getState().clock.t * 1000) / 1000;
         dispatch("set_work_area", k === "b" ? { id: sceneId, start: now } : { id: sceneId, end: now });
         return;
+      }
+      // R is the stretch tool, as in Premiere; R or Esc puts it down. Only in Edit: elsewhere R is the rectangle.
+      if (k === "r" && !e.shiftKey && getLayout().timeLook === "cut") {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        stretching.current = !stretching.current;
+        setStretchTool(stretching.current);
+        return;
+      }
+      if (k === "escape" && stretching.current) {
+        stretching.current = false;
+        setStretchTool(false);
       }
       if (!["s", "c", "d", "j", "k", "l", " "].includes(k)) return;
       e.preventDefault();
@@ -596,6 +612,8 @@ export default function TimeStrip() {
     // a clip cannot show more than its file holds
     const file = playsFile(el) ? clipLength(el.src) : 0;
     const targets = getSnapTargets(el.id);
+    // holding Option on a clip's end, or having the stretch tool, changes its speed instead of cutting it
+    const stretch = part !== "all" && playsFile(el) && (e.altKey || stretching.current);
     let moved = false;
     const move = (ev: PointerEvent) => {
       const by = (ev.clientX - from) / pps;
@@ -640,6 +658,21 @@ export default function TimeStrip() {
         next = runCommand(next, "set_timing", { ids: [el.id], start, end: start + long });
         for (const o of others) next = runCommand(next, "set_timing", { ids: [o.id], start: o.span.start + shift, end: o.span.end + shift });
         dragPreviewDoc(next);
+      } else if (stretch) {
+        const raw = (part === "start" ? span.start : span.end) + by;
+        let to = raw;
+        let snapTime: number | null = null;
+        if (!noSnap) {
+          const s = findSnap(raw, targets);
+          if (s) {
+            to = s.time;
+            snapTime = s.time;
+          }
+        }
+        to = part === "start" ? Math.max(0, Math.min(span.end - SHORTEST, to)) : Math.max(span.start + SHORTEST, Math.min(length, to));
+        if (snapTime !== null && Math.abs((to - snapTime) * pps) > 0.5) snapTime = null;
+        setSnap(snapTime);
+        dragPreview("stretch_clip", { id: el.id, edge: part, to });
       } else if (part === "start") {
         const least = playsFile(el) ? frameTimeAt(el, span.start, 0) : 0;
         const rawStart = span.start + by;
@@ -678,7 +711,7 @@ export default function TimeStrip() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       setSnap(null);
-      if (moved) dragCommit(others.length ? `Move ${others.length + 1} clips in time` : "Change when it shows");
+      if (moved) dragCommit(stretch ? "Stretch to change speed" : others.length ? `Move ${others.length + 1} clips in time` : "Change when it shows");
       // a click without a drag picks just this one
       else if (others.length) select([el.id]);
       if (!moved) anchor.current = el.id;
@@ -891,7 +924,12 @@ export default function TimeStrip() {
         }}
       >
         {look === "cut" && playsFile(el) && <ClipFace el={el} from={span.start} pps={pps} width={Math.max(4, (span.end - span.start) * pps) - 2} height={FOOTAGE_BAR} on={isSelected} />}
-        {look === "cut" && <span className="time-span-name">{el.name}</span>}
+        {look === "cut" && (
+          <span className="time-span-name">
+            {el.name}
+            {playsFile(el) && el.speed && el.speed !== 1 ? ` · ${Math.round(el.speed * 100)}%` : ""}
+          </span>
+        )}
         <b className="l" onPointerDown={(e) => drag(e, el, "start")} />
         {keyTimes.map((t) => (
           <u
@@ -979,7 +1017,7 @@ export default function TimeStrip() {
     });
 
   return (
-    <section className={`time ${look === "cut" ? "cut" : ""}`} style={{ "--names": `${NAMES}px` } as React.CSSProperties} data-name="time-strip" onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
+    <section className={`time ${look === "cut" ? "cut" : ""} ${stretchTool ? "stretching" : ""}`} style={{ "--names": `${NAMES}px` } as React.CSSProperties} data-name="time-strip" onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
       <div className="time-bar">
         <button className="pill" data-name="play" onClick={togglePlay} title={clock.playing ? "Pause" : "Play"}>
           {clock.playing ? "Pause" : "Play"}
