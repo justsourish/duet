@@ -597,6 +597,7 @@ pub fn run() {
             video::clip_keep_end,
             video::scene_export_begin,
             video::scene_export_frame,
+            video::scene_export_clip,
             video::scene_export_end,
             video::scene_export_stop,
             ai::mcp_info,

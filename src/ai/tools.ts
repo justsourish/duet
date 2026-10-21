@@ -19,7 +19,7 @@ import type { Doc, El } from "../document/types";
 import { invoke } from "@tauri-apps/api/core";
 import { addPicture, getPicture, mimeFor, preloadPictures } from "../project/assets";
 import { renderPng } from "../project/exporter";
-import { clipPicture, fileLength, seekClips } from "../video/clips";
+import { clipPicture, fileLength, letGoOfOriginals, seekClips } from "../video/clips";
 import { QUALITIES, defaultChoice, exportScene } from "../video/scene";
 import { saveNow, tabName } from "../project/project";
 import { tracePicture } from "../project/trace";
@@ -1014,11 +1014,12 @@ async function colorReadings(a: Args): Promise<ToolResult> {
   } else {
     const scene = sceneOf(doc, el.id);
     if (scene && typeof a.t === "number") await seekClips(doc, scene.id, a.t);
-    pic = clipPicture(el.src);
+    pic = clipPicture(el.src, typeof a.t === "number" ? el.id : undefined);
     if (pic && !pic.videoWidth) pic = null;
   }
+  const read = pic && gradeReadings(pic, a.original === true ? null : el.grade);
+  letGoOfOriginals();
   if (!pic) return fail(`${el.name} has not loaded yet. Try again in a moment.`);
-  const read = gradeReadings(pic, a.original === true ? null : el.grade);
   if (!read) return fail("The colour could not be read on this computer.");
   return { text: JSON.stringify({ id: el.id, name: el.name, grade: gradeChanges(el.grade), readings: read, of: a.original === true ? "the original, without its colour changes" : "with its colour changes" }, null, 2) };
 }

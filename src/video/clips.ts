@@ -13,7 +13,7 @@ import { logError } from "../errorLog";
  */
 
 const players = new Map<string, HTMLMediaElement>();
-/** Players on the original files, used only while a video is being made. */
+/** Players on the original files, used only while a video is being made. One for each clip, so two clips of one file can be at different moments. */
 const fullPlayers = new Map<string, HTMLMediaElement>();
 /** Files whose light copy has been asked for, so it is asked for once. */
 const previewAsked = new Set<string>();
@@ -28,12 +28,23 @@ export const onClipPicture = (fn: () => void) => {
 
 export const holdClips = (on: boolean) => {
   held = on;
+  madePictures.clear();
+  if (!on) letGoOfOriginals();
 };
+
+/** The players on original files can be large and hold the computer's video decoding: let them go when done. */
+export function letGoOfOriginals() {
+  for (const v of fullPlayers.values()) {
+    v.removeAttribute("src");
+    v.load();
+  }
+  fullPlayers.clear();
+}
 
 /** A sound file gets a sound player: the system will not play a file with nothing to see in a video player. */
 const SOUND_FILE = /\.(mp3|wav|m4a|aac|aiff?|ogg|flac)$/i;
 
-function makePlayer(src: string, into: Map<string, HTMLMediaElement>): HTMLMediaElement {
+function makePlayer(src: string, into: Map<string, HTMLMediaElement>, key = src): HTMLMediaElement {
   const sound = SOUND_FILE.test(src);
   const v = document.createElement(sound ? "audio" : "video");
   v.crossOrigin = "anonymous";
@@ -44,7 +55,7 @@ function makePlayer(src: string, into: Map<string, HTMLMediaElement>): HTMLMedia
   v.addEventListener("seeked", () => seekedNext(v));
   // the light copy may be what failed, so the address it was really playing is named
   v.addEventListener("error", () => logError("clip", new Error(`This clip could not be played (${v.error?.code ?? "?"} ${v.error?.message ?? ""}): ${v.currentSrc || src}`)));
-  into.set(src, v);
+  into.set(key, v);
   return v;
 }
 
@@ -54,7 +65,7 @@ function player(src: string): HTMLMediaElement {
   return v;
 }
 
-const fullPlayer = (src: string) => fullPlayers.get(src) ?? makePlayer(src, fullPlayers);
+const fullPlayer = (id: string, src: string) => fullPlayers.get(id) ?? makePlayer(src, fullPlayers, id);
 
 /** Have Duet make the light copy in the background, then move the player over to it where it was. */
 function askPreview(src: string, v: HTMLMediaElement) {
@@ -79,10 +90,14 @@ function askPreview(src: string, v: HTMLMediaElement) {
     .catch((e) => logError("clip preview", e));
 }
 
-/** The picture a clip is on right now, or null while it is not ready. */
-export function clipPicture(src: string): HTMLVideoElement | null {
+/**
+ * The picture a clip is on right now, or null while it is not ready. With an id, the clip's player on its
+ * original file, once seekClips has moved it. While a video is made the canvas draws madePicture instead,
+ * so no player is woken for it.
+ */
+export function clipPicture(src: string, id?: string): HTMLVideoElement | null {
   if (!src) return null;
-  const v = held ? fullPlayer(src) : player(src);
+  const v = id ? fullPlayers.get(id) : held ? null : player(src);
   return v instanceof HTMLVideoElement && v.readyState >= 2 ? v : null;
 }
 
@@ -155,7 +170,7 @@ export function clipState(src: string): string {
 /** How long a clip's file is, in seconds, or 0 while that is not known yet. */
 export const clipLength = (src: string) => (src ? player(src).duration || 0 : 0);
 
-const clipsIn = (doc: Doc, sceneId: string) => {
+export const clipsIn = (doc: Doc, sceneId: string) => {
   const out: string[] = [];
   const walk = (id: string) => {
     for (const c of doc.elements[id]?.childIds ?? []) {
@@ -218,17 +233,15 @@ export function clockFromClip(doc: Doc, sceneId: string, t: number): number | nu
   return null;
 }
 
-/** Move every clip of a frame to one moment and wait until its picture is there. Used when a video is made. */
+/** Move every clip of a frame to one moment and wait until its picture is there. */
 export async function seekClips(doc: Doc, sceneId: string, t: number) {
   const scene = doc.elements[sceneId];
   const waits: Promise<void>[] = [];
-  const done = new Set<string>();
   for (const id of clipsIn(doc, sceneId)) {
     const el = doc.elements[id];
     const { start, end } = spanOf(el, scene);
-    if (t < start || t >= end || done.has(el.src)) continue;
-    done.add(el.src);
-    const v = fullPlayer(el.src);
+    if (el.type !== "video" || t < start || t >= end) continue;
+    const v = fullPlayer(id, el.src);
     v.pause();
     const at = Math.min(fileTimeAt(el, start, t), (v.duration || Infinity) - 0.001);
     waits.push(
@@ -252,4 +265,22 @@ export async function seekClips(doc: Doc, sceneId: string, t: number) {
     );
   }
   await Promise.all(waits);
+}
+
+/** While a video is made: each clip's picture for the moment being made, read from its file by the export engine. */
+const madePictures = new Map<string, HTMLCanvasElement>();
+
+/** The picture the export engine read for this clip, while a video is made. */
+export const madePicture = (id: string): HTMLCanvasElement | null => (held ? (madePictures.get(id) ?? null) : null);
+
+/** Keep the picture the export engine read for a clip, or forget it when the clip has none at this moment. */
+export function setMadePicture(id: string, w: number, h: number, rgba: Uint8ClampedArray<ArrayBuffer> | null) {
+  if (!rgba) return void madePictures.delete(id);
+  let c = madePictures.get(id);
+  if (!c) madePictures.set(id, (c = document.createElement("canvas")));
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  c.getContext("2d")?.putImageData(new ImageData(rgba, w, h), 0, 0);
 }

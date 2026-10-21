@@ -405,11 +405,12 @@ function fit(w: number, h: number): [number, number] {
  * The picture to draw for a graded image or clip: the graded copy, or the picture itself when the grade
  * leaves it alone or cannot run. A still is kept; a clip's picture changes, so it is graded every time.
  */
-export function graded(pic: HTMLImageElement | HTMLVideoElement, grade: Grade | null, still: string | null): CanvasImageSource {
+export function graded(pic: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement, grade: Grade | null, still: string | null): CanvasImageSource {
   if ((!grade || isNeutral(grade)) && !skinShown) return pic;
   grade = grade ?? neutralGrade();
-  const nw = pic instanceof HTMLVideoElement ? pic.videoWidth : pic.naturalWidth;
-  const nh = pic instanceof HTMLVideoElement ? pic.videoHeight : pic.naturalHeight;
+  // a clip's picture read by the export engine comes as a canvas
+  const nw = pic instanceof HTMLVideoElement ? pic.videoWidth : pic instanceof HTMLCanvasElement ? pic.width : pic.naturalWidth;
+  const nh = pic instanceof HTMLVideoElement ? pic.videoHeight : pic instanceof HTMLCanvasElement ? pic.height : pic.naturalHeight;
   if (!nw || !nh) return pic;
   const lookReady = !grade.look || !(looks.get(grade.look) === undefined || looks.get(grade.look) === "loading");
   const key = still ? `${still}|${JSON.stringify(grade)}` : "";

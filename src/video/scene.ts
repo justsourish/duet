@@ -5,7 +5,7 @@ import { docAt, fileTimeAt, spanOf } from "../document/time";
 import { playsFile } from "../document/types";
 import type { Doc } from "../document/types";
 import { currentDoc, dispatch, getState, select } from "../state/store";
-import { fileLength, holdClips, seekClips } from "./clips";
+import { clipsIn, fileLength, holdClips, setMadePicture } from "./clips";
 import { pause } from "./play";
 
 /** A frame that plays: bringing clips into it, and making one video file out of it. */
@@ -266,6 +266,39 @@ async function baseClip(doc: Doc, now: Doc, sceneId: string, t: number, sizes: M
 }
 
 /**
+ * Have the export engine read every clip drawn at this moment from its own file, at the size it is drawn.
+ * The web view is not asked: it can give a black picture for a large file without saying so. `skip` is
+ * the clip at the bottom, which the engine reads and lays down itself.
+ */
+async function readClips(doc: Doc, now: Doc, sceneId: string, t: number, sx: number, sy: number, sizes: Map<string, Info>, skip?: string) {
+  const scene = doc.elements[sceneId];
+  for (const id of clipsIn(now, sceneId)) {
+    const el = now.elements[id];
+    const { start, end } = spanOf(doc.elements[id], scene);
+    if (el.type !== "video" || id === skip || t < start || t >= end) {
+      setMadePicture(id, 0, 0, null);
+      continue;
+    }
+    let info = sizes.get(el.src);
+    if (!info) {
+      info = await invoke<Info>("video_info", { path: el.src }).catch(() => undefined);
+      if (!info) throw new Error(`The clip "${el.name}" could not be read, so the video was not made.`);
+      sizes.set(el.src, info);
+    }
+    // the whole picture, at the size that fills the clip's box in the video, as drawClip lays it
+    const k = Math.max((el.width * sx) / info.width, (el.height * sy) / info.height);
+    const w = Math.max(1, Math.min(8192, Math.round(info.width * k)));
+    const h = Math.max(1, Math.min(8192, Math.round(info.height * k)));
+    const at = Math.max(0, fileTimeAt(doc.elements[id], start, t));
+    const bytes = await invoke<ArrayBuffer>("scene_export_clip", { ask: { id, path: el.src, at, speed: el.speed || 1, width: w, height: h, matrix: info.height <= 576 ? "bt601" : "bt709" } });
+    // an empty answer means the file ended before the clip did, and the clip shows black, as on the canvas
+    const got = bytes instanceof ArrayBuffer ? bytes.byteLength : -1;
+    if (got !== w * h * 4 && got !== 0) throw new Error(`The clip "${el.name}" could not be read at ${Math.round(t * 100) / 100}s (${got} of ${w * h * 4}), so the video was not made.`);
+    setMadePicture(id, w, h, got ? new Uint8ClampedArray(bytes) : null);
+  }
+}
+
+/**
  * Make one video file out of a frame that plays. Every picture of it is drawn here, exactly as the
  * canvas draws it, and handed over one by one. Returns the file, or null if the designer backed out.
  */
@@ -313,7 +346,7 @@ export async function exportScene(sceneId: string, progress: (done: number) => v
       const drawn = !base || base.over;
       let body = new Uint8Array(0);
       if (drawn) {
-        if (!base) await seekClips(doc, sceneId, t);
+        await readClips(doc, now, sceneId, t, scale, height / scene.height, sizes, base?.base.id);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         if (base) ctx.clearRect(0, 0, width, height);
         else {

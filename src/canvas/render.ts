@@ -6,7 +6,7 @@ import type { State } from "../state/store";
 import { logError } from "../errorLog";
 import { isLooseCopy } from "../document/components";
 import { getPicture } from "../project/assets";
-import { clipPicture } from "../video/clips";
+import { clipPicture, madePicture } from "../video/clips";
 import { graded } from "./grade";
 import { getChat } from "../ai/chat";
 import { nameOf } from "../ai/names";
@@ -133,7 +133,7 @@ let plain = false;
 export const setPlainPictures = (on: boolean) => void (plain = on);
 const gradeOf = (el: El) => (plain ? null : el.grade);
 /** A picture or clip as it is drawn: with its colour, or as it came in the Before window. */
-const coloured = (pic: HTMLImageElement | HTMLVideoElement, el: El, still: string | null) => (plain ? pic : graded(pic, el.grade, still));
+const coloured = (pic: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement, el: El, still: string | null) => (plain ? pic : graded(pic, el.grade, still));
 
 /** Pictures with rounded corners and a shadow, already cut to shape. Kept so they are not cut again on every repaint. */
 const cutSheets = new Map<string, HTMLCanvasElement>();
@@ -213,17 +213,21 @@ function drawImage(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) 
 let blendSheet: HTMLCanvasElement | null = null;
 
 function drawClip(ctx: CanvasRenderingContext2D, el: El, x: number, y: number) {
-  const pic = clipPicture(el.src);
+  // while a video is made, the picture comes from the export engine, read from the clip's own file
+  const made = madePicture(el.id);
+  const pic = made ?? clipPicture(el.src);
   ctx.save();
   roundedPath(ctx, x, y, el.width, el.height, el.radius);
   ctx.clip();
   ctx.fillStyle = "#000000";
   ctx.fillRect(x, y, el.width, el.height);
-  if (pic && pic.videoWidth && pic.videoHeight) {
+  const pw = pic instanceof HTMLVideoElement ? pic.videoWidth : (pic?.width ?? 0);
+  const ph = pic instanceof HTMLVideoElement ? pic.videoHeight : (pic?.height ?? 0);
+  if (pic && pw && ph) {
     try {
-      const k = Math.max(el.width / pic.videoWidth, el.height / pic.videoHeight);
-      const w = pic.videoWidth * k;
-      const h = pic.videoHeight * k;
+      const k = Math.max(el.width / pw, el.height / ph);
+      const w = pw * k;
+      const h = ph * k;
       const frame = coloured(pic, el, null);
       if (ctx.globalCompositeOperation === "source-over") {
         ctx.drawImage(frame, x + (el.width - w) / 2, y + (el.height - h) / 2, w, h);

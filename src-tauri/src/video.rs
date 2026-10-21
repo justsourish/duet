@@ -279,6 +279,8 @@ struct Reader {
     out: std::process::ChildStdout,
     /// The second in the file of the next picture it will give.
     next: f64,
+    /// The size of the pictures it gives.
+    size: (u32, u32),
 }
 
 /// The video being made right now: ffmpeg waiting for 16-bit pictures, and the clips being read.
@@ -381,6 +383,43 @@ pub async fn scene_export_begin(out: String, fps: u32, seconds: f64, quality: Op
     .map_err(|e| e.to_string())?
 }
 
+/// A clip drawn somewhere in the video, asked for at the size it is drawn.
+#[derive(Deserialize)]
+pub struct ClipAsk {
+    id: String,
+    path: String,
+    /// The second in the file this picture shows.
+    at: f64,
+    #[serde(default = "one")]
+    speed: f64,
+    width: u32,
+    height: u32,
+    /// "bt601" for standard definition video, otherwise Rec.709.
+    matrix: String,
+}
+
+fn clip_reader_args(c: &ClipAsk, fps: u32) -> Vec<String> {
+    let matrix = if c.matrix == "bt601" { "bt601" } else { "bt709" };
+    vec![
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-ss".into(),
+        format!("{:.4}", c.at.max(0.0)),
+        "-i".into(),
+        c.path.clone(),
+        "-an".into(),
+        "-sn".into(),
+        "-vf".into(),
+        format!("setpts=PTS/{:.4},fps={fps},scale={}:{}:flags=lanczos+accurate_rnd+full_chroma_int:in_color_matrix={matrix}:in_range=auto:out_range=full", c.speed.max(0.05), c.width, c.height),
+        "-pix_fmt".into(),
+        "rgba".into(),
+        "-f".into(),
+        "rawvideo".into(),
+        "-".into(),
+    ]
+}
+
 /// A clip under everything else in one picture of the video, filling it.
 #[derive(Deserialize)]
 struct Base {
@@ -450,7 +489,7 @@ impl Making {
                 .spawn()
                 .map_err(|e| e.to_string())?;
             let out = child.stdout.take().ok_or("The clip could not be read.")?;
-            self.readers.insert(b.id.clone(), Reader { child, out, next: b.at });
+            self.readers.insert(b.id.clone(), Reader { child, out, next: b.at, size: (self.width, self.height) });
         }
         let reader = self.readers.get_mut(&b.id).ok_or("The clip could not be read.")?;
         let mut bytes = vec![0u8; n * 2];
@@ -460,6 +499,35 @@ impl Making {
             return Ok(vec![0; n]);
         }
         Ok(bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect())
+    }
+
+    /// A clip's picture for this moment, read from its file at the size asked, as RGBA. Empty when the file has ended.
+    fn clip_picture(&mut self, c: &ClipAsk) -> Result<Vec<u8>, String> {
+        use std::io::Read;
+        let step = 1.0 / self.fps as f64;
+        let key = format!("clip:{}", c.id);
+        let fresh = self.readers.get(&key).is_none_or(|r| (r.next - c.at).abs() > step / 2.0 || r.size != (c.width, c.height));
+        if fresh {
+            if let Some(mut old) = self.readers.remove(&key) {
+                let _ = old.child.kill();
+                let _ = old.child.wait();
+            }
+            let ffmpeg = find("ffmpeg").ok_or(MISSING)?;
+            let mut child = crate::quiet_command(ffmpeg)
+                .args(clip_reader_args(c, self.fps))
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            let out = child.stdout.take().ok_or("The clip could not be read.")?;
+            self.readers.insert(key.clone(), Reader { child, out, next: c.at, size: (c.width, c.height) });
+        }
+        let reader = self.readers.get_mut(&key).ok_or("The clip could not be read.")?;
+        let mut bytes = vec![0u8; (c.width * c.height * 4) as usize];
+        let got = reader.out.read_exact(&mut bytes).is_ok();
+        reader.next += step * c.speed;
+        Ok(if got { bytes } else { Vec::new() })
     }
 
     fn ready_for(&mut self, g: &crate::grade::Grade) -> std::sync::Arc<crate::grade::Ready> {
@@ -493,6 +561,19 @@ fn lay_over(under: &mut [u16], drawn: &[u8]) {
             px[i] = ((top * a + px[i] as u32 * (255 - a)) / 255) as u16;
         }
     }
+}
+
+/// One clip's picture for this moment of the video being made, read from its own file at the size it
+/// is drawn. Every clip is read here and not by the web view, which can hand back a black picture for a
+/// large file without saying so.
+#[tauri::command(async)]
+pub fn scene_export_clip(ask: ClipAsk) -> Result<tauri::ipc::Response, String> {
+    if ask.width == 0 || ask.height == 0 || ask.width > 16384 || ask.height > 16384 {
+        return Err("That clip size cannot be read.".into());
+    }
+    let mut making = MAKING.lock().map_err(|e| e.to_string())?;
+    let m = making.as_mut().ok_or("No video is being made.")?;
+    Ok(tauri::ipc::Response::new(m.clip_picture(&ask)?))
 }
 
 /// One picture of the video. The header says what is in it; the body holds what was drawn, as RGBA.
