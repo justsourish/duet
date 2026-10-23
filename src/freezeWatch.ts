@@ -25,12 +25,15 @@ export function watchForFreezes() {
     note(`change: ${s.timeline[s.timeline.length - 1]?.label ?? ""}`);
   });
   for (const ev of ["pointerdown", "keydown", "drop", "paste"]) window.addEventListener(ev, () => note(ev), true);
+  // when the window last went behind another app
+  let away = -Infinity;
+  window.addEventListener("blur", () => (away = performance.now()));
   setInterval(() => {
     const now = performance.now();
     const gap = now - last;
     last = now;
     // a hidden window, or one behind another app, is slowed on purpose by the system, which is not a freeze
-    if (gap < STOPPED || document.visibilityState !== "visible" || !document.hasFocus()) return;
+    if (gap < STOPPED || document.visibilityState !== "visible" || !document.hasFocus() || away > now - gap) return;
     const s = getState();
     const doc = s.timeline[s.cursor]?.doc;
     logError(
