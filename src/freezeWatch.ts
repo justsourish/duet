@@ -29,8 +29,8 @@ export function watchForFreezes() {
     const now = performance.now();
     const gap = now - last;
     last = now;
-    // a hidden window is slowed on purpose by the system, which is not a freeze
-    if (gap < STOPPED || document.visibilityState !== "visible") return;
+    // a hidden window, or one behind another app, is slowed on purpose by the system, which is not a freeze
+    if (gap < STOPPED || document.visibilityState !== "visible" || !document.hasFocus()) return;
     const s = getState();
     const doc = s.timeline[s.cursor]?.doc;
     logError(

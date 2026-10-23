@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { fileTimeAt } from "../document/time";
 import type { El } from "../document/types";
 import { PEAK_SLICE, frameAt, peaksOf, stripOf } from "../video/faces";
@@ -14,7 +14,7 @@ const VIDEO_WAVE = 30;
  * What is in a clip, drawn along its bar: small frames of the picture for a video, with how loud it is
  * in a strip underneath, and only how loud it is for a sound. `from` is the moment the bar starts. It follows the clip's speed and where it was cut from.
  */
-export default function ClipFace({ el, from, pps, width, height, on }: { el: El; from: number; pps: number; width: number; height: number; on: boolean }) {
+function ClipFace({ el, from, pps, width, height, on }: { el: El; from: number; pps: number; width: number; height: number; on: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [strip, setStrip] = useState<Strip | null>(null);
   const [frames, setFrames] = useState<HTMLImageElement | null>(null);
@@ -78,7 +78,24 @@ export default function ClipFace({ el, from, pps, width, height, on }: { el: El;
         g.fillRect(x, mid - h / 2, 1, h);
       }
     }
-  }, [video, strip, frames, loud, el, from, pps, width, height, on]);
+    // only where the clip was cut from and its speed change what is drawn, so an edit elsewhere draws nothing again
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video, strip, frames, loud, el.clipFrom, el.speed, from, pps, width, height, on]);
 
   return <canvas ref={canvas} className={`clip-face ${video ? "frames" : "wave"}`} style={{ width, height }} aria-hidden />;
 }
+
+/** Every edit makes a new copy of each thing, so a bar is drawn again only when what it shows changed. */
+export default memo(
+  ClipFace,
+  (a, b) =>
+    a.el.src === b.el.src &&
+    a.el.type === b.el.type &&
+    a.el.clipFrom === b.el.clipFrom &&
+    a.el.speed === b.el.speed &&
+    a.from === b.from &&
+    a.pps === b.pps &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.on === b.on,
+);

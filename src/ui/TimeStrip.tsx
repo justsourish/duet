@@ -47,6 +47,13 @@ function pageFrame(doc: Doc, id: string | undefined): El | null {
   return el?.type === "frame" ? el : null;
 }
 
+/** The last packing of a scene's tracks. While a video plays the clock moves on every frame but the design stays the same, so the tracks are not packed again each time. */
+let packed: { doc: Doc; id: string; out: El[][] } | null = null;
+function packedTracks(doc: Doc, id: string, pack: () => El[][]): El[][] {
+  if (packed?.doc !== doc || packed.id !== id) packed = { doc, id, out: pack() };
+  return packed.out;
+}
+
 export default function TimeStrip() {
   const mode = useLayout((d) => d.mode);
   const look = useLayout((d) => d.timeLook ?? "layers");
@@ -564,7 +571,7 @@ export default function TimeStrip() {
           onClick: (e: React.MouseEvent) => pick(e, el.id),
         }))
       : [
-          ...packTracks(nonVideos).map((items, i) => ({
+          ...packedTracks(doc, frame.id, () => packTracks(nonVideos)).map((items, i) => ({
             key: `track-${i + 1}`,
             name: `Track ${i + 1}`,
             items,
