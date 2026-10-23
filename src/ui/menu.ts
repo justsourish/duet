@@ -17,6 +17,9 @@ const send = (name: string, detail?: unknown) => window.dispatchEvent(new Custom
 const zoomBy = (k: number) => send("duet:zoom", Math.max(0.02, Math.min(64, getState().viewport.zoom * k)));
 const dummy = () => undefined;
 
+/** The recent projects the menu was last built with. On Windows the menu bar sits inside the window, so building it again redraws the whole window: it is built again only when the list itself changed, not on every save. */
+let builtWith: string | null = null;
+
 export async function installMenu() {
   if (!inTauri()) return;
   const item = (text: string, action: () => void, accelerator?: string) => MenuItem.new({ text, action, accelerator });
@@ -24,6 +27,8 @@ export async function installMenu() {
   const hasFrames = () => Object.values(currentDoc().elements).some((e) => e.type === "frame" || e.type === "instance");
 
   const recents = getRecents().slice(0, 10);
+  const key = JSON.stringify(recents.map((r) => [r.name, r.path]));
+  if (key === builtWith) return;
   const recentItems = recents.length
     ? await Promise.all(recents.map((r) => item(r.name, () => void openProjectAt(r.path))))
     : [await MenuItem.new({ text: "Nothing yet", enabled: false, action: dummy })];
@@ -143,4 +148,5 @@ export async function installMenu() {
 
   const menu = await Menu.new({ items: [app, file, edit, design, view, windowMenu, help] });
   await menu.setAsAppMenu();
+  builtWith = key;
 }
