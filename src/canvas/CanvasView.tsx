@@ -1590,7 +1590,8 @@ function TextEditor({ id, zoom, vx, vy }: { id: string; zoom: number; vx: number
         if (e.key === "Escape") {
           cancelled.current = true;
           ref.current?.blur();
-        } else if (e.key === "Enter" && !e.shiftKey) {
+        } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          // Enter starts a new line, as in any text; Cmd or Ctrl with Enter finishes
           e.preventDefault();
           ref.current?.blur();
         }
