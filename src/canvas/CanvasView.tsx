@@ -784,7 +784,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
     }
 
     if (d.kind === "create") {
-      const rect = normalize(d.start.x, d.start.y, p.x, p.y);
+      const rect = drawnBox(d.start, p, e.shiftKey, e.altKey);
       setOverlay({ draft: { type: d.type, rect } });
       return;
     }
@@ -972,7 +972,7 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       const dragged = Math.hypot(p.sx - d.sx, p.sy - d.sy) >= 4;
       const size = DEFAULT_SIZE[d.type];
       const world = dragged
-        ? normalize(d.start.x, d.start.y, p.x, p.y)
+        ? drawnBox(d.start, p, e.shiftKey, e.altKey)
         : { x: d.start.x, y: d.start.y, width: size.w, height: size.h };
       const doc = workDoc();
       const parent = d.parentId ? worldPos(doc, d.parentId) : { x: 0, y: 0 };
@@ -1514,6 +1514,18 @@ export default function CanvasView({ viewOnly = false }: { viewOnly?: boolean })
       {editingId && <TextEditor key={editingId} id={editingId} zoom={viewport.zoom} vx={viewport.x} vy={viewport.y} />}
     </div>
   );
+}
+
+/** The box a new shape is drawn in. Shift keeps it as wide as it is tall, for a circle or a square; Option or Alt draws it out from where the drag started. */
+export function drawnBox(start: { x: number; y: number }, p: { x: number; y: number }, even: boolean, fromMiddle: boolean): Rect {
+  let dx = p.x - start.x;
+  let dy = p.y - start.y;
+  if (even) {
+    const side = Math.max(Math.abs(dx), Math.abs(dy));
+    dx = Math.sign(dx || 1) * side;
+    dy = Math.sign(dy || 1) * side;
+  }
+  return fromMiddle ? normalize(start.x - dx, start.y - dy, start.x + dx, start.y + dy) : normalize(start.x, start.y, start.x + dx, start.y + dy);
 }
 
 function normalize(x1: number, y1: number, x2: number, y2: number): Rect {

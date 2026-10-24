@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runCommand } from "../commands";
 import { emptyDoc } from "../document/types";
-import { isMovable, prepareDuplicate } from "./CanvasView";
+import { drawnBox, isMovable, prepareDuplicate } from "./CanvasView";
 
 describe("option drag duplication helpers", () => {
   describe("isMovable", () => {
@@ -145,5 +145,20 @@ describe("option drag duplication helpers", () => {
       expect(base.elements.f1.childIds).toEqual(["child1"]);
       expect(base.elements.child1.parentId).toBe("f1");
     });
+  });
+});
+
+describe("drawing a new shape", () => {
+  const start = { x: 100, y: 100 };
+  it("follows the drag as it is", () => {
+    expect(drawnBox(start, { x: 160, y: 120 }, false, false)).toEqual({ x: 100, y: 100, width: 60, height: 20 });
+  });
+  it("Shift keeps it as wide as it is tall, in the direction dragged", () => {
+    expect(drawnBox(start, { x: 160, y: 120 }, true, false)).toEqual({ x: 100, y: 100, width: 60, height: 60 });
+    expect(drawnBox(start, { x: 80, y: 40 }, true, false)).toEqual({ x: 40, y: 40, width: 60, height: 60 });
+  });
+  it("Option draws out from where the drag started", () => {
+    expect(drawnBox(start, { x: 130, y: 110 }, false, true)).toEqual({ x: 70, y: 90, width: 60, height: 20 });
+    expect(drawnBox(start, { x: 130, y: 110 }, true, true)).toEqual({ x: 70, y: 70, width: 60, height: 60 });
   });
 });
